@@ -82,14 +82,20 @@ class RadarViewerConfigurationWidget(QtWidgets.QDialog):
         self.grid.addWidget(self.aad_token_label, aad_row, 4)
         self.grid.addWidget(self.aad_token_lineedit, aad_row, 5)
 
+        # The Cancel button closes without saving.
         self.cancel_button = QtWidgets.QPushButton("Cancel")
-        self.cancel_button.clicked.connect(self.cancel_button_clicked)
+        self.cancel_button.clicked.connect(self.close)
+        # The OK button validates the file, then closes.
         self.ok_button = QtWidgets.QPushButton("OK")
         self.ok_button.clicked.connect(self.ok_button_clicked)
         self.grid.addWidget(self.cancel_button, button_row, 0)
         self.grid.addWidget(self.ok_button, button_row, 5)
 
         self.setLayout(self.grid)
+        # I'm trying to get away from using a QDialog, but I'm not sure how to get
+        # a QWidget to open a child window that's modal.
+        # self.setWindowFlags(self.windowFlags() & QtCore.Qt.Window)
+        # self.setWindowModality(QtCore.Qt.WindowModal)
 
     def datadir_question_button_clicked(self, _event):
         QgsMessageLog.logMessage("User clicked question button about data directory!")
@@ -155,9 +161,6 @@ class RadarViewerConfigurationWidget(QtWidgets.QDialog):
     def aad_token_lineedit_editingfinished(self):
         QgsMessageLog.logMessage("User finished editing AAD token")
 
-    def cancel_button_clicked(self, _event):
-        QgsMessageLog.logMessage("Canceled configuration setup")
-
     def ok_button_clicked(self, _event):
         QgsMessageLog.logMessage("User clicked OK")
 
@@ -165,4 +168,8 @@ class RadarViewerConfigurationWidget(QtWidgets.QDialog):
         QgsMessageLog.logMessage("RadarViewerConfigurationWidget.run()")
         # In the NUI viewer, this had to run for QGIS to not block.
         # I'm not sure whether I can have a modal dialogue block...
+        # Creating a QApplication crashed QGIS. So ... how to create new window within the application?
+        # app = QtWidgets.QApplication([])
+        # app.exec()
+
         self.exec()
