@@ -110,6 +110,19 @@ class RadarViewerConfigurationWidget(QtWidgets.QDialog):
     def datadir_set_button_clicked(self, _event):
         QgsMessageLog.logMessage("User clicked button to set data directory!")
         # TODO: Fill this in ... I can't find anything better than QFileDialog, which would be yet another modal window.
+        file_dialog = QtWidgets.QFileDialog()
+        file_dialog.setFileMode(QtWidgets.QFileDialog.Directory)
+        result = file_dialog.exec()
+        if result:
+            filenames = file_dialog.selectedFiles()
+            if len(filenames) > 1:
+                errmsg = "This is a bug! QFileDialog should only allow selection of a single directory"
+                QgsMessageLog.logMessage(errmsg)
+            rootdir = filenames[0]
+            QgsMessageLog.logMessage(
+                f"File Dialog finished ... root directory = {rootdir}"
+            )
+            self.datadir_set_button.setText(rootdir)
 
     def nsidc_question_button_clicked(self, _event):
         QgsMessageLog.logMessage("User clicked NSIDC questions button")
