@@ -1,0 +1,10 @@
+[general]
+name=Radar Viewer
+qgisMinimumVersion=3.0
+description=This plugin downloads and displays ice penetrating radargrams
+about=
+version=1.0
+author=Laura Lindzey
+email=lindzey@uw.edu
+repository=
+icon=airplane.png
