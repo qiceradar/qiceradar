@@ -8,6 +8,7 @@ import PyQt5.QtWidgets as QtWidgets
 
 import qgis.core
 from qgis.core import (
+    QgsFeature,
     QgsLayerTreeGroup,
     QgsLayerTreeLayer,
     QgsMessageLog,
@@ -42,6 +43,15 @@ class RadarViewerPlugin(QtCore.QObject):
         # TODO: Consider whether to support user switching projects and
         #  thus needing to regenerate the spatial index. (e.g. Arctic / Antarctic switch?)
         self.spatial_index = None
+        # The spatial index only returns the IDs of features.
+        # So, if we insert features from multiple layers, it's up to us to do the
+        # bookkeeping between spatial index ID and layer ID.
+        # This dict maps from the integer ID in the spatial index to
+        # (layer_id, feature_id), where:
+        # * "layer_id" is the string returned by layer.id()
+        # * "feature_id" is the int returned by feature.id(), and can be used
+        #    to access the feature ia layer.getFeature(feature_id)
+        self.spatial_index_lookup = {}
 
         # Cache this when starting the selection tool in order to reset state
         self.prev_map_tool = None
@@ -142,7 +152,10 @@ class RadarViewerPlugin(QtCore.QObject):
         else:
             QgsMessageLog.logMessage(f"Found QIceRadar group!")
 
-        self.spatial_index = QgsSpatialIndex()
+        # We need to store geometries, otherwise nearest neighbor calculations are done
+        # based on bounding boxes and the list of closest transects is nonsensical.
+        self.spatial_index = QgsSpatialIndex(QgsSpatialIndex.FlagStoreFeatureGeometries)
+        index_id = 0
         for institution_group in qiceradar_group.children():
             if not isinstance(institution_group, QgsLayerTreeGroup):
                 # Really, there shouldn't be any, but who knows what layers the user may have added.
@@ -174,9 +187,18 @@ class RadarViewerPlugin(QtCore.QObject):
                             )
                             break
                     QgsMessageLog.logMessage(f"Adding features from {campaign.name()}")
-                    self.spatial_index.addFeatures(campaign.layer().getFeatures())
+                    for feature in campaign.layer().getFeatures():
+                        self.spatial_index_lookup[index_id] = (
+                            campaign.layer().id(),
+                            feature.id(),
+                        )
+                        new_feature = QgsFeature(feature)
+                        new_feature.setId(index_id)
+                        index_id += 1
+                        self.spatial_index.addFeature(new_feature)
+
                 except Exception as ex:
-                    QgsMessageLog(f"{ex.what()}")
+                    QgsMessageLog(f"{repr(ex)}")
 
     def selected_point_callback(self, point) -> None:
         self.selected_point = point
@@ -187,19 +209,16 @@ class RadarViewerPlugin(QtCore.QObject):
             self.iface.mapCanvas().setMapTool(self.prev_map_tool)
             self.prev_map_tool = None
 
-        # TODO: look into setting the StoreFeatureGeometries flag.
-        # https://qgis.org/pyqgis/3.22/core/QgsSpatialIndex.html#qgis.core.QgsSpatialIndex.nearestNeighbor
-        # "If this QgsSpatialIndex object was not constructed with the FlagStoreFeatureGeometries flag, then the nearest neighbor test is performed based on the feature bounding boxes ONLY, so for non-point geometry features this method is not guaranteed to return the actual closest neighbors.""
-        # However, that might be tricky, because this documentation:
-        # https://qgis.org/pyqgis/3.22/core/QgsSpatialIndex.html#qgis.core.QgsSpatialIndex.addFeature
-        # says that flags are ignored. Huh.
-
-        # TODO: UGGGGH. This only returns the feature ID. And that's only unique
-        #  per-layer, not per-project. So I'll have to be more careful about this.
         neighbors = self.spatial_index.nearestNeighbor(point, 5)
         QgsMessageLog.logMessage("Got neighbors!")
+        root = QgsProject.instance().layerTreeRoot()
         for neighbor in neighbors:
-            QgsMessageLog.logMessage(f"Neighbor: {neighbor}, type = {type(neighbor)}")
+            layer_id, feature_id = self.spatial_index_lookup[neighbor]
+            layer = root.findLayer(layer_id).layer()
+            feature = layer.getFeature(feature_id)
+            QgsMessageLog.logMessage(
+                f"Neighbor: {neighbor}, layer = {layer.id()}, feature_id = {feature_id}, feature name = {feature.attributeMap()['name']}"
+            )
 
         # QUESTION: What to do here while waiting for a mouse click?
         # On mouse click,
