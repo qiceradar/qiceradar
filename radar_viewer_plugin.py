@@ -187,6 +187,20 @@ class RadarViewerPlugin(QtCore.QObject):
             self.iface.mapCanvas().setMapTool(self.prev_map_tool)
             self.prev_map_tool = None
 
+        # TODO: look into setting the StoreFeatureGeometries flag.
+        # https://qgis.org/pyqgis/3.22/core/QgsSpatialIndex.html#qgis.core.QgsSpatialIndex.nearestNeighbor
+        # "If this QgsSpatialIndex object was not constructed with the FlagStoreFeatureGeometries flag, then the nearest neighbor test is performed based on the feature bounding boxes ONLY, so for non-point geometry features this method is not guaranteed to return the actual closest neighbors.""
+        # However, that might be tricky, because this documentation:
+        # https://qgis.org/pyqgis/3.22/core/QgsSpatialIndex.html#qgis.core.QgsSpatialIndex.addFeature
+        # says that flags are ignored. Huh.
+
+        # TODO: UGGGGH. This only returns the feature ID. And that's only unique
+        #  per-layer, not per-project. So I'll have to be more careful about this.
+        neighbors = self.spatial_index.nearestNeighbor(point, 5)
+        QgsMessageLog.logMessage("Got neighbors!")
+        for neighbor in neighbors:
+            QgsMessageLog.logMessage(f"Neighbor: {neighbor}, type = {type(neighbor)}")
+
         # QUESTION: What to do here while waiting for a mouse click?
         # On mouse click,
         # sw = RadarViewerSelectionWidget(self.iface)
