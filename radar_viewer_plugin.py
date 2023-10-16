@@ -15,12 +15,20 @@ from qgis.core import (
     QgsSpatialIndex,
 )
 
-from .radar_viewer_widgets import (
+import qgis.gui
+from qgis.gui import QgsMapToolPan
+
+from .radar_viewer_configuration_widget import (
     RadarViewerConfigurationWidget,
-    # RadarViewerUnavailableWidget,
-    # RadarViewerUnsupportedWidget,
-    # RadarViewerTransectWidget,
 )
+from .radar_viewer_selection_widget import (
+    RadarViewerSelectionTool,
+    RadarViewerSelectionWidget,
+)
+
+# RadarViewerUnavailableWidget,
+# RadarViewerUnsupportedWidget,
+# RadarViewerTransectWidget,
 
 from .radar_viewer_config import UserConfig, parse_config, config_is_valid
 
@@ -34,6 +42,11 @@ class RadarViewerPlugin(QtCore.QObject):
         # TODO: Consider whether to support user switching projects and
         #  thus needing to regenerate the spatial index. (e.g. Arctic / Antarctic switch?)
         self.spatial_index = None
+
+        # Cache this when starting the selection tool in order to reset state
+        self.prev_map_tool = None
+        # Will hold most recently selected map point, for finding nearest transects
+        self.selected_point = None
 
         # Try loading config when plugin initialized (before project has been selected)
         self.config = UserConfig()
@@ -165,28 +178,14 @@ class RadarViewerPlugin(QtCore.QObject):
                 except Exception as ex:
                     QgsMessageLog(f"{ex.what()}")
 
-    def run(self) -> None:
-        print("run")
-        # The QIceRadar tool is a series of widgets, kicked off by clicking on the icon.
+    def selected_point_callback(self, point) -> None:
+        self.selected_point = point
+        QgsMessageLog.logMessage(f"Got point! {point.x()}, {point.y()}")
 
-        # First, make sure we at least have the root data directory configured
-        if not config_is_valid(self.config):
-            cw = RadarViewerConfigurationWidget(
-                self.iface, self.config, self.set_config
-            )
-            # Config is set via callback, rather than direct return value
-            cw.run()
-
-        if not config_is_valid(self.config):
-            QgsMessageLog.logMessage("Invalid configuration; can't start QIceRadar")
-            return
-        else:
-            QgsMessageLog.logMessage(f"Config = {self.config}; ready for use!")
-
-        # Next, try to create the spatial index
-        # TODO: Actually regenerate this whenever project is changed.
-        if self.spatial_index is None:
-            self.build_spatial_index()
+        # TODO: Really, if it is None, this should be an error condition.
+        if self.prev_map_tool is not None:
+            self.iface.mapCanvas().setMapTool(self.prev_map_tool)
+            self.prev_map_tool = None
 
         # QUESTION: What to do here while waiting for a mouse click?
         # On mouse click,
@@ -203,6 +202,43 @@ class RadarViewerPlugin(QtCore.QObject):
         #     # QUESTION: How to keep this alive continuously?
         #     tw = RadarViewerTransectWidget(transect, self.iface)
         #     tw.run()
+
+    def run(self) -> None:
+        QgsMessageLog.logMessage("run")
+        # The QIceRadar tool is a series of widgets, kicked off by clicking on the icon.
+
+        # First, make sure we at least have the root data directory configured
+        if not config_is_valid(self.config):
+            cw = RadarViewerConfigurationWidget(
+                self.iface, self.config, self.set_config
+            )
+            # Config is set via callback, rather than direct return value
+            cw.run()
+
+        if not config_is_valid(self.config):
+            QgsMessageLog.logMessage("Invalid configuration; can't start QIceRadar")
+            return
+        else:
+            QgsMessageLog.logMessage(f"Config = {self.config}; ready for use!")
+
+        # Next, make sure the spatial index has been initialized
+        # TODO: detect when project changes and re-initialize!
+        if self.spatial_index is None:
+            self.build_spatial_index()
+
+        # Create a MapTool to select point on map. After this point, it is callback driven.
+        # TODO: This feels like something that should be handled in the SelectionTool,
+        #  not in the plugin
+        self.prev_map_tool = self.iface.mapCanvas().mapTool()
+        if self.prev_map_tool is None:
+            self.prev_map_tool = QgsMapToolPan
+        selection_tool = RadarViewerSelectionTool(
+            self.iface.mapCanvas(), self.selected_point_callback
+        )
+        self.iface.mapCanvas().setMapTool(selection_tool)
+
+        # TODO: It seems that the icon no longer shows as active at this point,
+        #  when really, I'd rather it be active while the selection tool is active.
 
         # I actually prefer this, because multiple windows are easier to deal
         # with than a dockable window that won't go to the background.
