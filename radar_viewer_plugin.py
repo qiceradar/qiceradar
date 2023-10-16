@@ -1,9 +1,13 @@
 import inspect
 import os
+import yaml
 
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
 import PyQt5.QtWidgets as QtWidgets
+
+import qgis.core
+from qgis.core import QgsMessageLog, QgsProject
 
 from .radar_viewer_widgets import (
     RadarViewerConfigurationWidget,
@@ -12,13 +16,28 @@ from .radar_viewer_widgets import (
     # RadarViewerTransectWidget,
 )
 
+from .radar_viewer_config import UserConfig, parse_config, config_is_valid
+
 
 class RadarViewerPlugin(QtCore.QObject):
     def __init__(self, iface):
         super(RadarViewerPlugin, self).__init__()
         self.iface = iface
-        # TODO: try loading the configuration...
-        self.configuration = None
+
+        # Default value
+        self.config = UserConfig()
+        try:
+            # Save to global QGIS settings, not per-project.
+            # If per-project, need to read settings after icon clicked, not when
+            # plugin loaded (plugins are loaded before user selects the project.)
+            qs = QtCore.QSettings()
+            config_str = qs.value("radar_viewer_config")
+            QgsMessageLog.logMessage(f"Tried to load config. config_str = {config_str}")
+            config_dict = yaml.safe_load(config_str)
+            self.config = parse_config(config_dict)
+            print(f"Loaded config! {self.config}")
+        except Exception as ex:
+            QgsMessageLog.logMessage(f"Error loading config: {ex}")
 
     def initGui(self):
         """
@@ -43,7 +62,38 @@ class RadarViewerPlugin(QtCore.QObject):
         self.iface.removePluginMenu("&Radar Viewer", self.action)
         del self.action
 
-    def run(self):
+    def load_config(self):
+        """
+        Load config from project file.
+        This needs to be separate from __init__, since plugins are loaded when
+        QGIS starts, but the config data is stored in the project directory.
+        """
+        pass
+
+    def set_config(self, config):
+        """
+        Callback passed to the RadarViewerConfigurationWidget to set config
+        once it has been validated. (The QDialog class doesn't seem to allow
+        returning more complex values, so it needs to be done indirectly.)
+        """
+        self.config = config
+        self.save_config()
+
+    def save_config(self):
+        # Can't dump a NamedTuple using yaml, so convert to a dict
+        config_dict = {key: getattr(self.config, key) for key in self.config._fields}
+        if config_dict["rootdir"] is not None:
+            config_dict["rootdir"] = str(config_dict["rootdir"])
+        QgsMessageLog.logMessage(
+            f"Saving updated config! {yaml.safe_dump(config_dict)}"
+        )
+        qs = QtCore.QSettings()
+        qs.setValue("radar_viewer_config", yaml.safe_dump(config_dict))
+        # QgsProject.instance().writeEntry(
+        #     "radar_viewer", "user_config", yaml.safe_dump(config_dict)
+        # )
+
+    def run(self) -> None:
         print("run")
 
         # This kicks off a series of widgets
@@ -52,9 +102,13 @@ class RadarViewerPlugin(QtCore.QObject):
         # * NSIDC credentials (optional; can be added later)
         # * AAD credentials (likewise optional)
         # if configuration not loaded
-        if self.configuration is None:
-            cw = RadarViewerConfigurationWidget(self.iface)
-            self.configuration = cw.run()
+        if self.config is not None and not config_is_valid(self.config):
+            cw = RadarViewerConfigurationWidget(
+                self.iface, self.config, self.set_config
+            )
+            cw.run()
+
+        QgsMessageLog.logMessage(f"Config = {self.config}; ready for use!")
 
         # QUESTION: What to do here while waiting for a mouse click?
         # On mouse click,

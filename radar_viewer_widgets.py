@@ -1,8 +1,12 @@
+import pathlib
+
 import PyQt5.QtWidgets as QtWidgets
 import PyQt5.QtCore as QtCore
 
 import qgis.core
 from qgis.core import QgsMessageLog
+
+from .radar_viewer_config import UserConfig, parse_config, config_is_valid
 
 
 # I wanted this to be a QDialog, but then a PushButton was ALWAYS welected,
@@ -10,13 +14,14 @@ from qgis.core import QgsMessageLog
 # end of editing would activate both child widgets, which is not desirable behaior.
 # https://stackoverflow.com/questions/45288494/how-do-i-avoid-multiple-simultaneous-focus-in-pyside
 class RadarViewerConfigurationWidget(QtWidgets.QDialog):
-    def __init__(self, iface):
+    def __init__(self, iface, user_config: UserConfig, config_callback):
         super(RadarViewerConfigurationWidget, self).__init__()
         self.iface = iface
-        self.setup_ui()
+        # Will be called with new configuration if user presses "OK"
+        self.config_callback = config_callback
+        self.setup_ui(user_config)
 
-    def setup_ui(self):
-        # TODO: add fields!
+    def setup_ui(self, user_config):
         self.grid = QtWidgets.QGridLayout()
 
         datadir_row = 0
@@ -29,9 +34,10 @@ class RadarViewerConfigurationWidget(QtWidgets.QDialog):
         self.datadir_question_button.clicked.connect(
             self.datadir_question_button_clicked
         )
-        # TODO: This should fill in the label with the current directory
-        # TODO: This feels clunky. Is there a more-expected way to implement this?
+
         self.datadir_set_button = QtWidgets.QPushButton("click to select directory")
+        if user_config.rootdir is not None:
+            self.datadir_set_button.setText(user_config.rootdir)
         self.datadir_set_button.clicked.connect(self.datadir_set_button_clicked)
         self.grid.addWidget(self.datadir_label, datadir_row, 0)
         self.grid.addWidget(self.datadir_question_button, datadir_row, 1)
@@ -46,12 +52,15 @@ class RadarViewerConfigurationWidget(QtWidgets.QDialog):
         self.nsidc_question_button.clicked.connect(self.nsidc_question_button_clicked)
         self.nsidc_credentials_label = QtWidgets.QLabel("credentials")
         self.nsidc_credentials_lineedit = QtWidgets.QLineEdit()
-        self.nsidc_credentials_lineedit.setFocusPolicy(QtCore.Qt.StrongFocus)
+        if user_config.nsidc_credentials is not None:
+            self.nsidc_credentials_lineedit.setText(user_config.nsidc_credentials)
         self.nsidc_credentials_lineedit.editingFinished.connect(
             self.nsidc_credentials_lineedit_editingfinished
         )
         self.nsidc_token_label = QtWidgets.QLabel("token")
         self.nsidc_token_lineedit = QtWidgets.QLineEdit()
+        if user_config.nsidc_token is not None:
+            self.nsidc_token_lineedit.setText(user_config.nsidc_token)
         self.nsidc_token_lineedit.editingFinished.connect(
             self.nsidc_token_lineedit_editingfinished
         )
@@ -65,22 +74,26 @@ class RadarViewerConfigurationWidget(QtWidgets.QDialog):
         self.aad_label = QtWidgets.QLabel("AAD credentials")
         self.aad_question_button = QtWidgets.QPushButton("?")
         self.aad_question_button.clicked.connect(self.aad_question_button_clicked)
-        self.aad_credentials_label = QtWidgets.QLabel("Access Key")
-        self.aad_credentials_lineedit = QtWidgets.QLineEdit()
-        self.aad_credentials_lineedit.editingFinished.connect(
-            self.aad_credentials_lineedit_editingfinished
+        self.aad_access_key_label = QtWidgets.QLabel("Access Key")
+        self.aad_access_key_lineedit = QtWidgets.QLineEdit()
+        if user_config.aad_access_key is not None:
+            self.aad_access_key_lineedit.setText(user_config.aad_access_key)
+        self.aad_access_key_lineedit.editingFinished.connect(
+            self.aad_access_key_lineedit_editingfinished
         )
-        self.aad_token_label = QtWidgets.QLabel("Secret Key")
-        self.aad_token_lineedit = QtWidgets.QLineEdit()
-        self.aad_token_lineedit.editingFinished.connect(
-            self.aad_token_lineedit_editingfinished
+        self.aad_secret_key_label = QtWidgets.QLabel("Secret Key")
+        self.aad_secret_key_lineedit = QtWidgets.QLineEdit()
+        if user_config.aad_secret_key is not None:
+            self.aad_secret_key_lineedit.setText(user_config.aad_secret_key)
+        self.aad_secret_key_lineedit.editingFinished.connect(
+            self.aad_secret_key_lineedit_editingfinished
         )
         self.grid.addWidget(self.aad_label, aad_row, 0)
         self.grid.addWidget(self.aad_question_button, aad_row, 1)
-        self.grid.addWidget(self.aad_credentials_label, aad_row, 2)
-        self.grid.addWidget(self.aad_credentials_lineedit, aad_row, 3)
-        self.grid.addWidget(self.aad_token_label, aad_row, 4)
-        self.grid.addWidget(self.aad_token_lineedit, aad_row, 5)
+        self.grid.addWidget(self.aad_access_key_label, aad_row, 2)
+        self.grid.addWidget(self.aad_access_key_lineedit, aad_row, 3)
+        self.grid.addWidget(self.aad_secret_key_label, aad_row, 4)
+        self.grid.addWidget(self.aad_secret_key_lineedit, aad_row, 5)
 
         # The Cancel button closes without saving.
         self.cancel_button = QtWidgets.QPushButton("Cancel")
@@ -168,14 +181,63 @@ class RadarViewerConfigurationWidget(QtWidgets.QDialog):
         aad_message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
         aad_message_box.exec()
 
-    def aad_credentials_lineedit_editingfinished(self):
+    def aad_access_key_lineedit_editingfinished(self):
         QgsMessageLog.logMessage("User finished editing AAD credentials")
 
-    def aad_token_lineedit_editingfinished(self):
+    def aad_secret_key_lineedit_editingfinished(self):
         QgsMessageLog.logMessage("User finished editing AAD token")
 
     def ok_button_clicked(self, _event):
         QgsMessageLog.logMessage("User clicked OK")
+        # read in all values; we want to return a configuration struct
+        pp = pathlib.Path(self.datadir_set_button.text())
+        if pp.is_dir():
+            rootdir = pp
+        else:
+            rootdir = None
+
+        ll = self.nsidc_credentials_lineedit.text().strip()
+        if len(ll) > 0:
+            nsidc_credentials = ll
+        else:
+            nsidc_credentials = None
+
+        ll = self.nsidc_token_lineedit.text().strip()
+        if len(ll) > 0:
+            nsidc_token = ll
+        else:
+            nsidc_token = None
+
+        ll = self.aad_access_key_lineedit.text().strip()
+        if len(ll) > 0:
+            aad_access_key = ll
+        else:
+            aad_access_key = None
+
+        ll = self.aad_secret_key_lineedit.text().strip()
+        if len(ll) > 0:
+            aad_secret_key = ll
+        else:
+            aad_secret_key = None
+
+        config = UserConfig(
+            rootdir, nsidc_credentials, nsidc_token, aad_access_key, aad_secret_key
+        )
+
+        # If configuration isn't valid, we can't do anything useful.
+        if config_is_valid(config):
+            self.config_callback(config)
+            self.close()
+        else:
+            errmsg = "Please specify a valid directory for data"
+            error_message_box = QtWidgets.QMessageBox()
+            error_message_box.setText(errmsg)
+            error_message_box.exec()
+            return
+
+        # validate configuration
+        # If configuration valid, close
+        # Otherwise, pop up with "invalid configuration: you must select a root directory"
 
     def run(self):
         QgsMessageLog.logMessage("RadarViewerConfigurationWidget.run()")
