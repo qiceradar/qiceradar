@@ -317,9 +317,12 @@ class RadarViewerPlugin(QtCore.QObject):
             downloaded = transect_filepath is not None and transect_filepath.is_file()
             if downloaded:
                 vw = RadarViewerRadargramWidget()
-                vw.run()
-                # TODO: user probably wants to immediately open what they've downloaded
+                self.dw = QtWidgets.QDockWidget("Radargram")
+                self.dw.setWidget(vw)
+                self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.dw)
+                # vw.show()
             else:
+                # TODO: user probably wants to immediately open what they've downloaded
                 dw = RadarViewerDownloadWidget(
                     self.config.rootdir, feature.attributeMap()
                 )

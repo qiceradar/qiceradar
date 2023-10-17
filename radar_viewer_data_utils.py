@@ -15,8 +15,8 @@ def get_granule_filepath(
     filepath = None
     if institution == "BAS":
         # Deliberately wrong to test the download widget
-        filepath = pathlib.Path(rootdir, region, institution, campaign, segment)
-        # filepath = pathlib.Path(rootdir, region, institution, campaign, segment + ".nc")
+        # filepath = pathlib.Path(rootdir, region, institution, campaign, segment)
+        filepath = pathlib.Path(rootdir, region, institution, campaign, segment + ".nc")
     elif institution == "CRESIS":
         # TODO: Should probably download from NSIDC where available...
         #   So maybe don't deal with these yet.

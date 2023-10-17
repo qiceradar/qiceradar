@@ -31,12 +31,6 @@ class RadarViewerDownloadWidget(QtWidgets.QDialog):
 
         ----
 
-        # NB: bas releases data per-flight, so we don't have to wrangle granules.
-        BAS-?? data can be automatically downloaded.
-        The requested transect is _____ (MB/GB).
-
-        Cancel   |     Download
-
 
         -----
         # TODO/QUESTION: should downloader + viewer work at the segment or granule level?
@@ -96,20 +90,53 @@ class RadarViewerDownloadWidget(QtWidgets.QDialog):
         self.exec()
 
 
+# TODO: This should probably have a base class, then derived ones that
+#   change the text in the info label + how the download is performed.
 class RadarViewerBASDownloadWidget(QtWidgets.QWidget):
     closed = QtCore.pyqtSignal()
 
     def __init__(self, rootdir, region, institution, campaign, segment, granule):
         super(RadarViewerBASDownloadWidget, self).__init__()
         QgsMessageLog.logMessage("initializing RadarViewerBASDownloadWidget")
+        self.rootdir = rootdir
+        self.region = region
+        self.institution = institution
+        self.campaign = campaign
+        self.segment = segment
+        self.granule = granule
         self.setup_ui()
 
+    def download_clicked(self, _event):
+        QgsMessageLog.logMessage("TODO: Actually download radargram!")
+        self.closed.emit()
+
     def setup_ui(self):
+        # TODO: The database needs to include file sizes, and where
+        #   to download.
+        transect_filesize = -1
+        self.info_label = QtWidgets.QLabel(
+            "".join(
+                [
+                    f"The requested transect is {transect_filesize} MB\n",
+                    "And can be downloaded from: \n",
+                    "TODO! ",
+                ]
+            )
+        )
+
         self.cancel_pushbutton = QtWidgets.QPushButton("Cancel")
         self.cancel_pushbutton.clicked.connect(self.closed.emit)
+        self.download_pushbutton = QtWidgets.QPushButton("Download")
+        self.download_pushbutton.clicked.connect(self.download_clicked)
+
+        self.button_hbox = QtWidgets.QHBoxLayout()
+        self.button_hbox.addWidget(self.cancel_pushbutton)
+        self.button_hbox.addStretch(1)
+        self.button_hbox.addWidget(self.download_pushbutton)
 
         self.main_vbox = QtWidgets.QVBoxLayout()
-        self.main_vbox.addWidget(self.cancel_pushbutton)
+        self.main_vbox.addWidget(self.info_label)
+        self.main_vbox.addLayout(self.button_hbox)
         self.setLayout(self.main_vbox)
 
 
