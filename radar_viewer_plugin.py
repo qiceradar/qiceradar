@@ -1,5 +1,7 @@
 import inspect
 import os
+import pathlib
+from typing import Dict, Optional, Tuple
 import yaml
 
 import PyQt5.QtCore as QtCore
@@ -12,37 +14,40 @@ from qgis.core import (
     QgsLayerTreeGroup,
     QgsLayerTreeLayer,
     QgsMessageLog,
+    QgsPointXY,
     QgsProject,
     QgsSpatialIndex,
 )
 
 import qgis.gui
-from qgis.gui import QgsMapToolPan
+from qgis.gui import QgsMapTool, QgsMapToolPan
 
 from .radar_viewer_configuration_widget import (
     RadarViewerConfigurationWidget,
 )
+
+from .radar_viewer_data_utils import get_granule_filepath
+
 from .radar_viewer_selection_widget import (
     RadarViewerSelectionTool,
     RadarViewerSelectionWidget,
 )
 
-# RadarViewerUnavailableWidget,
-# RadarViewerUnsupportedWidget,
-# RadarViewerTransectWidget,
+from .radar_viewer_radargram_widget import RadarViewerRadargramWidget
+from .radar_viewer_download_widget import RadarViewerDownloadWidget
 
 from .radar_viewer_config import UserConfig, parse_config, config_is_valid
 
 
 class RadarViewerPlugin(QtCore.QObject):
-    def __init__(self, iface):
+    def __init__(self, iface) -> None:
         super(RadarViewerPlugin, self).__init__()
         self.iface = iface
 
         # The spatial index needs to be created for each new project
         # TODO: Consider whether to support user switching projects and
         #  thus needing to regenerate the spatial index. (e.g. Arctic / Antarctic switch?)
-        self.spatial_index = None
+        self.spatial_index: Optional[QgsSpatialIndex] = None
         # The spatial index only returns the IDs of features.
         # So, if we insert features from multiple layers, it's up to us to do the
         # bookkeeping between spatial index ID and layer ID.
@@ -50,13 +55,14 @@ class RadarViewerPlugin(QtCore.QObject):
         # (layer_id, feature_id), where:
         # * "layer_id" is the string returned by layer.id()
         # * "feature_id" is the int returned by feature.id(), and can be used
-        #    to access the feature ia layer.getFeature(feature_id)
-        self.spatial_index_lookup = {}
+        #    to access the feature via layer.getFeature(feature_id)
+        self.spatial_index_lookup: Dict[int, Tuple[str, int]] = {}
+        # After presenting the transect names to the user to select among,
+        # need to map back to a feature in the database that we can query.
+        self.transect_name_lookup: Dict[str, Tuple[str, int]] = {}
 
         # Cache this when starting the selection tool in order to reset state
-        self.prev_map_tool = None
-        # Will hold most recently selected map point, for finding nearest transects
-        self.selected_point = None
+        self.prev_map_tool: Optional[QgsMapTool] = None
 
         # Try loading config when plugin initialized (before project has been selected)
         self.config = UserConfig()
@@ -73,13 +79,22 @@ class RadarViewerPlugin(QtCore.QObject):
         except Exception as ex:
             QgsMessageLog.logMessage(f"Error loading config: {ex}")
 
-    def initGui(self):
+    def initGui(self) -> None:
         """
         Required method; called when plugin loaded.
         """
         print("initGui")
-        cmd_folder = os.path.split(inspect.getfile(inspect.currentframe()))[0]
-        icon = os.path.join(os.path.join(cmd_folder, "airplane.png"))
+        frame = inspect.currentframe()
+        if frame is None:
+            errmsg = "Can't find code directory to load icon!"
+            QgsMessageLog.logMessage(errmsg)
+        else:
+            cmd_folder = os.path.split(inspect.getfile(frame))[0]
+            icon = os.path.join(os.path.join(cmd_folder, "airplane.png"))
+
+        # TODO: May want to support a different tooltip in the menu that
+        #   launches a GUI where you can either type in a line or select
+        #   it from a series of dropdowns, rather than forcing a click.
         self.action = QtWidgets.QAction(
             QtGui.QIcon(icon), "Select and Display Radargrams", self.iface.mainWindow()
         )
@@ -87,7 +102,7 @@ class RadarViewerPlugin(QtCore.QObject):
         self.iface.addPluginToMenu("&Radar Viewer", self.action)
         self.iface.addToolBarIcon(self.action)
 
-    def unload(self):
+    def unload(self) -> None:
         """
         Required method; called when plugin unloaded.
         """
@@ -104,7 +119,7 @@ class RadarViewerPlugin(QtCore.QObject):
         """
         pass
 
-    def set_config(self, config):
+    def set_config(self, config: UserConfig) -> None:
         """
         Callback passed to the RadarViewerConfigurationWidget to set config
         once it has been validated. (The QDialog class doesn't seem to allow
@@ -113,7 +128,7 @@ class RadarViewerPlugin(QtCore.QObject):
         self.config = config
         self.save_config()
 
-    def save_config(self):
+    def save_config(self) -> None:
         # Can't dump a NamedTuple using yaml, so convert to a dict
         config_dict = {key: getattr(self.config, key) for key in self.config._fields}
         if config_dict["rootdir"] is not None:
@@ -150,7 +165,7 @@ class RadarViewerPlugin(QtCore.QObject):
             message_box.exec()
             return
         else:
-            QgsMessageLog.logMessage(f"Found QIceRadar group!")
+            QgsMessageLog.logMessage("Found QIceRadar group!")
 
         # We need to store geometries, otherwise nearest neighbor calculations are done
         # based on bounding boxes and the list of closest transects is nonsensical.
@@ -171,6 +186,7 @@ class RadarViewerPlugin(QtCore.QObject):
                     continue
                 # Quick sanity check that this is a layer for the index
                 try:
+                    # I think the stub files are wrong; this is flagged as a non-existant method, but it works.
                     feat = next(campaign.layer().getFeatures())
                     # TODO: Would be better to have a proper function for checking this.
                     for field in [
@@ -186,9 +202,20 @@ class RadarViewerPlugin(QtCore.QObject):
                                 f"Layer in {campaign} missing expected field {field}; not adding features to index."
                             )
                             break
-                    QgsMessageLog.logMessage(f"Adding features from {campaign.name()}")
+                    # QgsMessageLog.logMessage(f"Adding features from {campaign.name()}")
                     for feature in campaign.layer().getFeatures():
                         self.spatial_index_lookup[index_id] = (
+                            campaign.layer().id(),
+                            feature.id(),
+                        )
+                        feature_name = feature.attributeMap()["name"]
+                        if feature_name in self.transect_name_lookup:
+                            # Don't die, but do log a message
+                            errmsg = (
+                                "Malformed index layer! {feature_name} appears twice!"
+                            )
+                            QgsMessageLog.logMessage(errmsg)
+                        self.transect_name_lookup[feature_name] = (
                             campaign.layer().id(),
                             feature.id(),
                         )
@@ -198,10 +225,107 @@ class RadarViewerPlugin(QtCore.QObject):
                         self.spatial_index.addFeature(new_feature)
 
                 except Exception as ex:
-                    QgsMessageLog(f"{repr(ex)}")
+                    QgsMessageLog.logMessage(f"{repr(ex)}")
 
-    def selected_point_callback(self, point) -> None:
-        self.selected_point = point
+    def selected_transect_callback(self, transect_name: str) -> None:
+        """
+        Callback for the RadarViewerSelectionWidget that launches the appropriate
+        UI element for the chosen transect.
+        """
+        QgsMessageLog.logMessage(f"{transect_name} selected!")
+        layer_id, feature_id = self.transect_name_lookup[transect_name]
+        # TODO: recover name -> layer + ID, so we can look up info about it
+
+        root = QgsProject.instance().layerTreeRoot()
+        layer = root.findLayer(layer_id).layer()
+        feature = layer.getFeature(feature_id)
+
+        availability = feature.attributeMap()["availability"]
+        institution = feature.attributeMap()["institution"]
+        region = feature.attributeMap()["region"]
+        campaign = feature.attributeMap()["campaign"]
+        segment = feature.attributeMap()["segment"]
+        granule = feature.attributeMap()["granule"]
+        uri = feature.attributeMap()["uri"]
+
+        if availability == "u":
+            # TODO: Consider special case for BEDMAP1?
+            msg = (
+                "We have not found publicly-available radargrams for this transect."
+                "<br><br>"
+                f"Institution: {institution}"
+                "<br>"
+                f"Campaign: {campaign}"
+                "<br><br>"
+                "If these are now available, please let us know so we can update the database!"
+                "<br><br>"
+                'Submit an issue: <a href="https://github.com/qiceradar/radar_wrangler/issues/new">https://github.com/qiceradar/radar_wrangler/issues/new</a>'
+                "<br>"
+                'Or send us email: <a href="mailto:qiceradar@gmail.com">qiceradar@gmail.com</a>'
+                "<br><br>"
+                "If this is your data and you're thinking about releasing it, feel free to get in touch. We'd love to help if we can."
+            )
+            message_box = QtWidgets.QMessageBox()
+            message_box.setTextFormat(QtCore.Qt.RichText)
+            message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+            message_box.setText(msg)
+            message_box.exec()
+            return
+        elif availability == "a":
+            # TODO: Consider special case for information about Stanford's digitization efforts?
+            # TODO: Rather than "available"/"Unavailable", maybe database should
+            #   have enum for what format the data IS, and then the code decides
+            #   whether it's supported?
+            # TODO: This may also be a prompt to update the code itself / present
+            #   a link to the page documenting supported formats.
+            # TODO: uri needs to be a proper link!
+            msg = (
+                "These radargrams are available, but their format is not currently supported in the viewer "
+                "<br><br>"
+                f"Institution: {institution}"
+                "<br>"
+                f"Campaign: {campaign}"
+                "<br>"
+                f"Segment: {segment}"
+                "<br>"
+                f"URI: {uri}"
+                "<br><br>"
+                "If these are particularly important to your work, let us know! "
+                "This feedback will help prioritize future development efforts. "
+                "<br><br>"
+                'Submit an issue: <a href="https://github.com/qiceradar/radar_viewer/issues/new">https://github.com/qiceradar/radar_viewer/issues/new</a>'
+                "<br>"
+                'Or send us email: <a href="mailto:qiceradar@gmail.com">qiceradar@gmail.com</a>'
+            )
+            message_box = QtWidgets.QMessageBox()
+            message_box.setTextFormat(QtCore.Qt.RichText)
+            message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+            message_box.setText(msg)
+            message_box.exec()
+        elif availability == "s":
+            # mypy doesn't recognize the first option as doing the same check, so
+            # flags get_granule_filepath as having incompatible arguments.
+            # if not config_is_valid(self.config):
+            if self.config.rootdir is None:
+                QgsMessageLog.logMessage(
+                    "Invalid config. Can't download or view radargrams."
+                )
+                return
+            transect_filepath = get_granule_filepath(
+                self.config.rootdir, region, institution, campaign, segment, granule
+            )
+            downloaded = transect_filepath is not None and transect_filepath.is_file()
+            if downloaded:
+                vw = RadarViewerRadargramWidget()
+                vw.run()
+                # TODO: user probably wants to immediately open what they've downloaded
+            else:
+                dw = RadarViewerDownloadWidget(
+                    self.config.rootdir, feature.attributeMap()
+                )
+                dw.run()
+
+    def selected_point_callback(self, point: QgsPointXY) -> None:
         QgsMessageLog.logMessage(f"Got point! {point.x()}, {point.y()}")
 
         # TODO: Really, if it is None, this should be an error condition.
@@ -209,16 +333,30 @@ class RadarViewerPlugin(QtCore.QObject):
             self.iface.mapCanvas().setMapTool(self.prev_map_tool)
             self.prev_map_tool = None
 
+        if self.spatial_index is None:
+            errmsg = "Spatial index not created -- bug!!"
+            QgsMessageLog.logMessage(errmsg)
+            return
         neighbors = self.spatial_index.nearestNeighbor(point, 5)
+        neighbor_names = []
         QgsMessageLog.logMessage("Got neighbors!")
         root = QgsProject.instance().layerTreeRoot()
         for neighbor in neighbors:
             layer_id, feature_id = self.spatial_index_lookup[neighbor]
             layer = root.findLayer(layer_id).layer()
             feature = layer.getFeature(feature_id)
+            feature_name = feature.attributeMap()["name"]
             QgsMessageLog.logMessage(
-                f"Neighbor: {neighbor}, layer = {layer.id()}, feature_id = {feature_id}, feature name = {feature.attributeMap()['name']}"
+                f"Neighbor: {neighbor}, layer = {layer.id()}, "
+                f"feature_id = {feature_id}, feature name = {feature_name}"
             )
+            neighbor_names.append(feature_name)
+
+        ts = RadarViewerSelectionWidget(
+            self.iface, neighbor_names, self.selected_transect_callback
+        )
+        # Chosen transect is set via callback, rather than direct return value
+        ts.run()
 
         # QUESTION: What to do here while waiting for a mouse click?
         # On mouse click,
@@ -262,8 +400,10 @@ class RadarViewerPlugin(QtCore.QObject):
         # Create a MapTool to select point on map. After this point, it is callback driven.
         # TODO: This feels like something that should be handled in the SelectionTool,
         #  not in the plugin
+        # mypy doesn't like this: "expression has type "type[QgsMapToolPan]", variable has type "QgsMapTool | None")"
         self.prev_map_tool = self.iface.mapCanvas().mapTool()
         if self.prev_map_tool is None:
+            # mypy doesn't like this; not sure why QgsMapToolPan isn't accepted as a QgsMapTool, which is its base class
             self.prev_map_tool = QgsMapToolPan
         selection_tool = RadarViewerSelectionTool(
             self.iface.mapCanvas(), self.selected_point_callback

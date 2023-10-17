@@ -235,10 +235,6 @@ class RadarViewerConfigurationWidget(QtWidgets.QDialog):
             error_message_box.exec()
             return
 
-        # validate configuration
-        # If configuration valid, close
-        # Otherwise, pop up with "invalid configuration: you must select a root directory"
-
     def run(self):
         QgsMessageLog.logMessage("RadarViewerConfigurationWidget.run()")
         # In the NUI viewer, this had to run for QGIS to not block.
