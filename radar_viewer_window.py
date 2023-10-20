@@ -389,8 +389,10 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         filepath: str,
         transect: str,
         parent=None,
-        parent_xlim_changed_cb: Optional[Callable[[List[float]], None]] = None,
-        parent_cursor_cb: Optional[Callable[[float], None]] = None,
+        parent_xlim_changed_cb: Optional[
+            Callable[[List[Tuple[float, float]]], None]
+        ] = None,
+        parent_cursor_cb: Optional[Callable[[float, float], None]] = None,
         close_cb: Optional[Callable[[None], None]] = None,
     ) -> None:
         """
@@ -542,11 +544,6 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
 
     def update_crosshair(self, trace: int, sample: int) -> None:
         if self.parent_cursor_cb is not None:
-            QgsMessageLog.logMessage(
-                "update_crosshair: attempting to call parent_cursor_cb"
-            )
-            # TODO: This needs to return a point, not a time.
-            # (tt,) = self.transect_data.rtc.convert([trace], "traces", "posix")
             lon = self.radar_data.lon[trace]
             lat = self.radar_data.lat[trace]
             self.parent_cursor_cb(lon, lat)
@@ -598,8 +595,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
             )
         )
 
-    def full_redraw(self):
-        # type: () -> None
+    def full_redraw(self) -> None:
         """
         Does a full redraw of everything; radar_data, transect_data and
         plot_params should have all the information to update plot_objects.
@@ -644,19 +640,21 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         self.data_blit()  # also calls cursor_blit
 
         # Initialize the map cursor to something reasonable
+        # TODO: This gets called at every redraw, so it resets the
+        #   crosshair cursor until the user moves the mouse again.
         if self.parent_cursor_cb is not None:
             lon = self.radar_data.lon[0]
             lat = self.radar_data.lat[0]
             self.parent_cursor_cb(lon, lat)
 
-        # TODO: I expect this to be slow until deva blits its updates ...
         if self.parent_xlim_changed_cb is not None:
-            # TODO: This needs to pass points not times, because in the
-            #  new architecture, the parent widget won't know anything
-            #  about the radargram itself.
-            # (t0,) = self.transect_data.rtc.convert([xlim[0]], "traces", "posix")
-            # (t1,) = self.transect_data.rtc.convert([xlim[1]], "traces", "posix")
-            self.parent_xlim_changed_cb((0, 0))
+            xmin, xmax = self.plot_params.curr_xlim
+            # TODO: Can probably subsample this.
+            points = [
+                (self.radar_data.lon[idx], self.radar_data.lat[idx])
+                for idx in range(xmin, xmax)
+            ]
+            self.parent_xlim_changed_cb(points)
 
     def data_blit(self):
         # type: () -> None
