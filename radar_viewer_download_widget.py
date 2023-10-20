@@ -63,7 +63,7 @@ class RadarViewerDownloadWidget(QtWidgets.QDialog):
             )
         )
 
-        self.proider_widget = None
+        self.provider_widget = None
         if institution == "BAS":
             self.provider_widget = RadarViewerBASDownloadWidget(
                 self.rootdir, region, institution, campaign, segment, granule
