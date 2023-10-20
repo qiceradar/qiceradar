@@ -11,12 +11,16 @@ import PyQt5.QtWidgets as QtWidgets
 import qgis.core
 from qgis.core import (
     QgsFeature,
+    QgsGeometry,
     QgsLayerTreeGroup,
     QgsLayerTreeLayer,
+    QgsMarkerSymbol,
     QgsMessageLog,
+    QgsPoint,
     QgsPointXY,
     QgsProject,
     QgsSpatialIndex,
+    QgsVectorLayer,
 )
 
 import qgis.gui
@@ -80,6 +84,13 @@ class RadarViewerPlugin(QtCore.QObject):
             print(f"Loaded config! {self.config}")
         except Exception as ex:
             QgsMessageLog.logMessage(f"Error loading config: {ex}")
+
+        # Finally, create the group that we'll use for the plot elements
+        root = QgsProject.instance().layerTreeRoot()
+        self.radar_viewer_group = root.insertGroup(0, "Radar Viewer")
+        self.transect_groups: dict[str, QgsLayerTreeGroup] = {}
+        self.trace_features: dict[str, QgsFeature] = {}
+        self.trace_layers: dict[str, QgsVectorLayer] = {}
 
     def initGui(self) -> None:
         """
@@ -318,12 +329,23 @@ class RadarViewerPlugin(QtCore.QObject):
             )
             downloaded = transect_filepath is not None and transect_filepath.is_file()
             if downloaded:
-                # TODO: This works, but only for one radargram. If we want to support more, should probably keep a list of dock widgets!
+                self.setup_qgis_layers(transect_name)
                 # Also, my NUI plugin had a "cleanup" step where it unsubscribed to LCM callbacks. I'm not sure if something similar is necessary here, or if we can let the user just close the window. (We probably want to clean up the entries in the layers panel!)
 
                 # First one was placeholder window...
                 # vw = RadarViewerRadargramWidget()
-                vw = RadarWindow(institution, campaign, transect_filepath, granule)
+                trace_cb = (
+                    lambda lon, lat, tt=transect_name: self.update_trace_callback(
+                        tt, lon, lat
+                    )
+                )
+                vw = RadarWindow(
+                    institution,
+                    campaign,
+                    transect_filepath,
+                    granule,
+                    parent_cursor_cb=trace_cb,
+                )
 
                 # TODO: also need to create QGIS layers. The deva equivalent was:
                 # # Actually create the RadarWindow, cause it to pop up
@@ -353,6 +375,47 @@ class RadarViewerPlugin(QtCore.QObject):
                 )
                 dw.run()
 
+    def setup_qgis_layers(self, transect_name):
+        transect_group = self.radar_viewer_group.addGroup(transect_name)
+
+        # QGIS layer & feature for the single-trace cursor
+        # Initialize to the pole, then expect the viewer to update it
+        # immediately.
+        trace_geometry = QgsPoint(0, -90)
+        trace_symbol = QgsMarkerSymbol.createSimple(
+            {
+                "name": "circle",
+                "color": QtGui.QColor.fromRgb(255, 255, 0, 255),
+                "size": "10",
+                "size_unit": "Point",
+            }
+        )
+        trace_feature = QgsFeature()
+        trace_feature.setGeometry(trace_geometry)
+        uri = "point?crs=epsg:4326"
+        trace_layer = QgsVectorLayer(uri, "Trace", "memory")
+        trace_provider = trace_layer.dataProvider()
+        trace_provider.addFeature(trace_feature)
+        trace_layer.renderer().setSymbol(trace_symbol)
+        trace_layer.updateExtents()
+        QgsProject.instance().addMapLayer(trace_layer, False)
+        transect_group.addLayer(trace_layer)
+
+        self.transect_groups[transect_name] = transect_group
+        self.trace_features[transect_name] = trace_feature
+        self.trace_layers[transect_name] = trace_layer
+        # Question(lindzey): how do we update the feature geometry?
+
+    def update_trace_callback(self, transect_name, lon, lat):
+        QgsMessageLog.logMessage(f"update_trace_callback with position: {lon}, {lat}!")
+        # To change the location of the displayed feature:
+        trace_layer = self.trace_layers[transect_name]
+        trace_layer.startEditing()
+        trace_feature = self.trace_features[transect_name]
+        trace_layer.changeGeometry(trace_feature.id(), QgsGeometry(QgsPoint(lon, lat)))
+        trace_layer.commitChanges()
+
+    # TODO: This works, but only for one radargram. If we want to support more, should probably keep a list of dock widgets!
     def selected_point_callback(self, point: QgsPointXY) -> None:
         QgsMessageLog.logMessage(f"Got point! {point.x()}, {point.y()}")
 

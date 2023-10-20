@@ -43,13 +43,22 @@ import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
 import PyQt5.QtWidgets as QtWidgets
 
+# I'm not sure I like this -- would prefer being able to run the viewer standalone, like radarFigure is currently used.
+# Look into better options for logging messages?
+from qgis.core import QgsMessageLog
+
 # TODO: These need to be renamed. it's currently really confusing ...
 # * mplUtilites - things that depend only on matplotlib
 # * radarWidgets - currently are really pyqt widgets
 # * plotUtilites - other pyqt stuff that doesn't count as widgets
 
 # This breaks it on the command line, but works with QGIS.
-from .mplUtilities import XevasHorizSelector, XevasVertSelector, SaveToolbar, get_ax_shape
+from .mplUtilities import (
+    XevasHorizSelector,
+    XevasVertSelector,
+    SaveToolbar,
+    get_ax_shape,
+)
 from .plotUtilities import HLine, VLine, show_error_message_box
 from .radarWidgets import DoubleSlider
 
@@ -379,7 +388,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         campaign: str,
         filepath: str,
         transect: str,
-        parent: Optional[Any] = None,
+        parent=None,
         parent_xlim_changed_cb: Optional[Callable[[List[float]], None]] = None,
         parent_cursor_cb: Optional[Callable[[float], None]] = None,
         close_cb: Optional[Callable[[None], None]] = None,
@@ -521,8 +530,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
             [trace_num + 0.5, trace_num + 0.5], [0, self.radar_data.num_samples]
         )
 
-    def maybe_update_crosshair(self, trace, sample):
-        # type: (int, int) -> bool
+    def maybe_update_crosshair(self, trace: int, sample: int) -> bool:
         """
         Called if we want to check for frozen before moving the trace.
         """
@@ -532,13 +540,18 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         else:
             return False
 
-    def update_crosshair(self, trace, sample):
-        # type: (int, int) -> None
-
+    def update_crosshair(self, trace: int, sample: int) -> None:
         if self.parent_cursor_cb is not None:
+            QgsMessageLog.logMessage(
+                "update_crosshair: attempting to call parent_cursor_cb"
+            )
             # TODO: This needs to return a point, not a time.
             # (tt,) = self.transect_data.rtc.convert([trace], "traces", "posix")
-            self.parent_cursor_cb(0)
+            lon = self.radar_data.lon[trace]
+            lat = self.radar_data.lat[trace]
+            self.parent_cursor_cb(lon, lat)
+        else:
+            QgsMessageLog.logMessage("update_crosshair: parent_cursor_cb is None")
 
         self.plot_objects.crosshair_y.set_data(
             [0, self.radar_data.num_traces], [sample, sample]
@@ -600,7 +613,6 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         * if they're animated=False, then I'll need to clear 'em off
           before recording, which also requires a draw.
         """
-        t0 = time.time()
         data = self.radar_data.data
         xlim = self.plot_params.curr_xlim
         ylim = self.plot_params.curr_ylim
@@ -630,6 +642,12 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         self.data_set_visible(self.plot_objects, self.plot_params)
 
         self.data_blit()  # also calls cursor_blit
+
+        # Initialize the map cursor to something reasonable
+        if self.parent_cursor_cb is not None:
+            lon = self.radar_data.lon[0]
+            lat = self.radar_data.lat[0]
+            self.parent_cursor_cb(lon, lat)
 
         # TODO: I expect this to be slow until deva blits its updates ...
         if self.parent_xlim_changed_cb is not None:
