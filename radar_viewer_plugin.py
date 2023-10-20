@@ -38,6 +38,8 @@ from .radar_viewer_download_widget import RadarViewerDownloadWidget
 
 from .radar_viewer_config import UserConfig, parse_config, config_is_valid
 
+from .radar_viewer_window import BasicRadarWindow as RadarWindow
+
 
 class RadarViewerPlugin(QtCore.QObject):
     def __init__(self, iface) -> None:
@@ -316,7 +318,30 @@ class RadarViewerPlugin(QtCore.QObject):
             )
             downloaded = transect_filepath is not None and transect_filepath.is_file()
             if downloaded:
-                vw = RadarViewerRadargramWidget()
+                # TODO: This works, but only for one radargram. If we want to support more, should probably keep a list of dock widgets!
+                # Also, my NUI plugin had a "cleanup" step where it unsubscribed to LCM callbacks. I'm not sure if something similar is necessary here, or if we can let the user just close the window. (We probably want to clean up the entries in the layers panel!)
+
+                # First one was placeholder window...
+                # vw = RadarViewerRadargramWidget()
+                vw = RadarWindow(institution, campaign, transect_filepath, granule)
+
+                # TODO: also need to create QGIS layers. The deva equivalent was:
+                # # Actually create the RadarWindow, cause it to pop up
+                # color = "purple"
+                # self.selection_figure.add_radar_figure(pst, color)
+                # self.pst_key.add_row(pst, color)
+
+                # xlim_cb = lambda x: self.selection_figure.set_pst_region(pst, x)
+                # cursor_cb = lambda x: self.selection_figure.set_cursor(pst, x)
+                # close_cb = lambda: self.on_radar_window_quit(pst)
+                # self.radar_figs[pst] = RadarWindow(
+                #     pst,
+                #     parent=self,
+                #     parent_xlim_changed_cb=xlim_cb,
+                #     parent_cursor_cb=cursor_cb,
+                #     close_cb=close_cb,
+                # )
+                # self.radar_figs[pst].show()
                 self.dw = QtWidgets.QDockWidget("Radargram")
                 self.dw.setWidget(vw)
                 self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.dw)
