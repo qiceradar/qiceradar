@@ -1,7 +1,7 @@
 import inspect
 import os
 import pathlib
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 import yaml
 
 import PyQt5.QtCore as QtCore
@@ -93,8 +93,8 @@ class RadarViewerPlugin(QtCore.QObject):
         self.transect_groups: dict[str, QgsLayerTreeGroup] = {}
         self.trace_features: dict[str, QgsFeature] = {}
         self.trace_layers: dict[str, QgsVectorLayer] = {}
-        self.selected_features: dict[str, QgsFeature] = {}
-        self.selected_layers: dict[str, QgsVectorLayer] = {}
+        self.radar_xlim_features: dict[str, QgsFeature] = {}
+        self.radar_xlim_layers: dict[str, QgsVectorLayer] = {}
         self.segment_features: dict[str, QgsFeature] = {}
         self.segment_layers: dict[str, QgsVectorLayer] = {}
 
@@ -336,6 +336,7 @@ class RadarViewerPlugin(QtCore.QObject):
             downloaded = transect_filepath is not None and transect_filepath.is_file()
             if downloaded:
                 self.setup_qgis_layers(transect_name)
+
                 # Also, my NUI plugin had a "cleanup" step where it unsubscribed to LCM callbacks. I'm not sure if something similar is necessary here, or if we can let the user just close the window. (We probably want to clean up the entries in the layers panel!)
 
                 # First one was placeholder window...
@@ -346,9 +347,11 @@ class RadarViewerPlugin(QtCore.QObject):
                     )
                 )
                 selection_cb = (
-                    lambda pts, tt=transect_name: self.update_selected_callback(tt, pts)
+                    lambda pts, tt=transect_name: self.update_radar_xlim_callback(
+                        tt, pts
+                    )
                 )
-                vw = RadarWindow(
+                rw = RadarWindow(
                     institution,
                     campaign,
                     transect_filepath,
@@ -356,9 +359,11 @@ class RadarViewerPlugin(QtCore.QObject):
                     parent_xlim_changed_cb=selection_cb,
                     parent_cursor_cb=trace_cb,
                 )
+                points = list(zip(rw.radar_data.lon, rw.radar_data.lat))
+                self.update_segment_points(transect_name, points)
 
-                self.dw = QtWidgets.QDockWidget("Radargram")
-                self.dw.setWidget(vw)
+                self.dw = QtWidgets.QDockWidget(transect_name)
+                self.dw.setWidget(rw)
                 self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.dw)
             else:
                 # TODO: user probably wants to immediately open what they've downloaded
@@ -367,7 +372,7 @@ class RadarViewerPlugin(QtCore.QObject):
                 )
                 dw.run()
 
-    def setup_qgis_layers(self, transect_name):
+    def setup_qgis_layers(self, transect_name: str) -> None:
         transect_group = self.radar_viewer_group.addGroup(transect_name)
 
         # QGIS layer & feature for the single-trace cursor
@@ -385,7 +390,7 @@ class RadarViewerPlugin(QtCore.QObject):
         trace_feature = QgsFeature()
         trace_feature.setGeometry(trace_geometry)
         trace_uri = "point?crs=epsg:4326"
-        trace_layer = QgsVectorLayer(trace_uri, "Trace", "memory")
+        trace_layer = QgsVectorLayer(trace_uri, "Highlighted Trace", "memory")
         trace_provider = trace_layer.dataProvider()
         trace_provider.addFeature(trace_feature)
         trace_layer.renderer().setSymbol(trace_symbol)
@@ -400,7 +405,7 @@ class RadarViewerPlugin(QtCore.QObject):
         selected_feature.setGeometry(selected_geometry)
 
         selected_uri = "LineString?crs=epsg:4326"
-        selected_layer = QgsVectorLayer(selected_uri, "Region", "memory")
+        selected_layer = QgsVectorLayer(selected_uri, "Selected Region", "memory")
 
         selected_symbol = QgsLineSymbol.createSimple(
             {
@@ -419,13 +424,40 @@ class RadarViewerPlugin(QtCore.QObject):
         transect_group.addLayer(selected_layer)
 
         # Finally, feature for the entire transect
+        # TODO: How to get the geometry _here_? We should know it
+        # at this point, and it won't change. However, all other
+        # geometry is provided in one of the callbacks...
+        segment_geometry = QgsLineString([QgsPoint(0, -90)])
+
+        segment_feature = QgsFeature()
+        segment_feature.setGeometry(segment_geometry)
+
+        segment_uri = "LineString?crs=epsg:4326"
+        segment_layer = QgsVectorLayer(segment_uri, "Full Transect", "memory")
+
+        segment_symbol = QgsLineSymbol.createSimple(
+            {
+                "color": QtGui.QColor.fromRgb(255, 0, 0, 255),
+                "line_width": 1,
+                "line_width_units": "Point",
+            }
+        )
+        segment_layer.renderer().setSymbol(segment_symbol)
+        segment_provider = segment_layer.dataProvider()
+        segment_provider.addFeature(segment_feature)
+
+        segment_layer.updateExtents()
+
+        QgsProject.instance().addMapLayer(segment_layer, False)
+        transect_group.addLayer(segment_layer)
 
         self.transect_groups[transect_name] = transect_group
         self.trace_features[transect_name] = trace_feature
         self.trace_layers[transect_name] = trace_layer
-        self.selected_features[transect_name] = selected_feature
-        self.selected_layers[transect_name] = selected_layer
-        # Question(lindzey): how do we update the feature geometry?
+        self.radar_xlim_features[transect_name] = selected_feature
+        self.radar_xlim_layers[transect_name] = selected_layer
+        self.segment_features[transect_name] = segment_feature
+        self.segment_layers[transect_name] = segment_layer
 
     def update_trace_callback(self, transect_name, lon, lat):
         """
@@ -439,17 +471,38 @@ class RadarViewerPlugin(QtCore.QObject):
         trace_layer.changeGeometry(trace_feature.id(), QgsGeometry(QgsPoint(lon, lat)))
         trace_layer.commitChanges()
 
-    def update_selected_callback(self, transect_name, points):
+    def update_radar_xlim_callback(self, transect_name, points):
         QgsMessageLog.logMessage(f"update_selected_callback with {len(points)} points!")
         # To change the location of the displayed feature:
-        selected_geometry = QgsGeometry(
+        radar_xlim_geometry = QgsGeometry(
             QgsLineString([QgsPoint(lon, lat) for lon, lat in points])
         )
-        selected_layer = self.selected_layers[transect_name]
-        selected_layer.startEditing()
-        selected_feature = self.selected_features[transect_name]
-        selected_layer.changeGeometry(selected_feature.id(), selected_geometry)
-        selected_layer.commitChanges()
+        radar_xlim_layer = self.radar_xlim_layers[transect_name]
+        radar_xlim_layer.startEditing()
+        radar_xlim_feature = self.radar_xlim_features[transect_name]
+        radar_xlim_layer.changeGeometry(radar_xlim_feature.id(), radar_xlim_geometry)
+        radar_xlim_layer.commitChanges()
+
+    def update_segment_points(
+        self, transect_name: str, points: List[Tuple[float, float]]
+    ) -> None:
+        """
+        we have to create the layers before the radargram, because
+        the radargram viewer has callbacks to update the layers.
+        However, we the easiest way to get layer geometry is from
+        the radargram.
+        TODO: replace this with using the geometry from the layer that
+           was clicked!
+        """
+        QgsMessageLog.logMessage(f"update_segment_points with {len(points)} points!")
+        segment_geometry = QgsGeometry(
+            QgsLineString([QgsPoint(lon, lat) for lon, lat in points])
+        )
+        segment_layer = self.segment_layers[transect_name]
+        segment_layer.startEditing()
+        segment_feature = self.segment_features[transect_name]
+        segment_layer.changeGeometry(segment_feature.id(), segment_geometry)
+        segment_layer.commitChanges()
 
     # TODO: This works, but only for one radargram. If we want to support more, should probably keep a list of dock widgets!
     def selected_point_callback(self, point: QgsPointXY) -> None:
