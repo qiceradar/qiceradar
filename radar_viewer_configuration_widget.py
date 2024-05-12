@@ -1,12 +1,11 @@
 import pathlib
 
-import PyQt5.QtWidgets as QtWidgets
 import PyQt5.QtCore as QtCore
-
+import PyQt5.QtWidgets as QtWidgets
 import qgis.core
 from qgis.core import QgsMessageLog
 
-from .radar_viewer_config import UserConfig, parse_config, config_is_valid
+from .radar_viewer_config import UserConfig, config_is_valid, parse_config
 
 
 # I wanted this to be a QDialog, but then a PushButton was ALWAYS welected,
@@ -14,8 +13,13 @@ from .radar_viewer_config import UserConfig, parse_config, config_is_valid
 # end of editing would activate both child widgets, which is not desirable behaior.
 # https://stackoverflow.com/questions/45288494/how-do-i-avoid-multiple-simultaneous-focus-in-pyside
 class RadarViewerConfigurationWidget(QtWidgets.QDialog):
+
+    # Useful so other dialogs that open this one can react
+    # when it is closed.
+    closed = QtCore.pyqtSignal()
+
     def __init__(self, iface, user_config: UserConfig, config_callback):
-        super(RadarViewerConfigurationWidget, self).__init__()
+        super().__init__()
         self.iface = iface
         # Will be called with new configuration if user presses "OK"
         self.config_callback = config_callback
@@ -37,7 +41,7 @@ class RadarViewerConfigurationWidget(QtWidgets.QDialog):
 
         self.datadir_set_button = QtWidgets.QPushButton("click to select directory")
         if user_config.rootdir is not None:
-            self.datadir_set_button.setText(user_config.rootdir)
+            self.datadir_set_button.setText(str(user_config.rootdir))
         self.datadir_set_button.clicked.connect(self.datadir_set_button_clicked)
         self.grid.addWidget(self.datadir_label, datadir_row, 0)
         self.grid.addWidget(self.datadir_question_button, datadir_row, 1)
@@ -105,6 +109,7 @@ class RadarViewerConfigurationWidget(QtWidgets.QDialog):
         self.grid.addWidget(self.ok_button, button_row, 5)
 
         self.setLayout(self.grid)
+        self.setWindowTitle("Configure QIceRadar")
         # I'm trying to get away from using a QDialog, but I'm not sure how to get
         # a QWidget to open a child window that's modal.
         # self.setWindowFlags(self.windowFlags() & QtCore.Qt.Window)
@@ -117,6 +122,8 @@ class RadarViewerConfigurationWidget(QtWidgets.QDialog):
             "All radargrams will be downloaded to and read from a directory structure created within this folder."
         )
         datadir_message_box = QtWidgets.QMessageBox()
+        # NB: won't display on OSX
+        datadir_message_box.setWindowTitle("Help: root directory")
         datadir_message_box.setText(datadir_info)
         datadir_message_box.exec()
 
@@ -151,6 +158,8 @@ class RadarViewerConfigurationWidget(QtWidgets.QDialog):
             '<a href="https://urs.earthdata.nasa.gov/">https://urs.earthdata.nasa.gov/</a>'
         )
         nsidc_message_box = QtWidgets.QMessageBox()
+        # NB: won't display on OSX
+        nsidc_message_box.setWindowTitle("Help: NSIDC credentials")
         nsidc_message_box.setText(nsidc_info)
         nsidc_message_box.setTextFormat(QtCore.Qt.RichText)
         nsidc_message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
@@ -176,6 +185,11 @@ class RadarViewerConfigurationWidget(QtWidgets.QDialog):
             '<a href="https://data.aad.gov.au/dataset/5256/download">https://data.aad.gov.au/dataset/5256/download</a>'
         )
         aad_message_box = QtWidgets.QMessageBox()
+        # NB: won't display on OSX
+        # https://doc.qt.io/qtforpython-5/PySide2/QtWidgets/QMessageBox.html#PySide2.QtWidgets.PySide2.QtWidgets.QMessageBox.setWindowTitle
+        # However, setWindowTitle does work for QDialog; could change to
+        # that if it really matters.
+        aad_message_box.setWindowTitle("Help: AAD credentials")
         aad_message_box.setText(aad_info)
         aad_message_box.setTextFormat(QtCore.Qt.RichText)
         aad_message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)

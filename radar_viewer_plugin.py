@@ -314,7 +314,7 @@ class RadarViewerPlugin(QtCore.QObject):
                 "<br><br>"
                 'Submit an issue: <a href="https://github.com/qiceradar/radar_viewer/issues/new">https://github.com/qiceradar/radar_viewer/issues/new</a>'
                 "<br>"
-                'Or send us email: <a href="mailto:qiceradar@gmail.com">qiceradar@gmail.com</a>'
+                'Or send us an email: <a href="mailto:qiceradar@gmail.com">qiceradar@gmail.com</a>'
             )
             message_box = QtWidgets.QMessageBox()
             message_box.setTextFormat(QtCore.Qt.RichText)

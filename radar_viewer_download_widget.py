@@ -84,6 +84,7 @@ class RadarViewerDownloadWidget(QtWidgets.QDialog):
             # TODO: close this widget when the internal one's button is clicked?
 
         self.setLayout(self.vbox_layout)
+        self.setWindowTitle("Download Data")
 
     def run(self):
         QgsMessageLog.logMessage("RadarViewerDownloadWidget.run()")
