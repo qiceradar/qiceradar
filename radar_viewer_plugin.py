@@ -146,6 +146,11 @@ class RadarViewerPlugin(QtCore.QObject):
         """
         self.config = config
         self.save_config()
+        QgsMessageLog.logMessage(
+            "RadarViewerPlugin.set_config. "
+            f"Input rootdir = {config.rootdir} "
+            f"self.config.rootdir = {self.config.rootdir}"
+        )
 
     def save_config(self) -> None:
         # Can't dump a NamedTuple using yaml, so convert to a dict
@@ -368,7 +373,7 @@ class RadarViewerPlugin(QtCore.QObject):
             else:
                 # TODO: user probably wants to immediately open what they've downloaded
                 dw = RadarViewerDownloadWidget(
-                    self.config.rootdir, feature.attributeMap()
+                    self.config, self.set_config, feature.attributeMap()
                 )
                 dw.run()
 

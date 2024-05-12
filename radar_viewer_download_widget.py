@@ -1,19 +1,26 @@
 import pathlib
-from typing import Dict
+from typing import Callable, Dict
 
 import PyQt5.QtCore as QtCore
 import PyQt5.QtWidgets as QtWidgets
-
 from qgis.core import QgsMessageLog
 
+from .radar_viewer_config import UserConfig
+from .radar_viewer_configuration_widget import RadarViewerConfigurationWidget
 from .radar_viewer_data_utils import get_granule_filepath
 
 
 class RadarViewerDownloadWidget(QtWidgets.QDialog):
-    def __init__(self, rootdir: pathlib.Path, attributes: Dict[str, str]):
+    def __init__(
+        self,
+        config: UserConfig,
+        config_cb: Callable[[UserConfig], None],
+        attributes: Dict[str, str],
+    ):
         super(RadarViewerDownloadWidget, self).__init__()
 
-        self.rootdir = rootdir
+        self.user_config = config
+        self.set_config = config_cb
         self.attributes = attributes  # attributes from the feature
         self.setup_ui()
 
@@ -47,7 +54,7 @@ class RadarViewerDownloadWidget(QtWidgets.QDialog):
         segment = self.attributes["segment"]
         granule = self.attributes["granule"]
         granule_filepath = get_granule_filepath(
-            self.rootdir, region, institution, campaign, segment, granule
+            self.user_config.rootdir, region, institution, campaign, segment, granule
         )
 
         self.intro_text = QtWidgets.QLabel(
@@ -66,14 +73,29 @@ class RadarViewerDownloadWidget(QtWidgets.QDialog):
         self.provider_widget = None
         if institution == "BAS":
             self.provider_widget = RadarViewerBASDownloadWidget(
-                self.rootdir, region, institution, campaign, segment, granule
+                self.user_config, region, institution, campaign, segment, granule
             )
+
+        self.config_widget = RadarViewerConfigurationWidget(
+            None, self.user_config, self.set_config
+        )
+
+        self.config_button = QtWidgets.QPushButton("Edit Config")
+        self.config_button.clicked.connect(self.config_widget.run)
+        # QUESTION: I'm not sure whether it's better to just start over, or
+        #           try to update the config here. User would probably prefer
+        #           being dumped back out into the download window, but getting
+        #           the updated config isn't super clean.
+        #           Easier to have them re-start.
+        self.config_widget.closed.connect(self.close)
 
         self.vbox_layout = QtWidgets.QVBoxLayout()
         self.vbox_layout.addWidget(self.intro_text)
         self.vbox_layout.addStretch(1)
+        self.vbox_layout.addWidget(self.config_button)
         self.vbox_layout.addWidget(HorizontalLine())
         self.vbox_layout.addStretch(1)
+
         if self.provider_widget is None:
             QgsMessageLog.logMessage(
                 f"BUG: Unable to help download data from {institution}, even though it should be supported"
@@ -96,10 +118,12 @@ class RadarViewerDownloadWidget(QtWidgets.QDialog):
 class RadarViewerBASDownloadWidget(QtWidgets.QWidget):
     closed = QtCore.pyqtSignal()
 
-    def __init__(self, rootdir, region, institution, campaign, segment, granule):
+    def __init__(
+        self, config: UserConfig, region, institution, campaign, segment, granule
+    ):
         super(RadarViewerBASDownloadWidget, self).__init__()
         QgsMessageLog.logMessage("initializing RadarViewerBASDownloadWidget")
-        self.rootdir = rootdir
+        self.user_config = config
         self.region = region
         self.institution = institution
         self.campaign = campaign
