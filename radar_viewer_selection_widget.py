@@ -70,7 +70,10 @@ class RadarViewerSelectionWidget(QtWidgets.QDialog):
         self.vbox.addLayout(self.radio_vbox)
         self.vbox.addLayout(self.control_hbox)
         self.setLayout(self.vbox)
+        self.setWindowTitle("Select Transect")
 
     def run(self):
         QgsMessageLog.logMessage("RadarViewerSelectionWidget.run()")
+        # NB: using `exec` creates a modal dialogue, that the user must
+        #     deal with before continuing to interact with QGIS
         self.exec()
