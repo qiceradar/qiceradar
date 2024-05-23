@@ -243,6 +243,7 @@ class PlotObjects:
         self.mouse_mode_buttons = {}  # type: Dict[str, QtWidgets.QRadioButton]
         self.mouse_mode_group = None  # type: Optional[QtWidgets.QButtonGroup]
 
+        self.citation_button = None  # type: Optional[QtWidgets.QPushButton]
         self.prev_button = None  # type: Optional[QtWidgets.QPushButton]
         self.full_button = None  # type: Optional[QtWidgets.QPushButton]
         self.next_button = None  # type: Optional[QtWidgets.QPushButton]
@@ -305,6 +306,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         campaign: str,
         filepath: str,
         transect: str,
+        database_file: Optional[str] = None,
         parent=None,
         parent_xlim_changed_cb: Optional[
             Callable[[List[Tuple[float, float]]], None]
@@ -314,17 +316,19 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
     ) -> None:
         """
         params:
-        * pst - which PST to plot.
-        * filename - direct path to the file to load
-        * parent_xlim_changed_cb - callback (into main Deva window) that keeps
+        * institution
+        * campaign --
+        * filepath - direct path to the file to load
+        TODO: should transect be granule?
+        * transect -- name of transect
+        * database_file -- name of file
+        * parent_xlim_changed_cb - callback (e.g. into main QGIS plugin) that keeps
           the highlighted segment of the PST updated. expects a tuple of posix
           times.
-        * parent_cursor_cb - callback (into main Deva window) that puts a mark
-          on the PST corresponding to where the cursor is in the radarFigure.
-        * gps_{start, end} - posix timestamps for when the corresponding line
-          in deva should be updated.
-        * close_cb() - callback for when radar figure is being closed, used so
-          the main deva window can clear the highlighted regions.
+        * parent_cursor_cb - callback (e.g. into main QGIS plugin) that puts a mark
+          on the map corresponding to where the cursor is in the radarFigure.
+        * close_cb - callback for when radar figure is being closed, used so
+          the main QGIS plugin can clear the related layers.
         """
         # This is for the QtGui stuff
         super(BasicRadarWindow, self).__init__(parent)
@@ -333,6 +337,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         self.institution = institution
         self.campaign = campaign
         self.filepath = filepath
+        self.database_file = database_file
 
         self.parent_xlim_changed_cb = parent_xlim_changed_cb
         self.parent_cursor_cb = parent_cursor_cb
@@ -864,8 +869,77 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
                 self.plot_objects.left_click_rs[mode].set_active(False)
                 self.plot_objects.right_click_rs[mode].set_active(False)
 
-    def _on_prev_button_clicked(self):
-        # type: () -> None
+    def _on_citation_button_clicked(self) -> None:
+        """
+        Pop up dialog box with metadata about currently-displayed transect.
+        """
+        data_citation, science_citation, db_institution, db_campaign = None, None, None, None
+        # I'm sure there's a cleaner way to do this
+        try:
+            connection = sqlite3.connect(self.database_file)
+            cursor = connection.cursor()
+            # TODO: It's ugly how many places this gets re-formatted.
+            granule_name = f"{self.institution}_{self.campaign}_{self.pst}"
+            granule_command = f"SELECT campaign FROM granules WHERE name = '{granule_name}'"
+            QgsMessageLog.logMessage(f"Attempting query: {granule_command}")
+            result = cursor.execute(granule_command)
+            granule_rows = result.fetchall()
+            QgsMessageLog.logMessage(f"Accessed database. rows = {granule_rows}")
+            if len(granule_rows) > 1:
+                errmsg = f"found more than one granule matching {granule_name}"
+            elif len(granule_rows) == 0:
+                errmsg = f"Could not find {granule_name}"
+            else:
+                db_campaign, = granule_rows[0]
+
+            campaign_command = f"SELECT * FROM campaigns WHERE name = '{db_campaign}'"
+            QgsMessageLog.logMessage(f"Attempting query: {campaign_command}")
+            result = cursor.execute(campaign_command)
+            campaign_rows = result.fetchall()
+            QgsMessageLog.logMessage(f"Accessed database. rows = {campaign_rows}")
+            if len(campaign_rows) > 1:
+                errmsg = f"found more than one campaign matching {db_campaign}"
+            elif len(campaign_rows) == 0:
+                errmsg = f"Could not find {db_campaign}"
+            else:
+                _, data_citation, science_citation, db_institution = campaign_rows[0]
+
+            connection.close()
+
+        except sqlite3.OperationalError as ex:
+            QgsMessageLog.logMessage(
+                f"Tried to access database. OperationalError: {ex}"
+            )
+        except Exception as ex:
+            QgsMessageLog.logMessage(
+                f"Tried to access database. ({type(ex)})  exception: {ex}"
+            )
+        science_citation = science_citation.replace("\n", "<br>")
+        citation_info = (
+            f"Granule: {self.pst}"
+            "<br><br>"
+            f"Institution: {db_institution}"
+            "<br><br>"
+            f"Campaign: {db_campaign}"
+            "<br><br>"
+            "Data citation:"
+            "<br>"
+            f"{data_citation}"
+            "<br><br>"
+            "Science citation(s):"
+            "<br>"
+            f"{science_citation}"
+            "<br><br>"
+        )
+
+        citation_message_box = QtWidgets.QMessageBox()
+        citation_message_box.setWindowTitle("Citation Info")
+        citation_message_box.setText(citation_info)
+        citation_message_box.setTextFormat(QtCore.Qt.RichText)
+        citation_message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+        citation_message_box.exec()
+
+    def _on_prev_button_clicked(self) -> None:
         """
         TODO
         """
@@ -1317,6 +1391,11 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         )
 
         # Create buttons!
+        plot_objects.citation_button = QtWidgets.QPushButton("Citation Info")
+        plot_objects.citation_button.clicked.connect(
+            self._on_citation_button_clicked,
+        )
+
         plot_objects.prev_button = QtWidgets.QPushButton("Prev (e)")
         plot_objects.prev_button.clicked.connect(
             self._on_prev_button_clicked,
@@ -1333,7 +1412,8 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         )
 
         controls_hbox = QtWidgets.QHBoxLayout()
-        controls_hbox.addWidget(plot_objects.mpl_toolbar)
+        # controls_hbox.addWidget(plot_objects.mpl_toolbar)
+        controls_hbox.addWidget(plot_objects.citation_button)
         controls_hbox.addStretch(1)
         controls_hbox.addLayout(mouse_mode_hbox)
         controls_hbox.addWidget(plot_objects.prev_button)
@@ -1485,9 +1565,9 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
                     # "%Y-%m-%d\n%H:%M:%S"
                     "%H:%M:%S"
                 )
-                label = "\n".join([label, time_str])
+                # label = "\n".join([label, time_str])
 
-            label = "\n".join([label, f"{int_trace}"])
+            # label = "\n".join([label, f"{int_trace}"])
 
             return label
 

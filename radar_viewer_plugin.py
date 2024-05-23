@@ -255,6 +255,9 @@ class RadarViewerPlugin(QtCore.QObject):
         layer = root.findLayer(layer_id).layer()
         feature = layer.getFeature(feature_id)
 
+        # Try to load the original database
+        database_file = layer.source().split("|")[0]
+
         availability = feature.attributeMap()["availability"]
         institution = feature.attributeMap()["institution"]
         region = feature.attributeMap()["region"]
@@ -354,6 +357,7 @@ class RadarViewerPlugin(QtCore.QObject):
                     campaign,
                     transect_filepath,
                     granule,
+                    database_file,
                     parent_xlim_changed_cb=selection_cb,
                     parent_cursor_cb=trace_cb,
                 )
