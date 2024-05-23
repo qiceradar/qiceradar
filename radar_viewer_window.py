@@ -24,51 +24,45 @@ export DYLD_INSERT_LIBRARIES=/Applications/$QGIS_VERSION.app/Contents/MacOS/lib/
 
 import argparse
 import datetime
-import numpy as np
-import os
-import pyproj
+import sqlite3
 import sys
-import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import matplotlib as mpl
+import numpy as np
 
 mpl.use("Qt5Agg")
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.ticker import FuncFormatter
 import matplotlib.widgets as mpw
-
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
 import PyQt5.QtWidgets as QtWidgets
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+from matplotlib.ticker import FuncFormatter
 
 # I'm not sure I like this -- would prefer being able to run the viewer standalone, like radarFigure is currently used.
 # Look into better options for logging messages?
 from qgis.core import QgsMessageLog
+
+# import radutils.radutils as radutils
+from .datautils import radar_utils
+
+# This breaks it on the command line, but works with QGIS.
+from .mplUtilities import (
+    SaveToolbar,
+    XevasHorizSelector,
+    XevasVertSelector,
+    get_ax_shape,
+)
+from .plotUtilities import HLine, VLine, show_error_message_box
+from .plotutils import scalebar, sparkline
+from .radarWidgets import DoubleSlider
 
 # TODO: These need to be renamed. it's currently really confusing ...
 # * mplUtilites - things that depend only on matplotlib
 # * radarWidgets - currently are really pyqt widgets
 # * plotUtilites - other pyqt stuff that doesn't count as widgets
 
-# This breaks it on the command line, but works with QGIS.
-from .mplUtilities import (
-    XevasHorizSelector,
-    XevasVertSelector,
-    SaveToolbar,
-    get_ax_shape,
-)
-from .plotUtilities import HLine, VLine, show_error_message_box
-from .radarWidgets import DoubleSlider
-
-
-# import radutils.radutils as radutils
-from .datautils import bas_utils
-
-
-from .plotutils import scalebar
-from .plotutils import sparkline
 
 # Notes on organization:
 # * There's a hierarchy of functions that actually update the screen:
@@ -95,71 +89,6 @@ from .plotutils import sparkline
 #   anyway to actually draw it.
 
 
-class RadarData:
-    """
-    This is all the radar-specific data, for a given product that has
-    been loaded. Includes parameters derived from the data.
-    """
-
-    # TODO: Refactor this so institution and campaign are enums, and filepath is actually a pathlib.Path
-    def __init__(self, institution: str, campaign: str, filepath: str) -> None:
-        # TODO: look this up from institution+campaign?
-        self.institution = institution
-        if self.institution == "BAS":
-            # TODO: consider supporting pulse
-            # TODO: Note that the BAS data has campaign embedded, so no need to pass it in.
-            self.available_products = ["chirp"]
-            # TODO: I'd prefer a function call that directly sets these;
-            #   or maybe a BasRadarData.
-            (
-                self.data,  # TODO: rename this to radargram
-                self.lat,
-                self.lon,
-                self.utc,
-                self.fast_time_us,
-            ) = bas_utils.load_chirp_data(filepath)
-        else:
-            raise Exception("Only BAS supported for now!")
-
-        # elif self.institution == "UTIG":
-        #     self.available_products = ["high_gain", "low_gain"]
-        #     self.data = radutils.radutils.load_radar_data(
-        #         pst, product, channel, filename
-        #     )
-        # elif self.institution == "CRESIS":
-        #     # TODO: What product does CReSIS release to NSIDC?
-        #     # I'm assuming standard. Consider mvdr & quicklook.
-        #     self.available_products = ["standard"]
-        #     self.data = radutils.radutils.load_cresis_data(pst, product, channel)
-        # else:
-        #     print("WARNING: unrecognized institution")
-        #     self.available_products = ["raw"]
-
-        # # TODO: reimplement these!
-        # self.rtc = radutils.conversions.RadarTimeConverter(self.pst)
-        # self.rpc = radutils.conversions.RadarPositionConverter(self.pst, self.rtc)
-
-        self.num_traces, self.num_samples = self.data.shape
-        self.min_val = np.amin(self.data)
-        self.max_val = np.amax(self.data)
-
-        # TODO: This needs to use the map's CRS, not hard-coded to Antarctica
-        proj = pyproj.Proj("EPSG:3031")
-        self.xx, self.yy = proj(self.lon, self.lat)
-        self.geod = pyproj.Geod(ellps="WGS84")  # TODO: Better name?
-
-    def along_track_dist(self) -> List[float]:
-        """
-        Compute along-track distance for every trace in the radargram
-        """
-        _, _, deltas = self.geod.inv(
-            self.lon[1:], self.lat[1:], self.lon[0:-1], self.lat[0:-1]
-        )
-        dists = [0]
-        dists.extend(np.cumsum(deltas))
-        return np.array(dists)
-
-
 # TODO(lindzey): I don't love how this mixes dataset-specific products/channels
 #     with data-independent colormaps.
 class PlotConfig:
@@ -174,8 +103,8 @@ class PlotConfig:
         self.all_cmaps = ["gray", "jet", "viridis", "inferno", "seismic", "Greys"]
         # Depending on the cmap, we may want to show the spark lines in
         # different colors ...
-        self.cmap_major_colors = {}  # type: Dict[str, str]
-        self.cmap_minor_colors = {}  # type: Dict[str, str]
+        self.cmap_major_colors: Dict[str, str] = {}
+        self.cmap_minor_colors: Dict[str, str] = {}
         for cmap in ["gray", "Greys"]:
             # I had the rcoeff sparkline as 'c'/'b'
             self.cmap_major_colors[cmap] = "r"
@@ -232,7 +161,7 @@ class PlotParams:
 
         self.mouse_mode = "zoom"
 
-    def initialize_from_radar(self, radar_data: RadarData) -> None:
+    def initialize_from_radar(self, radar_data: radar_utils.RadarData) -> None:
         """
         Called to initialize the plotting parameters to match the
         limits implied by the radargram. Only called at the start - we don't
@@ -246,7 +175,7 @@ class PlotParams:
 
         self.update_clim_from_radar(radar_data)
 
-    def update_clim_from_radar(self, radar_data: RadarData) -> None:
+    def update_clim_from_radar(self, radar_data: radar_utils.RadarData) -> None:
         """
         Called to update the plotting parameters without changing the bounds.
         """
@@ -260,17 +189,6 @@ class PlotParams:
         else:
             init_clim = (self.cmin, self.cmax)
         self.clim = init_clim
-
-
-# TODO(lindzey): This will wind up going away or being entirely replaced, since it will be coming from the netcdf file, not the hierarchy.
-class TransectData:
-    """
-    This is all the per-transect data that's loaded in from the hierarchy.
-    Doesn't change after initialization.
-    """
-
-    def __init__(self, institution: str, pst) -> None:
-        self.pst = pst
 
 
 class PlotObjects:
@@ -381,7 +299,6 @@ def calc_radar_skip(fig: Figure, ax: mpl.axes.Axes, xlim: Tuple[int, int]) -> in
 
 
 class BasicRadarWindow(QtWidgets.QMainWindow):
-    # This is the one that I think people should be using to pick.
     def __init__(
         self,
         institution: str,
@@ -425,7 +342,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
 
         # These parameters should be independent of the plotting tool we use
 
-        self.radar_data = RadarData(institution, campaign, filepath)
+        self.radar_data = radar_utils.RadarData(institution, campaign, filepath)
         self.plot_config = PlotConfig(self.radar_data.available_products)
         self.plot_params = PlotParams()
         self.plot_params.initialize_from_radar(self.radar_data)
@@ -484,7 +401,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
             return False
 
     def initialize_gui_from_params_data(self, plot_params, plot_config):
-        # type: (PlotParams, TransectData) -> None
+        # type: (PlotParams, PlotConfig) -> None
         """
         This just sets the current state of various GUI widgets based on:
         * plot params - initial state of buttons
@@ -1024,7 +941,8 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
 
                     prev_num_traces = self.radar_data.num_traces
                     self.plot_params.product = new_product
-                    self.radar_data = RadarData(
+                    # TODO: This needs to be updated!
+                    self.radar_data = radar_utils.RadarData(
                         self.pst, new_product, self.plot_params.channel
                     )
                     new_num_traces = self.radar_data.num_traces
@@ -1606,7 +1524,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
 class ExperimentalRadarWindow(BasicRadarWindow):
     def __init__(
         self,
-        pst,  # type: str
+        transect,  # type: str
         filename=None,  # type: Optional[str]
         parent=None,  # type: Optional[Any]
         parent_xlim_changed_cb=None,  # type: Optional[Callable[List[float]]]
@@ -1618,7 +1536,12 @@ class ExperimentalRadarWindow(BasicRadarWindow):
         TODO
         """
         super(ExperimentalRadarWindow, self).__init__(
-            pst, filename, parent, parent_xlim_changed_cb, parent_cursor_cb, close_cb
+            transect,
+            filename,
+            parent,
+            parent_xlim_changed_cb,
+            parent_cursor_cb,
+            close_cb,
         )
         # TODO: do we care about gps_start, gps_end?
         # They would be used to allow interpolating from traces to linear time,

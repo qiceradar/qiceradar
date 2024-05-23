@@ -2,13 +2,13 @@ import inspect
 import os
 import pathlib
 from typing import Dict, List, Optional, Tuple
-import yaml
 
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
 import PyQt5.QtWidgets as QtWidgets
-
 import qgis.core
+import qgis.gui
+import yaml
 from qgis.core import (
     QgsFeature,
     QgsGeometry,
@@ -24,26 +24,17 @@ from qgis.core import (
     QgsSpatialIndex,
     QgsVectorLayer,
 )
-
-import qgis.gui
 from qgis.gui import QgsMapTool, QgsMapToolPan
 
-from .radar_viewer_configuration_widget import (
-    RadarViewerConfigurationWidget,
-)
-
+from .radar_viewer_config import UserConfig, config_is_valid, parse_config
+from .radar_viewer_configuration_widget import RadarViewerConfigurationWidget
 from .radar_viewer_data_utils import get_granule_filepath
-
+from .radar_viewer_download_widget import RadarViewerDownloadWidget
+from .radar_viewer_radargram_widget import RadarViewerRadargramWidget
 from .radar_viewer_selection_widget import (
     RadarViewerSelectionTool,
     RadarViewerSelectionWidget,
 )
-
-from .radar_viewer_radargram_widget import RadarViewerRadargramWidget
-from .radar_viewer_download_widget import RadarViewerDownloadWidget
-
-from .radar_viewer_config import UserConfig, parse_config, config_is_valid
-
 from .radar_viewer_window import BasicRadarWindow as RadarWindow
 
 
@@ -340,6 +331,8 @@ class RadarViewerPlugin(QtCore.QObject):
             )
             downloaded = transect_filepath is not None and transect_filepath.is_file()
             if downloaded:
+                # TODO: This needs to clean up if there's an exception!
+                # TODO: (So does the widget! I just tested, and it leaves layers when it is closed!)
                 self.setup_qgis_layers(transect_name)
 
                 # Also, my NUI plugin had a "cleanup" step where it unsubscribed to LCM callbacks. I'm not sure if something similar is necessary here, or if we can let the user just close the window. (We probably want to clean up the entries in the layers panel!)

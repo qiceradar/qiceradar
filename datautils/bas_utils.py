@@ -1,9 +1,16 @@
 import netCDF4 as nc
 import numpy as np
 
+# All institution-specific Radargram classes will need to have
+# * get_track: returns lat, lon arrays
+# * get_trace_times: returns posix time for each trace in radargram
+# * get_sample_times: returns time-since-transmission, in us, for each row in radargram
+# * .data[::row_skip,::col_skip]
+# * set_product(product); since BAS radargrams don't have consistent diensions across products, any caller instantiating this class ALWAYS need to call the above accessors, rather than caching their output.
 
-class Radargram:
-    # How to enforce that a radargram WILL have a data field?
+
+# For now, just using duck typing for the institution-specific radargram classes
+class BasRadargram:
     def __init__(self, filepath):
         pass
 

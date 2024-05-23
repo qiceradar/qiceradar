@@ -12,6 +12,8 @@ from .radar_viewer_config import UserConfig, config_is_valid, parse_config
 # even if I had tabbed to a lineedit. This meant that hitting "enter" at tne
 # end of editing would activate both child widgets, which is not desirable behaior.
 # https://stackoverflow.com/questions/45288494/how-do-i-avoid-multiple-simultaneous-focus-in-pyside
+# QUESTION: Does the iface argument wind up mattering? My other QDialog
+#           popups don't have it, and it seems like it's not used.
 class RadarViewerConfigurationWidget(QtWidgets.QDialog):
 
     # Useful so other dialogs that open this one can react

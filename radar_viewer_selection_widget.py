@@ -1,11 +1,9 @@
 from typing import Callable, List
 
 import PyQt5.QtWidgets as QtWidgets
-
 import qgis.core
-from qgis.core import QgsMessageLog
-
 import qgis.gui
+from qgis.core import QgsMessageLog
 from qgis.gui import QgsMapTool
 
 
