@@ -1,5 +1,6 @@
 import pathlib
 from typing import Callable, Dict
+import sqlite3
 
 import PyQt5.QtCore as QtCore
 import PyQt5.QtWidgets as QtWidgets
@@ -16,12 +17,14 @@ class RadarViewerDownloadWidget(QtWidgets.QDialog):
         config: UserConfig,
         config_cb: Callable[[UserConfig], None],
         attributes: Dict[str, str],
+        database_file: str,
     ):
         super(RadarViewerDownloadWidget, self).__init__()
 
         self.user_config = config
         self.set_config = config_cb
         self.attributes = attributes  # attributes from the feature
+        self.database_file = database_file  # database with metadata
         self.setup_ui()
 
     def setup_ui(self):
@@ -48,14 +51,34 @@ class RadarViewerDownloadWidget(QtWidgets.QDialog):
 
         The requested granule is _______ (MB/GB)
         """
+        QgsMessageLog.logMessage(f"Setting up download widget for feature with attributes: {self.attributes}")
         region = self.attributes["region"]
         institution = self.attributes["institution"]
         campaign = self.attributes["campaign"]
         segment = self.attributes["segment"]
         granule = self.attributes["granule"]
-        granule_filepath = get_granule_filepath(
-            self.user_config.rootdir, region, institution, campaign, segment, granule
-        )
+
+        # TODO: Look up data from granules table:
+        # download_method
+        # url
+        # destination_path
+        # filesize
+        connection = sqlite3.connect(self.database_file)
+        cursor = connection.cursor()
+        granule_name = f"{institution}_{campaign}_{granule}"
+        sql_cmd = f"SELECT * FROM granules where name = '{granule_name}'"
+        result = cursor.execute(sql_cmd)
+        rows = result.fetchall()
+        connection.close()
+        # QUESTION: How do I want to log this? I need to figure out how these errors
+        #    will propagate through the system.
+        try:
+            _, _, data_format, download_method, url, destination_path, filesize = rows[0]
+        except:
+            QgsMessageLog.logMessage(f"Invalid response {rows} from command {sql_cmd}")
+            data_format, download_method, url, destination_path, filesize = None, None, None, None, None
+
+        granule_filepath = pathlib.Path(self.user_config.rootdir, destination_path)
 
         self.intro_text = QtWidgets.QLabel(
             "".join(
@@ -70,10 +93,12 @@ class RadarViewerDownloadWidget(QtWidgets.QDialog):
             )
         )
 
+        # Rather than being institution-specific, this should switch
+        # on download_method.
         self.provider_widget = None
-        if institution == "BAS":
-            self.provider_widget = RadarViewerBASDownloadWidget(
-                self.user_config, region, institution, campaign, segment, granule
+        if download_method == "wget":
+            self.provider_widget = RadarViewerWgetDownloadWidget(
+                self.user_config, url, granule_filepath, filesize
             )
 
         self.config_widget = RadarViewerConfigurationWidget(
@@ -115,20 +140,18 @@ class RadarViewerDownloadWidget(QtWidgets.QDialog):
 
 # TODO: This should probably have a base class, then derived ones that
 #   change the text in the info label + how the download is performed.
-class RadarViewerBASDownloadWidget(QtWidgets.QWidget):
+class RadarViewerWgetDownloadWidget(QtWidgets.QWidget):
     closed = QtCore.pyqtSignal()
 
     def __init__(
-        self, config: UserConfig, region, institution, campaign, segment, granule
+        self, config: UserConfig, url: str, destination_filepath: pathlib.Path, filesize: int
     ):
-        super(RadarViewerBASDownloadWidget, self).__init__()
-        QgsMessageLog.logMessage("initializing RadarViewerBASDownloadWidget")
+        super(RadarViewerWgetDownloadWidget, self).__init__()
+        QgsMessageLog.logMessage("initializing RadarViewerWgetDownloadWidget")
         self.user_config = config
-        self.region = region
-        self.institution = institution
-        self.campaign = campaign
-        self.segment = segment
-        self.granule = granule
+        self.url = url
+        self.destination_filepath = destination_filepath
+        self.filesize = filesize
         self.setup_ui()
 
     def download_clicked(self, _event):
@@ -138,13 +161,27 @@ class RadarViewerBASDownloadWidget(QtWidgets.QWidget):
     def setup_ui(self):
         # TODO: The database needs to include file sizes, and where
         #   to download.
-        transect_filesize = -1
+        # TODO: format this string more nicely?
+        filesize_kb = self.filesize / (1024)
+        filesize_mb = self.filesize / (1024**2)
+        filesize_gb = self.filesize / (1024**3)
+        if filesize_gb > 1:
+            filesize_str = f"{filesize_gb:0.1f} GB"
+        elif filesize_mb > 1:
+            filesize_str = f"{filesize_mb:0.1f} MB"
+        elif filesize_kb > 1:
+            filesize_str = f"{filesize_kb:0.1f} KB"
+        else:
+            filesize_str = f"{self.filesize} Bytes"
+
         self.info_label = QtWidgets.QLabel(
             "".join(
                 [
-                    f"The requested transect is {transect_filesize} MB\n",
+                    f"The requested transect is {filesize_str}\n",
                     "And can be downloaded from: \n",
-                    "TODO! ",
+                    self.url,
+                    "\n\n Destination: \n",
+                    str(self.destination_filepath)
                 ]
             )
         )

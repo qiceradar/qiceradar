@@ -370,7 +370,7 @@ class RadarViewerPlugin(QtCore.QObject):
             else:
                 # TODO: user probably wants to immediately open what they've downloaded
                 dw = RadarViewerDownloadWidget(
-                    self.config, self.set_config, feature.attributeMap()
+                    self.config, self.set_config, feature.attributeMap(), database_file
                 )
                 dw.run()
 
