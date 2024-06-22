@@ -1,6 +1,9 @@
 import pathlib
 from typing import Callable, Dict
 import sqlite3
+import subprocess
+import shutil
+import tempfile
 
 import PyQt5.QtCore as QtCore
 import PyQt5.QtWidgets as QtWidgets
@@ -156,6 +159,32 @@ class RadarViewerWgetDownloadWidget(QtWidgets.QWidget):
 
     def download_clicked(self, _event):
         QgsMessageLog.logMessage("TODO: Actually download radargram!")
+        # TODO: use self.url and self.destination_filepath to construct wget call!
+        try:
+            # Create a temporary file to avoid having to clean up partial downloads.
+            # This may not be ideal if the temporary file is created in a different filesystem than the
+            # output file belongs in. (I expect to eventually be downloading data to an external drive/NAS)
+            # TODO: create the temporary file in the same directory? or in the RadarData directory?
+            with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+                # wget_cmd = ["wget", "--no-clobber", "--quiet", "--output-document", dest_filepath, flight['url']]
+                # If saving to a temp file, get rid of --no-clobber, since the file will already have been created.
+                # TODO: For windows, will probably need another approach. requests or urllib might be good?
+                # https://stackoverflow.com/questions/24346872/python-equivalent-of-a-given-wget-command
+                wget_cmd = [
+                    "wget",
+                    "--quiet",
+                    "--output-document",
+                    temp_file.name,
+                    self.url,
+                ]
+                QgsMessageLog.logMessage(f"Starting to download: {self.url}")
+                subprocess.check_call(wget_cmd)
+                # TODO: for plugin download, replace this with
+                #       `shutil.move` for cross-platform compatibility
+                shutil.move(temp_file.name, self.destination_filepath)
+                QgsMessageLog.logMessage(f"Got {self.destination_filepath}")
+        except subprocess.CalledProcessError as ex:
+            print(f"Failed to download: {self.url} \n\n error: {ex}")
         self.closed.emit()
 
     def setup_ui(self):
@@ -185,6 +214,7 @@ class RadarViewerWgetDownloadWidget(QtWidgets.QWidget):
                 ]
             )
         )
+        self.info_label.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
 
         self.cancel_pushbutton = QtWidgets.QPushButton("Cancel")
         self.cancel_pushbutton.clicked.connect(self.closed.emit)

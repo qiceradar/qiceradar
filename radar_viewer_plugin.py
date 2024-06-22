@@ -523,6 +523,7 @@ class RadarViewerPlugin(QtCore.QObject):
         neighbor_names = []
         QgsMessageLog.logMessage("Got neighbors!")
         root = QgsProject.instance().layerTreeRoot()
+        print(f"Tried to get project root! {root}")
         for neighbor in neighbors:
             layer_id, feature_id = self.spatial_index_lookup[neighbor]
             layer = root.findLayer(layer_id).layer()
