@@ -1,4 +1,5 @@
 import pathlib
+import requests  # for downloading files
 from typing import Callable, Dict
 import sqlite3
 import subprocess
@@ -158,6 +159,8 @@ class RadarViewerWgetDownloadWidget(QtWidgets.QWidget):
         self.setup_ui()
 
     def download_clicked(self, _event):
+        # Create destination directory
+        self.destination_filepath.parents[0].mkdir(parents=True, exist_ok=True)
         QgsMessageLog.logMessage("TODO: Actually download radargram!")
         # TODO: use self.url and self.destination_filepath to construct wget call!
         try:
@@ -178,9 +181,12 @@ class RadarViewerWgetDownloadWidget(QtWidgets.QWidget):
                     self.url,
                 ]
                 QgsMessageLog.logMessage(f"Starting to download: {self.url}")
-                subprocess.check_call(wget_cmd)
+                QgsMessageLog.logMessage(f"Temporary file: {temp_file.name}")
+                # subprocess.check_call(wget_cmd)
                 # TODO: for plugin download, replace this with
                 #       `shutil.move` for cross-platform compatibility
+                req = requests.get(self.url)
+                open(temp_file.name, 'wb').write(req.content)
                 shutil.move(temp_file.name, self.destination_filepath)
                 QgsMessageLog.logMessage(f"Got {self.destination_filepath}")
         except subprocess.CalledProcessError as ex:
