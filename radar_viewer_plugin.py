@@ -100,7 +100,8 @@ class RadarViewerPlugin(QtCore.QObject):
             QgsMessageLog.logMessage(errmsg)
         else:
             cmd_folder = os.path.split(inspect.getfile(frame))[0]
-            icon = os.path.join(os.path.join(cmd_folder, "airplane.png"))
+            icon = os.path.join(os.path.join(cmd_folder, "img/test_bed_download.png"))
+            #icon = os.path.join(os.path.join(cmd_folder, "airplane.png"))
 
         # TODO: May want to support a different tooltip in the menu that
         #   launches a GUI where you can either type in a line or select

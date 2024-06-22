@@ -7,4 +7,4 @@ version=1.0
 author=Laura Lindzey
 email=lindzey@uw.edu
 repository=
-icon=airplane.png
+icon=test_bed_viewer.png
