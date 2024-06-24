@@ -98,29 +98,44 @@ class RadarViewerPlugin(QtCore.QObject):
         if frame is None:
             errmsg = "Can't find code directory to load icon!"
             QgsMessageLog.logMessage(errmsg)
+            # On MacOS, this results in the action text string being the icon
+            downloader_icon = QtGui.QIcon()
+            viewer_icon = QtGui.QIcon()
         else:
             cmd_folder = os.path.split(inspect.getfile(frame))[0]
-            icon = os.path.join(os.path.join(cmd_folder, "img/test_bed_download.png"))
-            #icon = os.path.join(os.path.join(cmd_folder, "airplane.png"))
+            downloader_icon_path = os.path.join(os.path.join(cmd_folder, "img/icons.001.png"))
+            downloader_icon = QtGui.QIcon(downloader_icon_path)
+            viewer_icon_path = os.path.join(os.path.join(cmd_folder, "img/icons.002.png"))
+            viewer_icon = QtGui.QIcon(viewer_icon_path)
 
         # TODO: May want to support a different tooltip in the menu that
         #   launches a GUI where you can either type in a line or select
         #   it from a series of dropdowns, rather than forcing a click.
-        self.action = QtWidgets.QAction(
-            QtGui.QIcon(icon), "Select and Display Radargrams", self.iface.mainWindow()
+        self.viewer_action = QtWidgets.QAction(
+            viewer_icon, "Display Radargrams", self.iface.mainWindow()
         )
-        self.action.triggered.connect(self.run)
-        self.iface.addPluginToMenu("&Radar Viewer", self.action)
-        self.iface.addToolBarIcon(self.action)
+        self.viewer_action.triggered.connect(self.run_viewer)
+        self.iface.addPluginToMenu("Radar Viewer", self.viewer_action)
+        self.iface.addToolBarIcon(self.viewer_action)
+
+        self.downloader_action = QtWidgets.QAction(
+            downloader_icon, "Download Radargrams", self.iface.mainWindow()
+        )
+        self.downloader_action.triggered.connect(self.run_downloader)
+        self.iface.addPluginToMenu("Radar Downloader", self.downloader_action)
+        self.iface.addToolBarIcon(self.downloader_action)
 
     def unload(self) -> None:
         """
         Required method; called when plugin unloaded.
         """
         print("unload")
-        self.iface.removeToolBarIcon(self.action)
-        self.iface.removePluginMenu("&Radar Viewer", self.action)
-        del self.action
+        self.iface.removeToolBarIcon(self.viewer_action)
+        self.iface.removeToolBarIcon(self.downloader_action)
+        self.iface.removePluginMenu("&Radar Viewer", self.viewer_action)
+        self.iface.removePluginMenu("&Radar Downloader", self.downloader_action)
+        del self.viewer_action
+        del self.downloader_action
 
     def load_config(self):
         """
@@ -558,8 +573,11 @@ class RadarViewerPlugin(QtCore.QObject):
         #     tw = RadarViewerTransectWidget(transect, self.iface)
         #     tw.run()
 
-    def run(self) -> None:
-        QgsMessageLog.logMessage("run")
+    def run_downloader(self) -> None:
+        QgsMessageLog.logMessage("run downloader")
+
+    def run_viewer(self) -> None:
+        QgsMessageLog.logMessage("run viewer")
         # The QIceRadar tool is a series of widgets, kicked off by clicking on the icon.
 
         # First, make sure we at least have the root data directory configured
