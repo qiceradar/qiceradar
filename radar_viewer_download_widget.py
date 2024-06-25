@@ -10,8 +10,12 @@ import PyQt5.QtWidgets as QtWidgets
 import requests  # for downloading files
 from qgis.core import QgsMessageLog
 
-from .radar_viewer_config import UserConfig
-from .radar_viewer_configuration_widget import RadarViewerConfigurationWidget
+from .qiceradar_config import UserConfig
+
+# TODO: should have already been configured after download?
+#     (I think this is meant to allow user to change config if
+#     they discvoer it's necessary during a download attempt.)
+from .qiceradar_config_widget import QIceRadarConfigWidget
 from .radar_viewer_data_utils import get_granule_filepath
 
 
@@ -105,7 +109,7 @@ class RadarViewerDownloadWidget(QtWidgets.QDialog):
                 self.user_config, url, granule_filepath, filesize
             )
 
-        self.config_widget = RadarViewerConfigurationWidget(
+        self.config_widget = QIceRadarConfigWidget(
             None, self.user_config, self.set_config
         )
 

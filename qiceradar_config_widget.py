@@ -5,7 +5,7 @@ import PyQt5.QtWidgets as QtWidgets
 import qgis.core
 from qgis.core import QgsMessageLog
 
-from .radar_viewer_config import UserConfig, config_is_valid, parse_config
+from .qiceradar_config import UserConfig, config_is_valid, parse_config
 
 
 # I wanted this to be a QDialog, but then a PushButton was ALWAYS welected,
@@ -14,7 +14,7 @@ from .radar_viewer_config import UserConfig, config_is_valid, parse_config
 # https://stackoverflow.com/questions/45288494/how-do-i-avoid-multiple-simultaneous-focus-in-pyside
 # QUESTION: Does the iface argument wind up mattering? My other QDialog
 #           popups don't have it, and it seems like it's not used.
-class RadarViewerConfigurationWidget(QtWidgets.QDialog):
+class QIceRadarConfigWidget(QtWidgets.QDialog):
 
     # Useful so other dialogs that open this one can react
     # when it is closed.
@@ -256,11 +256,5 @@ class RadarViewerConfigurationWidget(QtWidgets.QDialog):
         super().close()
 
     def run(self):
-        QgsMessageLog.logMessage("RadarViewerConfigurationWidget.run()")
-        # In the NUI viewer, this had to run for QGIS to not block.
-        # I'm not sure whether I can have a modal dialogue block...
-        # Creating a QApplication crashed QGIS. So ... how to create new window within the application?
-        # app = QtWidgets.QApplication([])
-        # app.exec()
-
+        QgsMessageLog.logMessage("QIceRadarConfigWidget.run()")
         self.exec()

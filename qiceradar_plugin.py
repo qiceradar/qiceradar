@@ -27,12 +27,12 @@ from qgis.core import (
 )
 from qgis.gui import QgsMapTool, QgsMapToolPan
 
+from .qiceradar_config import UserConfig, config_is_valid, parse_config
+from .qiceradar_config_widget import QIceRadarConfigWidget
 from .qiceradar_selection_widget import (
     QIceRadarSelectionTool,
     QIceRadarSelectionWidget,
 )
-from .radar_viewer_config import UserConfig, config_is_valid, parse_config
-from .radar_viewer_configuration_widget import RadarViewerConfigurationWidget
 from .radar_viewer_data_utils import get_granule_filepath
 from .radar_viewer_download_widget import RadarViewerDownloadWidget
 from .radar_viewer_radargram_widget import RadarViewerRadargramWidget
@@ -77,7 +77,7 @@ class QIceRadarPlugin(QtCore.QObject):
             # If per-project, need to read settings after icon clicked, not when
             # plugin loaded (plugins are loaded before user selects the project.)
             qs = QtCore.QSettings()
-            config_str = qs.value("radar_viewer_config")
+            config_str = qs.value("qiceradar_config")
             QgsMessageLog.logMessage(f"Tried to load config. config_str = {config_str}")
             config_dict = yaml.safe_load(config_str)
             self.config = parse_config(config_dict)
@@ -167,7 +167,7 @@ class QIceRadarPlugin(QtCore.QObject):
 
     def set_config(self, config: UserConfig) -> None:
         """
-        Callback passed to the RadarViewerConfigurationWidget to set config
+        Callback passed to the QIceRadarConfigWidget to set config
         once it has been validated. (The QDialog class doesn't seem to allow
         returning more complex values, so it needs to be done indirectly.)
         """
@@ -188,7 +188,7 @@ class QIceRadarPlugin(QtCore.QObject):
             f"Saving updated config! {yaml.safe_dump(config_dict)}"
         )
         qs = QtCore.QSettings()
-        qs.setValue("radar_viewer_config", yaml.safe_dump(config_dict))
+        qs.setValue("qiceradar_config", yaml.safe_dump(config_dict))
         # This is how to do it per-project, rather than globally
         # QgsProject.instance().writeEntry(
         #     "radar_viewer", "user_config", yaml.safe_dump(config_dict)
@@ -286,13 +286,14 @@ class QIceRadarPlugin(QtCore.QObject):
         """
         QgsMessageLog.logMessage(f"{transect_name} selected!")
         layer_id, feature_id = self.transect_name_lookup[transect_name]
-        # TODO: recover name -> layer + ID, so we can look up info about it
 
         root = QgsProject.instance().layerTreeRoot()
         layer = root.findLayer(layer_id).layer()
         feature = layer.getFeature(feature_id)
 
-        # Try to load the original database
+        # The viewer/downloader widgets need information from the gpkg
+        # database that also provided the geometry information for this
+        # layer.
         database_file = layer.source().split("|")[0]
 
         availability = feature.attributeMap()["availability"]
@@ -590,7 +591,7 @@ class QIceRadarPlugin(QtCore.QObject):
         # TODO: Really, if it is None, this should be an error condition.
         if self.prev_map_tool is not None:
             self.iface.mapCanvas().setMapTool(self.prev_map_tool)
-            self.prev_map_tool = None
+            # self.prev_map_tool = None
 
         if self.spatial_index is None:
             errmsg = "Spatial index not created -- bug!!"
@@ -625,7 +626,7 @@ class QIceRadarPlugin(QtCore.QObject):
     def ensure_valid_configuration(self) -> bool:
         # First, make sure we at least have the root data directory configured
         if not config_is_valid(self.config):
-            cw = RadarViewerConfigurationWidget(
+            cw = QIceRadarConfigWidget(
                 self.iface, self.config, self.set_config
             )
             # Config is set via callback, rather than direct return value
@@ -644,8 +645,11 @@ class QIceRadarPlugin(QtCore.QObject):
             return
         if self.spatial_index is None:
             self.build_spatial_index()
-
-        self.prev_map_tool = self.iface.mapCanvas().mapTool()
+        # Don't want to bop back to other qiceradar tool after use;
+        # should go back to e.g. zoom tool
+        curr_tool = self.iface.mapCanvas().mapTool()
+        if not isinstance(curr_tool, QIceRadarSelectionTool):
+            self.prev_map_tool = curr_tool
         if self.prev_map_tool is None:
             # mypy doesn't like this; not sure why QgsMapToolPan isn't accepted as a QgsMapTool, which is its base class
             self.prev_map_tool = QgsMapToolPan
