@@ -118,9 +118,21 @@ class QIceRadarPlugin(QtCore.QObject):
         # TODO: May want to support a different tooltip in the menu that
         #   launches a GUI where you can either type in a line or select
         #   it from a series of dropdowns, rather than forcing a click.
+        # NOTE: We wanted the toolbar icon to appear selected until the MapTool
+        #   returns a clicked point, after which the active map tool should revert
+        #   to being whatever it was before the qiceradar action was triggered.
+        #   Making the actions "checkable" is a bit of a weird fit (it's meant
+        #   for ones that are toggleable, like "bold"), but that lets me control
+        #   when we turn it back off. Without that, it deselects when the
+        #   run_{viewer, downloader} function returns, rather than when the
+        #   map tool has been used. Since the action isn't _actually_ toggleable,
+        #   also have to connect the map tool's "activate" function to turning
+        #   it on (without this, double-clicks on the icon will make it appear
+        #   deactivated when it isn't.)
         self.viewer_action = QtWidgets.QAction(
             viewer_icon, "Display Radargrams", self.iface.mainWindow()
         )
+        self.viewer_action.setCheckable(True)
         self.viewer_action.triggered.connect(self.run_viewer)
         self.iface.addPluginToMenu("Radar Viewer", self.viewer_action)
         self.iface.addToolBarIcon(self.viewer_action)
@@ -128,6 +140,7 @@ class QIceRadarPlugin(QtCore.QObject):
         self.downloader_action = QtWidgets.QAction(
             downloader_icon, "Download Radargrams", self.iface.mainWindow()
         )
+        self.downloader_action.setCheckable(True)
         self.downloader_action.triggered.connect(self.run_downloader)
         self.iface.addPluginToMenu("Radar Downloader", self.downloader_action)
         self.iface.addToolBarIcon(self.downloader_action)
@@ -631,6 +644,7 @@ class QIceRadarPlugin(QtCore.QObject):
             return
         if self.spatial_index is None:
             self.build_spatial_index()
+
         self.prev_map_tool = self.iface.mapCanvas().mapTool()
         if self.prev_map_tool is None:
             # mypy doesn't like this; not sure why QgsMapToolPan isn't accepted as a QgsMapTool, which is its base class
@@ -641,6 +655,8 @@ class QIceRadarPlugin(QtCore.QObject):
             self.iface.mapCanvas(),
             lambda pt, op=QIceRadarPlugin.Operation.DOWNLOAD: self.selected_point_callback(op, pt)
         )
+        selection_tool.deactivated.connect(lambda ch=False: self.downloader_action.setChecked(ch))
+        selection_tool.activated.connect(lambda ch=True: self.downloader_action.setChecked(ch))
         self.iface.mapCanvas().setMapTool(selection_tool)
 
     def run_viewer(self) -> None:
@@ -669,7 +685,6 @@ class QIceRadarPlugin(QtCore.QObject):
             self.iface.mapCanvas(),
             lambda pt, op=QIceRadarPlugin.Operation.VIEW: self.selected_point_callback(op, pt)
         )
+        selection_tool.deactivated.connect(lambda ch=False: self.viewer_action.setChecked(ch))
+        selection_tool.activated.connect(lambda ch=True: self.viewer_action.setChecked(ch))
         self.iface.mapCanvas().setMapTool(selection_tool)
-
-        # TODO: It seems that the icon no longer shows as active at this point,
-        #  when really, I'd rather it be active while the selection tool is active.
