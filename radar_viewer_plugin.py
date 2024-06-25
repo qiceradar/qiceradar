@@ -535,6 +535,7 @@ class RadarViewerPlugin(QtCore.QObject):
             errmsg = "Spatial index not created -- bug!!"
             QgsMessageLog.logMessage(errmsg)
             return
+
         neighbors = self.spatial_index.nearestNeighbor(point, 5)
         neighbor_names = []
         QgsMessageLog.logMessage("Got neighbors!")
@@ -573,13 +574,7 @@ class RadarViewerPlugin(QtCore.QObject):
         #     tw = RadarViewerTransectWidget(transect, self.iface)
         #     tw.run()
 
-    def run_downloader(self) -> None:
-        QgsMessageLog.logMessage("run downloader")
-
-    def run_viewer(self) -> None:
-        QgsMessageLog.logMessage("run viewer")
-        # The QIceRadar tool is a series of widgets, kicked off by clicking on the icon.
-
+    def ensure_valid_configuration(self) -> bool:
         # First, make sure we at least have the root data directory configured
         if not config_is_valid(self.config):
             cw = RadarViewerConfigurationWidget(
@@ -590,12 +585,29 @@ class RadarViewerPlugin(QtCore.QObject):
 
         if not config_is_valid(self.config):
             QgsMessageLog.logMessage("Invalid configuration; can't start QIceRadar")
-            return
+            return False
         else:
             QgsMessageLog.logMessage(f"Config = {self.config}; ready for use!")
+            return True
+
+    def run_downloader(self) -> None:
+        QgsMessageLog.logMessage("run downloader")
+        if not self.ensure_valid_configuration():
+            return
+        if self.spatial_index is None:
+            self.build_spatial_index()
+
+    def run_viewer(self) -> None:
+        # The QIceRadar tool is a series of widgets, kicked off by clicking on the icon.
+        QgsMessageLog.logMessage("run viewer")
+        if not self.ensure_valid_configuration():
+            return
 
         # Next, make sure the spatial index has been initialized
         # TODO: detect when project changes and re-initialize!
+        # TODO: For now, the downloader and viewer share a spatial index
+        #  If I wind up creating a second database only showing downloaded
+        #  files, they will need separate indices
         if self.spatial_index is None:
             self.build_spatial_index()
 

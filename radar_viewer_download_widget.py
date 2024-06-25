@@ -1,13 +1,13 @@
 import pathlib
-import requests  # for downloading files
-from typing import Callable, Dict
+import shutil
 import sqlite3
 import subprocess
-import shutil
 import tempfile
+from typing import Callable, Dict
 
 import PyQt5.QtCore as QtCore
 import PyQt5.QtWidgets as QtWidgets
+import requests  # for downloading files
 from qgis.core import QgsMessageLog
 
 from .radar_viewer_config import UserConfig
@@ -109,6 +109,8 @@ class RadarViewerDownloadWidget(QtWidgets.QDialog):
             None, self.user_config, self.set_config
         )
 
+        # TODO: I don't love this. Better to only create the config
+        #   widget if/when needed. Add indirection via self.handle_config_button_clicked
         self.config_button = QtWidgets.QPushButton("Edit Config")
         self.config_button.clicked.connect(self.config_widget.run)
         # QUESTION: I'm not sure whether it's better to just start over, or
