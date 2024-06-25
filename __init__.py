@@ -1,5 +1,5 @@
-from .radar_viewer_plugin import RadarViewerPlugin
+from .qiceradar_plugin import QIceRadarPlugin
 
 
 def classFactory(iface):
-    return RadarViewerPlugin(iface)
+    return QIceRadarPlugin(iface)

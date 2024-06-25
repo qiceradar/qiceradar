@@ -38,9 +38,9 @@ from .radar_viewer_selection_widget import (
 from .radar_viewer_window import BasicRadarWindow as RadarWindow
 
 
-class RadarViewerPlugin(QtCore.QObject):
+class QIceRadarPlugin(QtCore.QObject):
     def __init__(self, iface) -> None:
-        super(RadarViewerPlugin, self).__init__()
+        super(QIceRadarPlugin, self).__init__()
         self.iface = iface
 
         # The spatial index needs to be created for each new project
