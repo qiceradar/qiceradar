@@ -1,3 +1,4 @@
+import enum
 import inspect
 import os
 import pathlib
@@ -26,19 +27,25 @@ from qgis.core import (
 )
 from qgis.gui import QgsMapTool, QgsMapToolPan
 
+from .qiceradar_selection_widget import (
+    QIceRadarSelectionTool,
+    QIceRadarSelectionWidget,
+)
 from .radar_viewer_config import UserConfig, config_is_valid, parse_config
 from .radar_viewer_configuration_widget import RadarViewerConfigurationWidget
 from .radar_viewer_data_utils import get_granule_filepath
 from .radar_viewer_download_widget import RadarViewerDownloadWidget
 from .radar_viewer_radargram_widget import RadarViewerRadargramWidget
-from .radar_viewer_selection_widget import (
-    RadarViewerSelectionTool,
-    RadarViewerSelectionWidget,
-)
 from .radar_viewer_window import BasicRadarWindow as RadarWindow
 
 
 class QIceRadarPlugin(QtCore.QObject):
+
+    class Operation(enum.IntEnum):
+        DOWNLOAD = enum.auto()
+        VIEW = enum.auto()
+
+
     def __init__(self, iface) -> None:
         super(QIceRadarPlugin, self).__init__()
         self.iface = iface
@@ -154,7 +161,7 @@ class QIceRadarPlugin(QtCore.QObject):
         self.config = config
         self.save_config()
         QgsMessageLog.logMessage(
-            "RadarViewerPlugin.set_config. "
+            "QIceRadarPlugin.set_config. "
             f"Input rootdir = {config.rootdir} "
             f"self.config.rootdir = {self.config.rootdir}"
         )
@@ -258,10 +265,11 @@ class QIceRadarPlugin(QtCore.QObject):
                 except Exception as ex:
                     QgsMessageLog.logMessage(f"{repr(ex)}")
 
-    def selected_transect_callback(self, transect_name: str) -> None:
+
+    def selected_transect_callback(self, operation: Operation, transect_name: str) -> None:
         """
-        Callback for the RadarViewerSelectionWidget that launches the appropriate
-        UI element for the chosen transect.
+        Callback for the QIceRadarSelectionWidget that launches the appropriate
+        widget (download, viewer) for the chosen transect.
         """
         QgsMessageLog.logMessage(f"{transect_name} selected!")
         layer_id, feature_id = self.transect_name_lookup[transect_name]
@@ -350,45 +358,85 @@ class QIceRadarPlugin(QtCore.QObject):
             )
             downloaded = transect_filepath is not None and transect_filepath.is_file()
             if downloaded:
-                # TODO: This needs to clean up if there's an exception!
-                # TODO: (So does the widget! I just tested, and it leaves layers when it is closed!)
-                self.setup_qgis_layers(transect_name)
-
-                # Also, my NUI plugin had a "cleanup" step where it unsubscribed to LCM callbacks. I'm not sure if something similar is necessary here, or if we can let the user just close the window. (We probably want to clean up the entries in the layers panel!)
-
-                # First one was placeholder window...
-                # vw = RadarViewerRadargramWidget()
-                trace_cb = (
-                    lambda lon, lat, tt=transect_name: self.update_trace_callback(
-                        tt, lon, lat
+                if operation == QIceRadarPlugin.Operation.DOWNLOAD:
+                    # TODO: Should make this impossible by filtering the selection
+                    #   based on un-downloaded transects.
+                    #   I *could* make the unavailable impossible, but I want to display info
+                    #   about them, and a 3rd tooltip doesn't make sense.
+                    msg = (
+                        "Already downloaded transect!"
+                        "<br>"
+                        f"Institution: {institution}"
+                        "<br>"
+                        f"Campaign: {campaign}"
+                        "<br>"
+                        f"Segment: {segment}"
+                        "<br>"
                     )
-                )
-                selection_cb = (
-                    lambda pts, tt=transect_name: self.update_radar_xlim_callback(
-                        tt, pts
-                    )
-                )
-                rw = RadarWindow(
-                    institution,
-                    campaign,
-                    transect_filepath,
-                    granule,
-                    database_file,
-                    parent_xlim_changed_cb=selection_cb,
-                    parent_cursor_cb=trace_cb,
-                )
-                points = list(zip(rw.radar_data.lon, rw.radar_data.lat))
-                self.update_segment_points(transect_name, points)
+                    message_box = QtWidgets.QMessageBox()
+                    message_box.setTextFormat(QtCore.Qt.RichText)
+                    message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+                    message_box.setText(msg)
+                    message_box.exec()
 
-                self.dw = QtWidgets.QDockWidget(transect_name)
-                self.dw.setWidget(rw)
-                self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.dw)
+                else:
+                    # TODO: This needs to clean up if there's an exception!
+                    # TODO: (So does the widget! I just tested, and it leaves layers when it is closed!)
+                    self.setup_qgis_layers(transect_name)
+
+                    # Also, my NUI plugin had a "cleanup" step where it unsubscribed to LCM callbacks. I'm not sure if something similar is necessary here, or if we can let the user just close the window. (We probably want to clean up the entries in the layers panel!)
+
+                    # First one was placeholder window...
+                    # vw = RadarViewerRadargramWidget()
+                    trace_cb = (
+                        lambda lon, lat, tt=transect_name: self.update_trace_callback(
+                            tt, lon, lat
+                        )
+                    )
+                    selection_cb = (
+                        lambda pts, tt=transect_name: self.update_radar_xlim_callback(
+                            tt, pts
+                        )
+                    )
+                    rw = RadarWindow(
+                        institution,
+                        campaign,
+                        transect_filepath,
+                        granule,
+                        database_file,
+                        parent_xlim_changed_cb=selection_cb,
+                        parent_cursor_cb=trace_cb,
+                    )
+                    points = list(zip(rw.radar_data.lon, rw.radar_data.lat))
+                    self.update_segment_points(transect_name, points)
+
+                    self.dw = QtWidgets.QDockWidget(transect_name)
+                    self.dw.setWidget(rw)
+                    self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.dw)
             else:
-                # TODO: user probably wants to immediately open what they've downloaded
-                dw = RadarViewerDownloadWidget(
-                    self.config, self.set_config, feature.attributeMap(), database_file
-                )
-                dw.run()
+                if operation == QIceRadarPlugin.Operation.DOWNLOAD:
+                    dw = RadarViewerDownloadWidget(
+                        self.config, self.set_config, feature.attributeMap(), database_file
+                    )
+                    dw.run()
+                else:
+                    # TODO: This should be made impossible -- only offer already-downloaded
+                    #  transects to the viewer selection tooltip.
+                    msg = (
+                        "Must download transect before viewing it"
+                        "<br>"
+                        f"Institution: {institution}"
+                        "<br>"
+                        f"Campaign: {campaign}"
+                        "<br>"
+                        f"Segment: {segment}"
+                        "<br>"
+                    )
+                    message_box = QtWidgets.QMessageBox()
+                    message_box.setTextFormat(QtCore.Qt.RichText)
+                    message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+                    message_box.setText(msg)
+                    message_box.exec()
 
     def setup_qgis_layers(self, transect_name: str) -> None:
         transect_group = self.radar_viewer_group.addGroup(transect_name)
@@ -523,7 +571,7 @@ class QIceRadarPlugin(QtCore.QObject):
         segment_layer.commitChanges()
 
     # TODO: This works, but only for one radargram. If we want to support more, should probably keep a list of dock widgets!
-    def selected_point_callback(self, point: QgsPointXY) -> None:
+    def selected_point_callback(self, operation: Operation, point: QgsPointXY) -> None:
         QgsMessageLog.logMessage(f"Got point! {point.x()}, {point.y()}")
 
         # TODO: Really, if it is None, this should be an error condition.
@@ -552,27 +600,14 @@ class QIceRadarPlugin(QtCore.QObject):
             )
             neighbor_names.append(feature_name)
 
-        ts = RadarViewerSelectionWidget(
-            self.iface, neighbor_names, self.selected_transect_callback
+        ts = QIceRadarSelectionWidget(
+            self.iface,
+            neighbor_names,
+            lambda nn, op=operation: self.selected_transect_callback(op, nn)
         )
         # Chosen transect is set via callback, rather than direct return value
         ts.run()
 
-        # QUESTION: What to do here while waiting for a mouse click?
-        # On mouse click,
-        # sw = RadarViewerSelectionWidget(self.iface)
-        # transect = sw.run()
-
-        # if radar_database_utils.is_unavailable(transect):
-        #     uw = RadarViewerUnavailableWidget(transect, self.iface)
-        #     result = uw.run()
-        # elif radar_database_utils.is_unsupported(transect):
-        #     uw = RadarViewerUnsupportedWidget(transect, self.iface)
-        #     result = uw.run()
-        # elif radar_database_utils.is_supported(transect):
-        #     # QUESTION: How to keep this alive continuously?
-        #     tw = RadarViewerTransectWidget(transect, self.iface)
-        #     tw.run()
 
     def ensure_valid_configuration(self) -> bool:
         # First, make sure we at least have the root data directory configured
@@ -596,6 +631,17 @@ class QIceRadarPlugin(QtCore.QObject):
             return
         if self.spatial_index is None:
             self.build_spatial_index()
+        self.prev_map_tool = self.iface.mapCanvas().mapTool()
+        if self.prev_map_tool is None:
+            # mypy doesn't like this; not sure why QgsMapToolPan isn't accepted as a QgsMapTool, which is its base class
+            self.prev_map_tool = QgsMapToolPan
+        # TODO: this lambda is the only place run_download differs from run_viewer
+        # Should I re-combine them with another "operation" parameter?
+        selection_tool = QIceRadarSelectionTool(
+            self.iface.mapCanvas(),
+            lambda pt, op=QIceRadarPlugin.Operation.DOWNLOAD: self.selected_point_callback(op, pt)
+        )
+        self.iface.mapCanvas().setMapTool(selection_tool)
 
     def run_viewer(self) -> None:
         # The QIceRadar tool is a series of widgets, kicked off by clicking on the icon.
@@ -619,28 +665,11 @@ class QIceRadarPlugin(QtCore.QObject):
         if self.prev_map_tool is None:
             # mypy doesn't like this; not sure why QgsMapToolPan isn't accepted as a QgsMapTool, which is its base class
             self.prev_map_tool = QgsMapToolPan
-        selection_tool = RadarViewerSelectionTool(
-            self.iface.mapCanvas(), self.selected_point_callback
+        selection_tool = QIceRadarSelectionTool(
+            self.iface.mapCanvas(),
+            lambda pt, op=QIceRadarPlugin.Operation.VIEW: self.selected_point_callback(op, pt)
         )
         self.iface.mapCanvas().setMapTool(selection_tool)
 
         # TODO: It seems that the icon no longer shows as active at this point,
         #  when really, I'd rather it be active while the selection tool is active.
-
-        # I actually prefer this, because multiple windows are easier to deal
-        # with than a dockable window that won't go to the background.
-        # self.mainwindow = NuiScalarDataMainWindow(self.iface)
-        # self.mainwindow.show()
-        # self.mainwindow.run()
-
-        # # However, it's possible to wrap the MainWindow in a DockWidget...
-        # mw = NuiScalarDataMainWindow(self.iface)
-        # self.dw = QtWidgets.QDockWidget("NUI Scalar Data")
-        # # Need to unsubscribe from LCM callbacks when the dock widget is closed.
-        # self.dw.closeEvent = lambda event: mw.closeEvent(event)
-        # self.dw.setWidget(mw)
-        # self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.dw)
-        # mw.run()
-
-        # print("Done with dockwidget")
-        # # This function MUST return, or QGIS will block

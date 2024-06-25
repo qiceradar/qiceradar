@@ -7,35 +7,43 @@ from qgis.core import QgsMessageLog
 from qgis.gui import QgsMapTool
 
 
-class RadarViewerSelectionTool(QgsMapTool):
+class QIceRadarSelectionTool(QgsMapTool):
     """
     When activated, allows user to click on map to select closest transects.
+
+    This is totally generic between download and visualizer, since
+    it simply calls the provided callback with a QgsPointXY.
+
+    A new tool will be created for each time a qiceradar tooltip
+    icon is clicked.
     """
 
     def __init__(self, canvas, point_callback):
-        super(RadarViewerSelectionTool, self).__init__(canvas)
-        # self.canvas = canvas
+        super(QIceRadarSelectionTool, self).__init__(canvas)
         self.point_callback = point_callback
 
     def canvasReleaseEvent(self, event):
         QgsMessageLog.logMessage("canvas release event!")
         pt = event.mapPoint()
         self.point_callback(pt)
-        self.deactivate()  # A new tool will be created the next time the icon is clicked
+        self.deactivate()
 
 
-class RadarViewerSelectionWidget(QtWidgets.QDialog):
+class QIceRadarSelectionWidget(QtWidgets.QDialog):
     """
     Display closest N transects to clicked point, prompt user to specify which they want.
 
     Simply going with the closest will not work, since there are often re-flights
     of the same line, impossible to distinguish with a click in map view.
+
+    For now, both the download and the viewer code are sharing this
+    widget; the list of transects to choose between is calculated elsewhere
     """
 
     def __init__(
         self, iface, transects: List[str], transect_callback: Callable[[str], None]
     ):
-        super(RadarViewerSelectionWidget, self).__init__()
+        super(QIceRadarSelectionWidget, self).__init__()
         self.iface = iface
         self.transects = transects
         self.transect_callback = transect_callback
@@ -71,7 +79,7 @@ class RadarViewerSelectionWidget(QtWidgets.QDialog):
         self.setWindowTitle("Select Transect")
 
     def run(self):
-        QgsMessageLog.logMessage("RadarViewerSelectionWidget.run()")
+        QgsMessageLog.logMessage("QIceRadarSelectionWidget.run()")
         # NB: using `exec` creates a modal dialogue, that the user must
         #     deal with before continuing to interact with QGIS
         self.exec()
