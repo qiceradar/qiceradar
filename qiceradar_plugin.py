@@ -506,6 +506,8 @@ class QIceRadarPlugin(QtCore.QObject):
                         "<br>"
                         f"Segment: {segment}"
                         "<br>"
+                        f"(Looking for data in: {transect_filepath})"
+                        "<br>"
                     )
                     message_box = QtWidgets.QMessageBox()
                     message_box.setTextFormat(QtCore.Qt.RichText)
