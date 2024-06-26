@@ -3,11 +3,13 @@ import shutil
 import sqlite3
 import subprocess
 import tempfile
-from typing import Callable, Dict
+from typing import Callable, Dict, Optional
 
 import PyQt5.QtCore as QtCore
+import PyQt5.QtGui as QtGui
 import PyQt5.QtWidgets as QtWidgets
 import requests  # for downloading files
+from PyQt5.QtCore import Qt
 from qgis.core import QgsMessageLog
 
 from .qiceradar_config import UserConfig
@@ -50,49 +52,32 @@ class DownloadConfirmationDialog(QtWidgets.QDialog):
         self,
         config: UserConfig,
         config_cb: Callable[[UserConfig], None],
-        attributes: Dict[str, str],
-        database_file: str,
+        institution,
+        campaign,
+        granule,
+        download_method,
+        url,
+        granule_filepath: pathlib.Path,
+        filesize,
     ):
         super(DownloadConfirmationDialog, self).__init__()
 
         self.user_config = config
         self.set_config = config_cb
-        self.attributes = attributes  # attributes from the feature
-        self.database_file = database_file  # database with metadata
+        self.institution = institution
+        self.campaign = campaign
+        self.granule = granule
 
-        # TODO: I think these maybe should be passed in? `attributes` is an
-        #   awkward thing to pass around
-        region = self.attributes["region"]
-        self.institution = self.attributes["institution"]
-        self.campaign = self.attributes["campaign"]
-        segment = self.attributes["segment"]
-        self.granule = self.attributes["granule"]
-        # TODO: Look up data from granules table:
-        # download_method
-        # url
-        # destination_path
-        # filesize
-        connection = sqlite3.connect(self.database_file)
-        cursor = connection.cursor()
-        # TODO: Constructing the granule_name like this is problematic;
-        #   it should be passed around as the identifier.
-        granule_name = f"{self.institution}_{self.campaign}_{self.granule}"
-        sql_cmd = f"SELECT * FROM granules where name = '{granule_name}'"
-        result = cursor.execute(sql_cmd)
-        rows = result.fetchall()
-        connection.close()
-        # QUESTION: How do I want to log this? I need to figure out how these errors
-        #    will propagate through the system.
-        # TODO: I dislike this; setting to None requires checking for None later,
-        #   rather than handling/propagating it right here.
-        try:
-            _, _, data_format, self.download_method, self.url, destination_path, self.filesize = rows[0]
-        except:
-            QgsMessageLog.logMessage(f"Invalid response {rows} from command {sql_cmd}")
-            data_format, self.download_method, self.url, destination_path, self.filesize = None, None, None, None, None
+        self.download_method = download_method
+        self.url = url
+        self.granule_filepath = granule_filepath
+        self.filesize = filesize
 
-        self.granule_filepath = pathlib.Path(self.user_config.rootdir, destination_path)
-
+        # TODO: We need to check whether the full granule_filepath can be created
+        #  If not, should pop up box with error, whose 'OK' button pops up config
+        #  widget.
+        #  I think that logic may fit better elsewhere, though one option would
+        #  be to check it when the "Download" button is pressed.
         self.setup_ui()
 
     def setup_ui(self):
@@ -117,7 +102,7 @@ class DownloadConfirmationDialog(QtWidgets.QDialog):
 
         The requested granule is _______ (MB/GB)
         """
-        QgsMessageLog.logMessage(f"Setting up download widget for feature with attributes: {self.attributes}")
+        QgsMessageLog.logMessage("Setting up download widget!")
 
         self.intro_text = QtWidgets.QLabel(
             "".join(
@@ -211,16 +196,433 @@ class VerticalLine(QtWidgets.QFrame):
         self.setFrameShadow(QtWidgets.QFrame.Sunken)
 
 class DownloadWindow(QtWidgets.QMainWindow):
-    def __init__(self) -> None:
+    def __init__(self, iface) -> None:
         super().__init__()
+        self.iface = iface
         self.setWindowTitle("QIceRadar Radargram Downloader")
         self.setup_ui()
 
     def setup_ui(self):
         central_widget = QtWidgets.QWidget()
         vbox = QtWidgets.QVBoxLayout()
-        label = QtWidgets.QLabel("Hello, world!")
-        vbox.addWidget(label)
+        scroll = QtWidgets.QScrollArea()
+        scroll_widget = QtWidgets.QWidget()
+        self.scroll_vbox = QtWidgets.QVBoxLayout()
+        self.scroll_vbox.addStretch(1)
+        scroll_widget.setLayout(self.scroll_vbox)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(scroll_widget)
+        # maps granule to widget
+        self.download_widgets: Dict[str, DownloadWidget] = {}
+
+        vbox.addWidget(scroll)
         central_widget.setLayout(vbox)
         self.setCentralWidget(central_widget)
 
+    def download(self,
+                 granule: str,
+                 url: str,
+                 destination_filepath: str,
+                 filesize: int) -> None:
+        # TODO: This means that once a download has been canceled, you won't
+        #   be able to retry it until the plugin is reloaded.
+        # Consider allowing multiple downloads? (or adding a "retry" button?)
+        if granule in self.download_widgets:
+            if self.download_widgets[granule].canceled or self.download_widgets[granule].failed:
+                # OK, we can retry
+                QgsMessageLog.logMessage(f"Retrying download of {granule}")
+            elif self.download_widgets[granule].finished:
+                QgsMessageLog.logMessage(f"Already downloaded {granule}")
+                return
+            else:
+                print(f"Currently downloading {granule}")
+                return
+
+        print(f"Downloading {granule}")
+
+        widget = DownloadWidget(granule, url, filesize, destination_filepath)
+        self.download_widgets[granule] = widget
+        self.scroll_vbox.insertWidget(0, widget)
+
+
+
+class DownloadWidget(QtWidgets.QWidget):
+    """
+    Widget in charge of downloading a single granule.
+    """
+    request_pause = QtCore.pyqtSignal()
+    request_resume = QtCore.pyqtSignal()
+    request_cancel = QtCore.pyqtSignal()
+    def __init__(self, granule: str, url: str, filesize: int, destination_filepath: str) -> None:
+        super().__init__()
+        self.granule = granule
+        self.url = url
+        self.filesize = filesize
+        self.destination_filepath = destination_filepath
+        self.canceled = False
+        self.failed = False
+        self.finished = False
+        self.setup_ui()
+        self.run()
+
+
+    def setup_ui(self) -> None:
+        # I don't love this -- I'm changing the background color so the
+        # widgets will be visually distinguishable when put in the scroll area
+        # Using white with alpha = 25 to make it slightly lighter than the background
+        self.setAutoFillBackground(True)
+        pp = self.palette()
+        pp.setColor(self.backgroundRole(), QtGui.QColor(255, 255, 255, 25))
+        self.setPalette(pp)
+
+        # arg order is horizontal, vertical
+        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+
+
+        layout = QtWidgets.QHBoxLayout()
+        # TODO: When porting to QGIS, use
+        # icon = QgsApplication.getThemeIcon("/mActionFileOpen.svg")
+        # which returns a QIcon
+        # pixmap = icon.pixmap(QtCore.QSize(20, 20))
+        # label.setPixmap(pixmap)
+
+        # ALSO need to have a status field at left of widget
+        # mTaskComplete.svg (for finished successfully)
+        # mTaskOnHold.svg (for paused)
+        # mTaskTerminated.svg  (for failed)
+        # mTaskRunning.svg
+        # mTaskCancel.svg (for user canceled)
+        self.status_label = QtWidgets.QLabel("Downloading")
+        self.granule_label = QtWidgets.QLabel(self.granule)
+        self.progress_label = QtWidgets.QLabel("0 / 0")
+        self.percent_label = QtWidgets.QLabel("(0%)")
+        self.progress_bar = QtWidgets.QProgressBar()
+        self.progress_bar.setRange(0, self.filesize)
+
+        # mIconTimerPause.svg
+        # mActionPlay.svg
+        # mTaskCancel.svg
+        self.pause_button = QtWidgets.QPushButton("Pause")
+        self.resume_button = QtWidgets.QPushButton("Resume")
+        self.resume_button.setEnabled(False)
+        self.cancel_button = QtWidgets.QPushButton("Cancel")
+        self.help_button = QtWidgets.QPushButton("?")
+
+        self.pause_button.clicked.connect(self.handle_pause_button_clicked)
+        self.resume_button.clicked.connect(self.handle_resume_button_clicked)
+        self.cancel_button.clicked.connect(self.handle_cancel_button_clicked)
+        self.help_button.clicked.connect(self.handle_help_button_clicked)
+
+
+        # Trying to reduce jitter by using fixed-width font.
+        # Unfortunately, this doesn't eem to work on OSX, and I found a mention
+        # that since X11 doesn't make this info available to Qt, style hinting
+        # won't work. Instead, setting the family seemed to work.
+        # TODO: Confirm that this works on Windows & Linux
+        font = self.progress_label.font()
+        font.setStyleHint(QtGui.QFont.Monospace)
+        font.setFamily("Mono")
+        self.progress_label.setFont(font)
+
+        font = self.percent_label.font()
+        font.setStyleHint(QtGui.QFont.Monospace)
+        font.setFamily("Mono")
+        self.percent_label.setFont(font)
+
+        layout.addWidget(self.status_label)
+        layout.addWidget(self.granule_label)
+        layout.addWidget(self.progress_bar)
+        layout.addWidget(self.progress_label)
+        layout.addWidget(self.percent_label)
+        # TODO: figure out how to get
+        # layout.addWidget(self.pause_button)
+        # layout.addWidget(self.resume_button)
+        layout.addWidget(self.cancel_button)
+        layout.addWidget(self.help_button)
+        self.setLayout(layout)
+
+    def handle_progress(self, progress: int) -> None:
+        # print(f"DownloadWidget.handle_progress({progress})")
+        msg = f"{format_bytes(progress)} / {format_bytes(self.filesize)}"
+        self.progress_label.setText(msg)
+        pct = 100.0 * progress/self.filesize
+        self.percent_label.setText(f"({pct:0.1f}%)")
+        self.progress_bar.setValue(progress)
+
+    def handle_paused(self) -> None:
+        # TODO: this should become an icon
+        self.status_label.setText("Paused")
+        self.pause_button.setEnabled(False)
+        self.resume_button.setEnabled(True)
+        self.cancel_button.setEnabled(True)
+
+    def handle_resumed(self) -> None:
+        # TODO: this should become an icon
+        self.status_label.setText("Resumed")
+        self.pause_button.setEnabled(True)
+        self.resume_button.setEnabled(False)
+        self.cancel_button.setEnabled(True)
+
+    def handle_finished(self) -> None:
+        self.finished = True
+        print("DownloadWidget.handle_finished")
+        # TODO: this should become an icon
+        self.status_label.setText("Finished")
+        self.pause_button.setEnabled(False)
+        self.resume_button.setEnabled(False)
+        self.cancel_button.setEnabled(False)
+        pp = self.palette()
+        pp.setColor(self.backgroundRole(), QtGui.QColor(0, 0, 0, 25))
+        self.setPalette(pp)
+
+    def handle_failed(self) -> None:
+        self.failed = True
+        # TODO: this should become an icon
+        self.status_label.setText("Failed")
+        self.pause_button.setEnabled(False)
+        self.resume_button.setEnabled(False)
+        self.cancel_button.setEnabled(False)
+        pp = self.palette()
+        pp.setColor(self.backgroundRole(), QtGui.QColor(0, 0, 0, 25))
+        self.setPalette(pp)
+
+    def handle_canceled(self) -> None:
+        self.canceled = True
+        # TODO: this should become an icon
+        self.status_label.setText("Canceled")
+        self.pause_button.setEnabled(False)
+        self.resume_button.setEnabled(False)
+        self.cancel_button.setEnabled(False)
+
+        font = self.granule_label.font()
+        font.setStrikeOut(True)
+        self.granule_label.setFont(font)
+
+        pp = self.palette()
+        pp.setColor(self.backgroundRole(), QtGui.QColor(0, 0, 0, 25))
+        # bright-ish red
+        pp.setColor(QtGui.QPalette.WindowText, QtGui.QColor(194, 6, 18))
+
+        self.setPalette(pp)
+
+
+    def run(self) -> None:
+        self.download_worker_thread = QtCore.QThread()
+        self.worker = DownloadWorker(self.url, self.destination_filepath)
+        self.worker.moveToThread(self.download_worker_thread)
+
+        self.download_worker_thread.started.connect(self.worker.run)
+        # QUESTION: I'm not clear on how this differs from the worker ones.
+        self.download_worker_thread.finished.connect(self.download_worker_thread.deleteLater)
+        # self.thread.finished.connect(self.handle_thread_finished)
+
+        # Hook up signals from the worker to updates in the widget
+        self.worker.paused.connect(self.handle_paused)
+        self.worker.resumed.connect(self.handle_resumed)
+        self.worker.canceled.connect(self.handle_canceled)
+        self.worker.failed.connect(self.handle_failed)
+        self.worker.finished.connect(self.handle_finished)
+        self.worker.progress.connect(self.handle_progress)
+
+        # For canceled & failed, we won't revisit the download worker thread,
+        # so can clean up
+        self.worker.finished.connect(self.download_worker_thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.worker.failed.connect(self.download_worker_thread.quit)
+        self.worker.failed.connect(self.worker.deleteLater)
+
+        # Hook up signals between the buttons in this widget and the worker.
+        self.request_pause.connect(self.worker.pause_download)
+        self.request_resume.connect(self.worker.resume_download)
+        self.request_cancel.connect(self.worker.cancel_download)
+
+        self.download_worker_thread.start()
+
+    def handle_pause_button_clicked(self) -> None:
+        print(f"User paused download for granule {self.granule}")
+        self.request_pause.emit()
+
+    def handle_resume_button_clicked(self) -> None:
+        print(f"User resumed download for granule {self.granule}")
+        self.request_resume.emit()
+        # self.worker.resume()
+
+    def handle_cancel_button_clicked(self) -> None:
+        print(f"User canceled download for granule {self.granule}")
+        self.request_cancel.emit()
+
+    def handle_help_button_clicked(self) -> None:
+        msg = ("You can manually download this radargram (e.g. using Chrome) from: \n"
+        f"{self.url}\n"
+        "and save it to: \n"
+        f"{self.destination_filepath}")
+        message_box = QtWidgets.QMessageBox()
+        message_box.setText(msg)
+        message_box.exec()
+
+
+class DownloadWorker(QtCore.QObject):
+    """
+    The DownloadWorker class actually handles the download.
+    """
+    paused = QtCore.pyqtSignal()
+    resumed = QtCore.pyqtSignal()  # Also emitted on "running"
+    finished = QtCore.pyqtSignal()
+    failed = QtCore.pyqtSignal()
+    canceled = QtCore.pyqtSignal()
+    progress = QtCore.pyqtSignal(int)
+
+    def __init__(self, url: str, destination_filepath: str) -> None:
+        super().__init__()
+        self.url = url
+        self.destination_filepath = destination_filepath
+        self.pause_requested = False
+        self.resume_requested = False
+        self.cancel_requested = False
+        self.downloading = False
+        self.bytes_received = 0
+        self.if_range: Optional[str] = None
+        self.timeout = 10  # TODO: Up this for production
+        self.temp_file = tempfile.NamedTemporaryFile(delete=False)
+        print(f"DownloadWorker saving to {self.temp_file.name}")
+
+    # TODO: This blocks in the thread; doesn't allow cancel_download slot to be called
+    """
+    def run(self) -> None:
+        req = requests.get(self.url, stream=True, timeout=self.timeout)
+        if req.status_code != 200:
+            print(f"Download failed! Code {req.status_code}")
+            self.failed.emit()
+            return
+        self.download(req)
+    """
+    def resume_download(self) -> None:
+        self.resumed.emit()
+        self.run()
+
+    def run(self) -> None:
+        """
+        When I requested a "resume" a large part of the way through
+        requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='ramadda.data.bas.ac.uk', port=443): Read timed out. (read timeout=10)
+        """
+        if self.downloading:
+            print("Error! called run() when worker is already running.")
+            return
+        # This is needed in order to use the same function for
+        self.pause_requested = False
+        print("DownloadWorker.run()")
+        # At least for BAS's data center, Accept-Ranges is set in GET but not HEAD,
+        # so we can't check ahead of time whether to expect the Range to work.
+        if self.bytes_received > 0 and self.if_range is not None:
+            req_headers = {'Range': f'bytes={self.bytes_received}-',
+                            'If-Range': self.if_range}
+        else:
+            req_headers = {}
+
+        try:
+            # TODO: I'm not sure why I can't get resuming a download to work.
+            #    I've tested that BAS supports resuming using Chrome.
+            #    Leaving this in here for now, since it correctly detects
+            #    that we're starting from scratch.
+            print(f"calling requests.get with headers={req_headers}")
+            req = requests.get(self.url, stream=True, headers=req_headers, timeout=self.timeout)
+            if 'Last-Modified' in req.headers:
+                self.if_range = req.headers['Last-Modified']
+                print(f"Got Last-Modified: {self.if_range} ")
+            else:
+                print(f"Could not find last-modified. Huh. Headers = {req.headers}")
+        except Exception as ex:
+            print("DownloadWorker.run got exception!")
+            print(ex)
+            self.failed.emit()
+            return
+
+        print(f"Request status code: {req.status_code}")
+        print(f"GET headers: {req.request.headers}")
+        if req.status_code == 200:
+            print("Starting download")
+            resuming = False
+        elif req.status_code == 206:
+            print("Resuming download")
+            resuming = True
+        else:
+            print(f"Download failed! Code {req.status_code}")
+            self.failed.emit()
+            return
+
+        self.downloading = True
+        self.download(req, resuming)
+
+    def download(self, req: requests.Response, resuming: bool) -> None:
+        """
+        urllib3.exceptions.ProtocolError: ('Connection broken: IncompleteRead(252794542 bytes read, 266366111 more expected)', IncompleteRead(252794542 bytes read, 266366111 more expected))
+        """
+        chunk_size = 4096
+        # Only append to temp file if we can resume download partway through.
+        # If range requests are not supported, then have to start from the beginning again
+        if resuming:
+            permissions = 'ab'
+        else:
+            permissions = 'wb'
+            self.bytes_received = 0
+
+        with open(self.temp_file.name, permissions) as fp:
+            try:
+                for chunk in req.iter_content(chunk_size):
+                    # processing events here means that if the download has hung,
+                    # we won't be able to cancel it until the next chunk comes
+                    # through (this isn't an interruption...)
+                    QtWidgets.QApplication.processEvents()
+                    if self.cancel_requested or self.pause_requested:
+                        break
+                    self.bytes_received += len(chunk)
+                    fp.write(chunk)
+                    self.progress.emit(self.bytes_received)
+            except requests.exceptions.ChunkedEncodingError as ex:
+                # I saw this error once; however, I'm not sure how to generate it again to test it.
+                # If there was any data in flight, would need to somehow
+                # recover it before continuing.
+                # https://stackoverflow.com/questions/44509423/python-requests-chunkedencodingerrore-requests-iter-lines
+                print("DownloadWorker.download: ChunkedEncodingError.")
+                print(ex)
+                raise ex from None  # Re-raise because we don't handle it yet
+            except requests.exceptions.ReadTimeout as ex:
+                print("DownloadWorker.download: ReadTimeout.")
+                print(ex)
+                # Pausing so user can re-try.
+                # Would it be better to make use of the existing
+                # machinery for pausing, and just set
+                # self.pause_requested = True ??
+                self.paused.emit()
+                self.downloading = False
+                return
+
+            except Exception as ex:
+                print("DownloadWorker.download")
+                print(ex)
+                self.failed.emit()
+
+        if self.cancel_requested:
+            self.canceled.emit()
+        elif self.pause_requested:
+            self.paused.emit()
+        else:
+            print(f"DownloadWorker finished! Moving data to {self.destination_filepath}")
+            shutil.move(self.temp_file.name, self.destination_filepath)
+            self.finished.emit()
+        self.downloading = False
+
+    def pause_download(self) -> None:
+        print("DownloadWorker: pause_download")
+        self.pause_requested = True
+
+    def cancel_download(self) -> None:
+        print("DownloadWorker: cancel_download")
+        self.cancel_requested = True
+
+
+if __name__ == "__main__":
+    app = myApp()
+    app.run()

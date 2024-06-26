@@ -2,6 +2,8 @@ import enum
 import inspect
 import os
 import pathlib
+import sqlite3
+import time
 from typing import Dict, List, Optional, Tuple
 
 import PyQt5.QtCore as QtCore
@@ -40,16 +42,14 @@ from .radar_viewer_window import BasicRadarWindow as RadarWindow
 
 
 class QIceRadarPlugin(QtCore.QObject):
-
     class Operation(enum.IntEnum):
         DOWNLOAD = enum.auto()
         VIEW = enum.auto()
 
-
     def __init__(self, iface) -> None:
         super(QIceRadarPlugin, self).__init__()
         self.iface = iface
-        self.download_widget: Optional[DownloadWindow] = None
+        self.download_window: Optional[DownloadWindow] = None
         # The spatial index needs to be created for each new project
         # TODO: Consider whether to support user switching projects and
         #  thus needing to regenerate the spatial index. (e.g. Arctic / Antarctic switch?)
@@ -100,7 +100,7 @@ class QIceRadarPlugin(QtCore.QObject):
         """
         Required method; called when plugin loaded.
         """
-        print("initGui")
+        QgsMessageLog.logMessage("initGui")
         frame = inspect.currentframe()
         if frame is None:
             errmsg = "Can't find code directory to load icon!"
@@ -110,9 +110,13 @@ class QIceRadarPlugin(QtCore.QObject):
             viewer_icon = QtGui.QIcon()
         else:
             cmd_folder = os.path.split(inspect.getfile(frame))[0]
-            downloader_icon_path = os.path.join(os.path.join(cmd_folder, "img/icons.001.png"))
+            downloader_icon_path = os.path.join(
+                os.path.join(cmd_folder, "img/icons.001.png")
+            )
             downloader_icon = QtGui.QIcon(downloader_icon_path)
-            viewer_icon_path = os.path.join(os.path.join(cmd_folder, "img/icons.002.png"))
+            viewer_icon_path = os.path.join(
+                os.path.join(cmd_folder, "img/icons.002.png")
+            )
             viewer_icon = QtGui.QIcon(viewer_icon_path)
 
         # TODO: May want to support a different tooltip in the menu that
@@ -149,7 +153,7 @@ class QIceRadarPlugin(QtCore.QObject):
         """
         Required method; called when plugin unloaded.
         """
-        print("unload")
+        QgsMessageLog.logMessage("QIceRadarPlugin.unload")
         self.iface.removeToolBarIcon(self.viewer_action)
         self.iface.removeToolBarIcon(self.downloader_action)
         self.iface.removePluginMenu("&Radar Viewer", self.viewer_action)
@@ -278,8 +282,9 @@ class QIceRadarPlugin(QtCore.QObject):
                 except Exception as ex:
                     QgsMessageLog.logMessage(f"{repr(ex)}")
 
-
-    def selected_transect_callback(self, operation: Operation, transect_name: str) -> None:
+    def selected_transect_callback(
+        self, operation: Operation, transect_name: str
+    ) -> None:
         """
         Callback for the QIceRadarSelectionWidget that launches the appropriate
         widget (download, viewer) for the chosen transect.
@@ -389,7 +394,9 @@ class QIceRadarPlugin(QtCore.QObject):
                     )
                     message_box = QtWidgets.QMessageBox()
                     message_box.setTextFormat(QtCore.Qt.RichText)
-                    message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+                    message_box.setTextInteractionFlags(
+                        QtCore.Qt.TextBrowserInteraction
+                    )
                     message_box.setText(msg)
                     message_box.exec()
 
@@ -429,10 +436,63 @@ class QIceRadarPlugin(QtCore.QObject):
                     self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.dw)
             else:
                 if operation == QIceRadarPlugin.Operation.DOWNLOAD:
-                    dcd = DownloadConfirmationDialog(
-                        self.config, self.set_config, feature.attributeMap(), database_file
+                    connection = sqlite3.connect(database_file)
+                    cursor = connection.cursor()
+                    # TODO: Constructing the granule_name like this is problematic;
+                    #   it should be passed around as the identifier.
+                    granule_name = f"{institution}_{campaign}_{granule}"
+                    sql_cmd = f"SELECT * FROM granules where name = '{granule_name}'"
+                    result = cursor.execute(sql_cmd)
+                    rows = result.fetchall()
+                    connection.close()
+                    # QUESTION: How do I want to log this? I need to figure out how these errors
+                    #    will propagate through the system.
+                    # TODO: I dislike this; setting to None requires checking for None later,
+                    #   rather than handling/propagating it right here.
+                    try:
+                        (
+                            _,
+                            download_method,
+                            data_format,
+                            download_method,
+                            url,
+                            destination_path,
+                            filesize,
+                        ) = rows[0]
+                    except:
+                        QgsMessageLog.logMessage(
+                            f"Invalid response {rows} from command {sql_cmd}"
+                        )
+                        (
+                            data_format,
+                            download_method,
+                            url,
+                            destination_path,
+                            filesize,
+                        ) = None, None, None, None, None
+
+                    self.granule_filepath = pathlib.Path(
+                        self.config.rootdir, destination_path
                     )
-                    dcd.download_confirmed.connect(self.start_download)
+
+                    dcd = DownloadConfirmationDialog(
+                        self.config,
+                        self.set_config,
+                        institution,
+                        campaign,
+                        granule,
+                        download_method,
+                        url,
+                        destination_path,
+                        filesize,
+                    )
+
+                    dcd.download_confirmed.connect(
+                        lambda gg=granule,
+                        url=url,
+                        fp=transect_filepath,
+                        fs=filesize: self.start_download(gg, url, fp, fs)
+                    )
                     dcd.run()
                 else:
                     # TODO: This should be made impossible -- only offer already-downloaded
@@ -449,7 +509,9 @@ class QIceRadarPlugin(QtCore.QObject):
                     )
                     message_box = QtWidgets.QMessageBox()
                     message_box.setTextFormat(QtCore.Qt.RichText)
-                    message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+                    message_box.setTextInteractionFlags(
+                        QtCore.Qt.TextBrowserInteraction
+                    )
                     message_box.setText(msg)
                     message_box.exec()
 
@@ -618,18 +680,15 @@ class QIceRadarPlugin(QtCore.QObject):
         ts = QIceRadarSelectionWidget(
             self.iface,
             neighbor_names,
-            lambda nn, op=operation: self.selected_transect_callback(op, nn)
+            lambda nn, op=operation: self.selected_transect_callback(op, nn),
         )
         # Chosen transect is set via callback, rather than direct return value
         ts.run()
 
-
     def ensure_valid_configuration(self) -> bool:
         # First, make sure we at least have the root data directory configured
         if not config_is_valid(self.config):
-            cw = QIceRadarConfigWidget(
-                self.iface, self.config, self.set_config
-            )
+            cw = QIceRadarConfigWidget(self.iface, self.config, self.set_config)
             # Config is set via callback, rather than direct return value
             cw.run()
 
@@ -658,10 +717,19 @@ class QIceRadarPlugin(QtCore.QObject):
         # Should I re-combine them with another "operation" parameter?
         selection_tool = QIceRadarSelectionTool(
             self.iface.mapCanvas(),
-            lambda pt, op=QIceRadarPlugin.Operation.DOWNLOAD: self.selected_point_callback(op, pt)
+            lambda pt,
+            op=QIceRadarPlugin.Operation.DOWNLOAD: self.selected_point_callback(op, pt),
         )
-        selection_tool.deactivated.connect(lambda ch=False: self.downloader_action.setChecked(ch))
-        selection_tool.activated.connect(lambda ch=True: self.downloader_action.setChecked(ch))
+        try:
+            selection_tool.deactivated.connect(
+                lambda ch=False: self.downloader_action.setChecked(ch)
+            )
+            selection_tool.activated.connect(
+                lambda ch=True: self.downloader_action.setChecked(ch)
+            )
+        except AttributeError:
+            # TODO: Figure out why sometimes these actions don't exist at startup
+            pass
         self.iface.mapCanvas().setMapTool(selection_tool)
 
     def run_viewer(self) -> None:
@@ -688,13 +756,21 @@ class QIceRadarPlugin(QtCore.QObject):
             self.prev_map_tool = QgsMapToolPan
         selection_tool = QIceRadarSelectionTool(
             self.iface.mapCanvas(),
-            lambda pt, op=QIceRadarPlugin.Operation.VIEW: self.selected_point_callback(op, pt)
+            lambda pt, op=QIceRadarPlugin.Operation.VIEW: self.selected_point_callback(
+                op, pt
+            ),
         )
-        selection_tool.deactivated.connect(lambda ch=False: self.viewer_action.setChecked(ch))
-        selection_tool.activated.connect(lambda ch=True: self.viewer_action.setChecked(ch))
+        selection_tool.deactivated.connect(
+            lambda ch=False: self.viewer_action.setChecked(ch)
+        )
+        selection_tool.activated.connect(
+            lambda ch=True: self.viewer_action.setChecked(ch)
+        )
         self.iface.mapCanvas().setMapTool(selection_tool)
 
-    def start_download(self):
+    def start_download(
+        self, granule: str, url: str, destination_filepath, filesize: int
+    ):
         """
         After the confirmation dialog has finished, this section
         actually kicks off the download
@@ -705,10 +781,11 @@ class QIceRadarPlugin(QtCore.QObject):
         # Oooooh. drat. the confirmation dialogue can't own the widget.abs
         # So, I need to figure out how to have this emit a signal that the
         # main plugin handles.
-        if self.download_widget is None:
-            self.download_widget = DownloadWindow()
+        if self.download_window is None:
+            self.download_window = DownloadWindow(self.iface)
             self.dock_widget = QtWidgets.QDockWidget("QIceRadar Downloader")
-            self.dock_widget.setWidget(self.download_widget)
+            self.dock_widget.setWidget(self.download_window)
             # TODO: Figure out how to handle the user closing the dock widget
             self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.dock_widget)
         # TODO: add downloadTransectWidget to the download window!
+        self.download_window.download(granule, url, destination_filepath, filesize)
