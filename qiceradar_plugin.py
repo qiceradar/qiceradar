@@ -27,6 +27,7 @@ from qgis.core import (
 )
 from qgis.gui import QgsMapTool, QgsMapToolPan
 
+from .download_widget import DownloadConfirmationDialog
 from .qiceradar_config import UserConfig, config_is_valid, parse_config
 from .qiceradar_config_widget import QIceRadarConfigWidget
 from .qiceradar_selection_widget import (
@@ -34,7 +35,6 @@ from .qiceradar_selection_widget import (
     QIceRadarSelectionWidget,
 )
 from .radar_viewer_data_utils import get_granule_filepath
-from .radar_viewer_download_widget import RadarViewerDownloadWidget
 from .radar_viewer_radargram_widget import RadarViewerRadargramWidget
 from .radar_viewer_window import BasicRadarWindow as RadarWindow
 
@@ -429,7 +429,7 @@ class QIceRadarPlugin(QtCore.QObject):
                     self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.dw)
             else:
                 if operation == QIceRadarPlugin.Operation.DOWNLOAD:
-                    dw = RadarViewerDownloadWidget(
+                    dw = DownloadConfirmationDialog(
                         self.config, self.set_config, feature.attributeMap(), database_file
                     )
                     dw.run()
