@@ -488,6 +488,7 @@ class DownloadWorker(QtCore.QObject):
         self.temp_file = tempfile.NamedTemporaryFile(delete=False)
         print(f"DownloadWorker saving to {self.temp_file.name}")
 
+
     # TODO: This blocks in the thread; doesn't allow cancel_download slot to be called
     """
     def run(self) -> None:

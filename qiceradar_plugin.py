@@ -474,6 +474,11 @@ class QIceRadarPlugin(QtCore.QObject):
                     self.granule_filepath = pathlib.Path(
                         self.config.rootdir, destination_path
                     )
+                    try:
+                        QgsMessageLog.logMessage(f"Creating directory: {self.granule_filepath.parents[0]}")
+                        self.granule_filepath.parents[0].mkdir(parents=True, exist_ok=True)
+                    except Exception as ex:
+                        QgsMessageLog.logMessage(f"Exception encountered in mkdir: {ex}")
 
                     dcd = DownloadConfirmationDialog(
                         self.config,
