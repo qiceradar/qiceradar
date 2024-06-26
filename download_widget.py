@@ -36,6 +36,7 @@ def format_bytes(filesize: int) -> str:
 
 class DownloadConfirmationDialog(QtWidgets.QDialog):
     closed = QtCore.pyqtSignal()
+    download_confirmed = QtCore.pyqtSignal()
     """
     Dialog box that shows user how large the download will be and
     where the file will be saved, before asking for confirmation to
@@ -168,10 +169,10 @@ class DownloadConfirmationDialog(QtWidgets.QDialog):
         self.config_widget.config_saved.connect(self.close)
 
         self.cancel_pushbutton = QtWidgets.QPushButton("Cancel")
-        # TODO: I'm confused by this ...
         self.cancel_pushbutton.clicked.connect(self.close)
         self.download_pushbutton = QtWidgets.QPushButton("Download")
-        self.download_pushbutton.clicked.connect(self.download_clicked)
+        self.download_pushbutton.clicked.connect(self.download_confirmed.emit)
+        self.download_pushbutton.clicked.connect(self.close)
 
         self.button_hbox = QtWidgets.QHBoxLayout()
         self.button_hbox.addWidget(self.cancel_pushbutton)
@@ -195,12 +196,6 @@ class DownloadConfirmationDialog(QtWidgets.QDialog):
         QgsMessageLog.logMessage("DownloadConfirmationDialog.run()")
         self.exec()
 
-    def download_clicked(self, _event):
-        # TODO: remove below mkdir after making sure it's in the other widgets
-        self.granule_filepath.parents[0].mkdir(parents=True, exist_ok=True)
-        QgsMessageLog.logMessage("TODO: Actually download radargram!")
-        self.closed.emit()
-
 
 class HorizontalLine(QtWidgets.QFrame):
     def __init__(self):
@@ -214,3 +209,18 @@ class VerticalLine(QtWidgets.QFrame):
         super(VerticalLine, self).__init__()
         self.setFrameShape(QtWidgets.QFrame.VLine)
         self.setFrameShadow(QtWidgets.QFrame.Sunken)
+
+class DownloadWindow(QtWidgets.QMainWindow):
+    def __init__(self) -> None:
+        super().__init__()
+        self.setWindowTitle("QIceRadar Radargram Downloader")
+        self.setup_ui()
+
+    def setup_ui(self):
+        central_widget = QtWidgets.QWidget()
+        vbox = QtWidgets.QVBoxLayout()
+        label = QtWidgets.QLabel("Hello, world!")
+        vbox.addWidget(label)
+        central_widget.setLayout(vbox)
+        self.setCentralWidget(central_widget)
+

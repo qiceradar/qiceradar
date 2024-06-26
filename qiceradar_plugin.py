@@ -27,7 +27,7 @@ from qgis.core import (
 )
 from qgis.gui import QgsMapTool, QgsMapToolPan
 
-from .download_widget import DownloadConfirmationDialog
+from .download_widget import DownloadConfirmationDialog, DownloadWindow
 from .qiceradar_config import UserConfig, config_is_valid, parse_config
 from .qiceradar_config_widget import QIceRadarConfigWidget
 from .qiceradar_selection_widget import (
@@ -49,7 +49,7 @@ class QIceRadarPlugin(QtCore.QObject):
     def __init__(self, iface) -> None:
         super(QIceRadarPlugin, self).__init__()
         self.iface = iface
-
+        self.download_widget: Optional[DownloadWindow] = None
         # The spatial index needs to be created for each new project
         # TODO: Consider whether to support user switching projects and
         #  thus needing to regenerate the spatial index. (e.g. Arctic / Antarctic switch?)
@@ -429,10 +429,11 @@ class QIceRadarPlugin(QtCore.QObject):
                     self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.dw)
             else:
                 if operation == QIceRadarPlugin.Operation.DOWNLOAD:
-                    dw = DownloadConfirmationDialog(
+                    dcd = DownloadConfirmationDialog(
                         self.config, self.set_config, feature.attributeMap(), database_file
                     )
-                    dw.run()
+                    dcd.download_confirmed.connect(self.start_download)
+                    dcd.run()
                 else:
                     # TODO: This should be made impossible -- only offer already-downloaded
                     #  transects to the viewer selection tooltip.
@@ -692,3 +693,22 @@ class QIceRadarPlugin(QtCore.QObject):
         selection_tool.deactivated.connect(lambda ch=False: self.viewer_action.setChecked(ch))
         selection_tool.activated.connect(lambda ch=True: self.viewer_action.setChecked(ch))
         self.iface.mapCanvas().setMapTool(selection_tool)
+
+    def start_download(self):
+        """
+        After the confirmation dialog has finished, this section
+        actually kicks off the download
+        """
+        # TODO: remove below mkdir after making sure it's in the other widgets
+        # self.granule_filepath.parents[0].mkdir(parents=True, exist_ok=True)
+        QgsMessageLog.logMessage("TODO: Actually download radargram!")
+        # Oooooh. drat. the confirmation dialogue can't own the widget.abs
+        # So, I need to figure out how to have this emit a signal that the
+        # main plugin handles.
+        if self.download_widget is None:
+            self.download_widget = DownloadWindow()
+            self.dock_widget = QtWidgets.QDockWidget("QIceRadar Downloader")
+            self.dock_widget.setWidget(self.download_widget)
+            # TODO: Figure out how to handle the user closing the dock widget
+            self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.dock_widget)
+        # TODO: add downloadTransectWidget to the download window!
