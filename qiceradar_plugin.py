@@ -47,7 +47,11 @@ class QIceRadarPlugin(QtCore.QObject):
         VIEW = enum.auto()
 
     def __init__(self, iface) -> None:
+        """
+        This is called when the plugin is reloaded
+        """
         super(QIceRadarPlugin, self).__init__()
+        QgsMessageLog.logMessage("QIceRadarPlugin.__init__")
         self.iface = iface
         self.download_window: Optional[DownloadWindow] = None
         # The spatial index needs to be created for each new project
@@ -85,9 +89,9 @@ class QIceRadarPlugin(QtCore.QObject):
         except Exception as ex:
             QgsMessageLog.logMessage(f"Error loading config: {ex}")
 
-        # Finally, create the group that we'll use for the plot elements
-        root = QgsProject.instance().layerTreeRoot()
-        self.radar_viewer_group = root.insertGroup(0, "Radar Viewer")
+        # Need to wait for project to be opened before actually creating layer group
+        self.radar_viewer_group = None
+
         self.transect_groups: dict[str, QgsLayerTreeGroup] = {}
         self.trace_features: dict[str, QgsFeature] = {}
         self.trace_layers: dict[str, QgsVectorLayer] = {}
@@ -98,7 +102,7 @@ class QIceRadarPlugin(QtCore.QObject):
 
     def initGui(self) -> None:
         """
-        Required method; called when plugin loaded.
+        Required method; also called when plugin loaded.
         """
         QgsMessageLog.logMessage("initGui")
         frame = inspect.currentframe()
@@ -197,6 +201,26 @@ class QIceRadarPlugin(QtCore.QObject):
         # QgsProject.instance().writeEntry(
         #     "radar_viewer", "user_config", yaml.safe_dump(config_dict)
         # )
+
+    def create_radar_viewer_group(self) -> None:
+        """
+        When QGIS is first started, __init__() and initGui() are called
+        before a project is loaded. So, neither one of them is suitable
+        as a place to initialize layers for the plugin.
+
+        Instead, each time the viewer plugin is activated, it should call this.
+        """
+        root = QgsProject.instance().layerTreeRoot()
+        # TODO: raise an exception here if root is None? (If it is,
+        #   there's nothing the plugin can do.)
+        if root is None:
+            raise Exception("Unable to retrieve layerTreeRoot; viewer will not work")
+
+        radar_group = root.findGroup("Radar Viewer")
+        if radar_group is None:
+            self.radar_viewer_group = root.insertGroup(0, "Radar Viewer")
+        else:
+            self.radar_viewer_group = radar_group
 
     def build_spatial_index(self) -> None:
         """
@@ -742,6 +766,9 @@ class QIceRadarPlugin(QtCore.QObject):
     def run_viewer(self) -> None:
         # The QIceRadar tool is a series of widgets, kicked off by clicking on the icon.
         QgsMessageLog.logMessage("run viewer")
+
+        self.create_radar_viewer_group()
+
         if not self.ensure_valid_configuration():
             return
 
