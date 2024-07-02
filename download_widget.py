@@ -299,7 +299,12 @@ class DownloadWidget(QtWidgets.QWidget):
         self.progress_label = QtWidgets.QLabel("0 / 0")
         self.percent_label = QtWidgets.QLabel("(0%)")
         self.progress_bar = QtWidgets.QProgressBar()
-        self.progress_bar.setRange(0, self.filesize)
+        # We provide our own, more precise, label
+        self.progress_bar.setTextVisible(False)
+        # The QProgressBar only supports up to 32-bit signed ints,
+        # which isn't enough for some of our > 3GB file sizes!
+        # So, we'll plot 100*percent_finished, rather than bytes.
+        self.progress_bar.setRange(0, 100*100)
 
         # mIconTimerPause.svg
         # mActionPlay.svg
@@ -349,7 +354,7 @@ class DownloadWidget(QtWidgets.QWidget):
         self.progress_label.setText(msg)
         pct = 100.0 * progress/self.filesize
         self.percent_label.setText(f"({pct:0.1f}%)")
-        self.progress_bar.setValue(progress)
+        self.progress_bar.setValue(int(100*pct))
 
     def handle_paused(self) -> None:
         # TODO: this should become an icon
