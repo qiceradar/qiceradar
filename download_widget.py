@@ -477,7 +477,8 @@ class DownloadWorker(QtCore.QObject):
     finished = QtCore.pyqtSignal()
     failed = QtCore.pyqtSignal()
     canceled = QtCore.pyqtSignal()
-    progress = QtCore.pyqtSignal(int)
+    # Qt's signals use an int32 if I specify "int" here, so use "object"
+    progress = QtCore.pyqtSignal(object)
 
     def __init__(self, url: str, destination_filepath: str) -> None:
         super().__init__()
