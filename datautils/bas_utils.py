@@ -31,9 +31,14 @@ def load_chirp_data(filepath: str):
         # For now, arbitrarily picking cHG
         chirp_data = dd.variables["chirp_cHG_data"][:].data.transpose()
     elif dd.campaign == "POLARGAP":
-        # TODO: add support for these products?
+        # TODO: add support switching between these products?
         # The POLARGAP season had polarised_chirp_{PPVV,SSHH}_data
-        chirp_data = dd.variables["polarised_chirp_PPVV_data"][:].data.transpose()
+        # (and polarised_pulse_data) for flights 1-23. After that, they
+        # only have chirp_data.
+        try:
+            chirp_data = dd.variables["polarised_chirp_PPVV_data"][:].data.transpose()
+        except KeyError:
+            chirp_data = dd.variables["chirp_data"][:].data.transpose()
     else:
         chirp_data = dd.variables["chirp_data"][:].data.transpose()
 
