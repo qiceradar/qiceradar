@@ -126,7 +126,7 @@ class DownloadConfirmationDialog(QtWidgets.QDialog):
                     "It can be downloaded from: \n",
                     self.url,
                     "\n\n And will be saved to: \n",
-                    str(self.granule_filepath),
+                    str(pathlib.Path(self.user_config.rootdir, self.granule_filepath)),
                     "\n"
                 ]
             )
