@@ -3,14 +3,11 @@ import inspect
 import os
 import pathlib
 import sqlite3
-import time
 from typing import Dict, List, Optional, Tuple
 
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
 import PyQt5.QtWidgets as QtWidgets
-import qgis.core
-import qgis.gui
 import yaml
 from qgis.core import (
     QgsFeature,
@@ -164,14 +161,6 @@ class QIceRadarPlugin(QtCore.QObject):
         self.iface.removePluginMenu("&Radar Downloader", self.downloader_action)
         del self.viewer_action
         del self.downloader_action
-
-    def load_config(self):
-        """
-        Load config from project file.
-        This needs to be separate from __init__, since plugins are loaded when
-        QGIS starts, but the config data is stored in the project directory.
-        """
-        pass
 
     def set_config(self, config: UserConfig) -> None:
         """
@@ -477,7 +466,7 @@ class QIceRadarPlugin(QtCore.QObject):
                         (
                             _,
                             download_method,
-                            data_format,
+                            _data_format,
                             download_method,
                             url,
                             destination_path,
@@ -488,7 +477,7 @@ class QIceRadarPlugin(QtCore.QObject):
                             f"Invalid response {rows} from command {sql_cmd}"
                         )
                         (
-                            data_format,
+                            _data_format,
                             download_method,
                             url,
                             destination_path,
