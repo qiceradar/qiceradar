@@ -495,7 +495,6 @@ class QIceRadarPlugin(QtCore.QObject):
 
                     dcd = DownloadConfirmationDialog(
                         self.config,
-                        self.set_config,
                         institution,
                         campaign,
                         granule,
@@ -504,6 +503,7 @@ class QIceRadarPlugin(QtCore.QObject):
                         destination_path,
                         filesize,
                     )
+                    dcd.configure.connect(self.handle_configure_signal)
 
                     dcd.download_confirmed.connect(
                         lambda gg=granule,
@@ -718,6 +718,11 @@ class QIceRadarPlugin(QtCore.QObject):
         else:
             QgsMessageLog.logMessage(f"Config = {self.config}; ready for use!")
             return True
+
+    def handle_configure_signal(self) -> None:
+        cw = QIceRadarConfigWidget(self.iface, self.config, self.set_config)
+        # Config is set via callback, rather than direct return value
+        cw.run()
 
     def run_downloader(self) -> None:
         QgsMessageLog.logMessage("run downloader")

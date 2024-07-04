@@ -1,9 +1,7 @@
 import pathlib
 import shutil
-import sqlite3
-import subprocess
 import tempfile
-from typing import Callable, Dict, Optional
+from typing import Dict, Optional
 
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
@@ -13,12 +11,6 @@ from PyQt5.QtCore import Qt
 from qgis.core import QgsMessageLog
 
 from .qiceradar_config import UserConfig
-
-# TODO: should have already been configured after download?
-#     (I think this is meant to allow user to change config if
-#     they discvoer it's necessary during a download attempt.)
-from .qiceradar_config_widget import QIceRadarConfigWidget
-from .radar_viewer_data_utils import get_granule_filepath
 
 
 def format_bytes(filesize: int) -> str:
@@ -38,6 +30,8 @@ def format_bytes(filesize: int) -> str:
 
 class DownloadConfirmationDialog(QtWidgets.QDialog):
     closed = QtCore.pyqtSignal()
+    # Emitted when user wants to update configuration
+    configure = QtCore.pyqtSignal()
     download_confirmed = QtCore.pyqtSignal()
     """
     Dialog box that shows user how large the download will be and
@@ -51,7 +45,6 @@ class DownloadConfirmationDialog(QtWidgets.QDialog):
     def __init__(
         self,
         config: UserConfig,
-        config_cb: Callable[[UserConfig], None],
         institution,
         campaign,
         granule,
@@ -63,7 +56,6 @@ class DownloadConfirmationDialog(QtWidgets.QDialog):
         super(DownloadConfirmationDialog, self).__init__()
 
         self.user_config = config
-        self.set_config = config_cb
         self.institution = institution
         self.campaign = campaign
         self.granule = granule
@@ -134,30 +126,21 @@ class DownloadConfirmationDialog(QtWidgets.QDialog):
         self.info_label.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
         self.text_scroll.setWidget(self.info_label)
 
-        self.config_widget = QIceRadarConfigWidget(
-            None, self.user_config, self.set_config
-        )
         # TODO: I don't love this. Better to only create the config
         #   widget if/when needed. Add indirection via self.handle_config_button_clicked
         self.config_pushbutton = QtWidgets.QPushButton("Edit Config")
-        self.config_pushbutton.clicked.connect(self.config_widget.run)
-        # QUESTION: I'm not sure whether it's better to just start over, or
-        #           try to update the config here. User would probably prefer
-        #           being dumped back out into the download window, but getting
-        #           the updated config isn't super clean.
-        #           Easier to have them re-start.
-        # TODO: I think this is a bit confusing; re-think this workflow
-        #   and check how hard it would actually be to dump back into
-        #   download dialog. (Tricky part is that changing the config
-        #   will potentially change SO MUCH STATE, including whether
-        #   a file even needs to be downloaded.)
-        self.config_widget.config_saved.connect(self.close)
+        # This ordering matters! Want to close this widget before
+        # popping up the next one.
+        # Config changes state enough that we force user to re-start the
+        # download widget from the beginning.
+        self.config_pushbutton.clicked.connect(self.close)
+        self.config_pushbutton.clicked.connect(self.configure.emit)
 
         self.cancel_pushbutton = QtWidgets.QPushButton("Cancel")
         self.cancel_pushbutton.clicked.connect(self.close)
         self.download_pushbutton = QtWidgets.QPushButton("Download")
-        self.download_pushbutton.clicked.connect(self.download_confirmed.emit)
         self.download_pushbutton.clicked.connect(self.close)
+        self.download_pushbutton.clicked.connect(self.download_confirmed.emit)
 
         self.button_hbox = QtWidgets.QHBoxLayout()
         self.button_hbox.addWidget(self.cancel_pushbutton)
