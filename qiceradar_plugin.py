@@ -667,6 +667,14 @@ class QIceRadarPlugin(QtCore.QObject):
         segment_layer.changeGeometry(segment_feature.id(), segment_geometry)
         segment_layer.commitChanges()
 
+    def selected_download_point_callback(self, point: QgsPoint):
+        op = QIceRadarPlugin.Operation.DOWNLOAD
+        self.selected_point_callback(op, point)
+
+    def selected_viewer_point_callback(self, point: QgsPoint):
+        op = QIceRadarPlugin.Operation.VIEW
+        self.selected_point_callback(op, point)
+
     # TODO: This works, but only for one radargram. If we want to support more, should probably keep a list of dock widgets!
     def selected_point_callback(self, operation: Operation, point: QgsPointXY) -> None:
         QgsMessageLog.logMessage(f"Got point! {point.x()}, {point.y()}")
@@ -740,22 +748,19 @@ class QIceRadarPlugin(QtCore.QObject):
             self.prev_map_tool = QgsMapToolPan
         # TODO: this lambda is the only place run_download differs from run_viewer
         # Should I re-combine them with another "operation" parameter?
-        selection_tool = QIceRadarSelectionTool(
-            self.iface.mapCanvas(),
-            lambda pt,
-            op=QIceRadarPlugin.Operation.DOWNLOAD: self.selected_point_callback(op, pt),
-        )
+        download_selection_tool = QIceRadarSelectionTool(self.iface.mapCanvas())
+        download_selection_tool.selected.connect(self.selected_download_point_callback)
         try:
-            selection_tool.deactivated.connect(
+            download_selection_tool.deactivated.connect(
                 lambda ch=False: self.downloader_action.setChecked(ch)
             )
-            selection_tool.activated.connect(
+            download_selection_tool.activated.connect(
                 lambda ch=True: self.downloader_action.setChecked(ch)
             )
         except AttributeError:
             # TODO: Figure out why sometimes these actions don't exist at startup
             pass
-        self.iface.mapCanvas().setMapTool(selection_tool)
+        self.iface.mapCanvas().setMapTool(download_selection_tool)
 
     def run_viewer(self) -> None:
         # The QIceRadar tool is a series of widgets, kicked off by clicking on the icon.
@@ -782,19 +787,15 @@ class QIceRadarPlugin(QtCore.QObject):
         if self.prev_map_tool is None:
             # mypy doesn't like this; not sure why QgsMapToolPan isn't accepted as a QgsMapTool, which is its base class
             self.prev_map_tool = QgsMapToolPan
-        selection_tool = QIceRadarSelectionTool(
-            self.iface.mapCanvas(),
-            lambda pt, op=QIceRadarPlugin.Operation.VIEW: self.selected_point_callback(
-                op, pt
-            ),
-        )
-        selection_tool.deactivated.connect(
+        viewer_selection_tool = QIceRadarSelectionTool(self.iface.mapCanvas())
+        viewer_selection_tool.selected.connect(self.selected_viewer_point_callback)
+        viewer_selection_tool.deactivated.connect(
             lambda ch=False: self.viewer_action.setChecked(ch)
         )
-        selection_tool.activated.connect(
+        viewer_selection_tool.activated.connect(
             lambda ch=True: self.viewer_action.setChecked(ch)
         )
-        self.iface.mapCanvas().setMapTool(selection_tool)
+        self.iface.mapCanvas().setMapTool(viewer_selection_tool)
 
     def start_download(
         self, granule: str, url: str, destination_filepath, filesize: int

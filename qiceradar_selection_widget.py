@@ -1,9 +1,8 @@
 from typing import Callable, List
 
+import PyQt5.QtCore as QtCore
 import PyQt5.QtWidgets as QtWidgets
-import qgis.core
-import qgis.gui
-from qgis.core import QgsMessageLog
+from qgis.core import QgsMessageLog, QgsPointXY
 from qgis.gui import QgsMapTool
 
 
@@ -17,15 +16,15 @@ class QIceRadarSelectionTool(QgsMapTool):
     A new tool will be created for each time a qiceradar tooltip
     icon is clicked.
     """
+    selected = QtCore.pyqtSignal(QgsPointXY)
 
-    def __init__(self, canvas, point_callback):
+    def __init__(self, canvas):
         super(QIceRadarSelectionTool, self).__init__(canvas)
-        self.point_callback = point_callback
 
     def canvasReleaseEvent(self, event):
         QgsMessageLog.logMessage("canvas release event!")
         pt = event.mapPoint()
-        self.point_callback(pt)
+        self.selected.emit(pt)
         self.deactivate()
 
 
