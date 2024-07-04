@@ -333,7 +333,7 @@ class QIceRadarPlugin(QtCore.QObject):
                 "<br><br>"
                 "If these are now available, please let us know so we can update the database!"
                 "<br><br>"
-                'Submit an issue: <a href="https://github.com/qiceradar/radar_wrangler/issues/new">https://github.com/qiceradar/radar_wrangler/issues/new</a>'
+                'Submit an issue: <a href="https://github.com/qiceradar/qiceradar_plugin/issues/new">https://github.com/qiceradar/qiceradar_plugin/issues/new</a>'
                 "<br>"
                 'Or send us email: <a href="mailto:qiceradar@gmail.com">qiceradar@gmail.com</a>'
                 "<br><br>"
