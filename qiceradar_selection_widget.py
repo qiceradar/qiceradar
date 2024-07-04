@@ -11,12 +11,12 @@ class QIceRadarSelectionTool(QgsMapTool):
     When activated, allows user to click on map to select closest transects.
 
     This is totally generic between download and visualizer, since
-    it simply calls the provided callback with a QgsPointXY.
+    it simply emits a signal with a QgsPointXY.
 
     A new tool will be created for each time a qiceradar tooltip
     icon is clicked.
     """
-    selected = QtCore.pyqtSignal(QgsPointXY)
+    selected_point = QtCore.pyqtSignal(QgsPointXY)
 
     def __init__(self, canvas):
         super(QIceRadarSelectionTool, self).__init__(canvas)
@@ -24,7 +24,7 @@ class QIceRadarSelectionTool(QgsMapTool):
     def canvasReleaseEvent(self, event):
         QgsMessageLog.logMessage("canvas release event!")
         pt = event.mapPoint()
-        self.selected.emit(pt)
+        self.selected_point.emit(pt)
         self.deactivate()
 
 
@@ -38,21 +38,19 @@ class QIceRadarSelectionWidget(QtWidgets.QDialog):
     For now, both the download and the viewer code are sharing this
     widget; the list of transects to choose between is calculated elsewhere
     """
+    selected_radargram = QtCore.pyqtSignal(str)
 
-    def __init__(
-        self, iface, transects: List[str], transect_callback: Callable[[str], None]
-    ):
+    def __init__(self, iface, transects: List[str]):
         super(QIceRadarSelectionWidget, self).__init__()
         self.iface = iface
         self.transects = transects
-        self.transect_callback = transect_callback
         self.setup_ui()
 
     def ok_pushbutton_clicked(self, _event):
         for rb in self.transect_radiobuttons:
             if rb.isChecked():
-                self.transect_callback(rb.text())
                 self.close()
+                self.selected_radargram.emit(rb.text())
 
     def setup_ui(self):
         self.radio_vbox = QtWidgets.QVBoxLayout()

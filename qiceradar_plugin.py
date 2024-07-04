@@ -705,13 +705,14 @@ class QIceRadarPlugin(QtCore.QObject):
             )
             neighbor_names.append(feature_name)
 
-        ts = QIceRadarSelectionWidget(
+        selection_widget = QIceRadarSelectionWidget(
             self.iface,
-            neighbor_names,
-            lambda nn, op=operation: self.selected_transect_callback(op, nn),
+            neighbor_names
         )
+        selection_widget.selected_radargram.connect(
+        lambda transect, op=operation: self.selected_transect_callback(op, transect))
         # Chosen transect is set via callback, rather than direct return value
-        ts.run()
+        selection_widget.run()
 
     def ensure_valid_configuration(self) -> bool:
         # First, make sure we at least have the root data directory configured
@@ -749,7 +750,7 @@ class QIceRadarPlugin(QtCore.QObject):
         # TODO: this lambda is the only place run_download differs from run_viewer
         # Should I re-combine them with another "operation" parameter?
         download_selection_tool = QIceRadarSelectionTool(self.iface.mapCanvas())
-        download_selection_tool.selected.connect(self.selected_download_point_callback)
+        download_selection_tool.selected_point.connect(self.selected_download_point_callback)
         try:
             download_selection_tool.deactivated.connect(
                 lambda ch=False: self.downloader_action.setChecked(ch)
@@ -788,7 +789,7 @@ class QIceRadarPlugin(QtCore.QObject):
             # mypy doesn't like this; not sure why QgsMapToolPan isn't accepted as a QgsMapTool, which is its base class
             self.prev_map_tool = QgsMapToolPan
         viewer_selection_tool = QIceRadarSelectionTool(self.iface.mapCanvas())
-        viewer_selection_tool.selected.connect(self.selected_viewer_point_callback)
+        viewer_selection_tool.selected_point.connect(self.selected_viewer_point_callback)
         viewer_selection_tool.deactivated.connect(
             lambda ch=False: self.viewer_action.setChecked(ch)
         )
