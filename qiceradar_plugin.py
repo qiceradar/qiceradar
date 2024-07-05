@@ -21,7 +21,9 @@ from qgis.core import (
     QgsPoint,
     QgsPointXY,
     QgsProject,
+    QgsRuleBasedRenderer,
     QgsSpatialIndex,
+    QgsSymbol,
     QgsVectorLayer,
 )
 from qgis.gui import QgsMapTool, QgsMapToolPan
@@ -87,6 +89,9 @@ class QIceRadarPlugin(QtCore.QObject):
 
         # Need to wait for project to be opened before actually creating layer group
         self.radar_viewer_group = None
+        # Similarly, need to wait for project with QIceRadar index to be loaded
+        # before we can modify the renderers to indicate downloaded transects
+        self.download_renderer_added = False
 
         self.transect_groups: dict[str, QgsLayerTreeGroup] = {}
         self.trace_features: dict[str, QgsFeature] = {}
@@ -224,8 +229,7 @@ class QIceRadarPlugin(QtCore.QObject):
                 "Could not find index data. \n\n"
                 "You may need to drag the QIceRadar .qlr file into QGIS. \n\n"
                 "Or, if you renamed the index layer, please revert the name to either "
-                "'ANTARCTIC QIceRadarIndex' or 'ARCTIC QIceRadar Index' \n\n"
-                "Making the group selectable is an existing TODO."
+                "'ANTARCTIC QIceRadarIndex' or 'ARCTIC QIceRadar Index'"
             )
             message_box = QtWidgets.QMessageBox()
             message_box.setText(errmsg)
@@ -733,12 +737,82 @@ class QIceRadarPlugin(QtCore.QObject):
         # Config is set via callback, rather than direct return value
         cw.run()
 
+    def add_download_renderer(self):
+        """
+        We indicate which data has been downloaded by changing the
+        renderer to be rule-based, checking whether the file exists.
+        """
+        # This is copied from building the spatial index
+        QgsMessageLog.logMessage("Trying to modify layer renderers")
+        root = QgsProject.instance().layerTreeRoot()
+        qiceradar_group = root.findGroup("ANTARCTIC QIceRadar Index")
+        if qiceradar_group is None:
+            qiceradar_group = root.findGroup("ARCTIC QIceRadar Index")
+        if qiceradar_group is None:
+            errmsg = (
+                "Could not find index data. \n\n"
+                "You may need to drag the QIceRadar .qlr file into QGIS. \n\n"
+                "Or, if you renamed the index layer, please revert the name to either "
+                "'ANTARCTIC QIceRadarIndex' or 'ARCTIC QIceRadar Index'"
+            )
+            message_box = QtWidgets.QMessageBox()
+            message_box.setText(errmsg)
+            message_box.exec()
+            return
+        else:
+            QgsMessageLog.logMessage("Found QIceRadar group!")
+
+        # Iterate through all layers in the group
+        for ll in qiceradar_group.findLayers():
+            # get the QgsMapLayer from the QgsLayerTreeLayer
+            layer = ll.layer()
+            features = layer.getFeatures()
+            f0 = next(features)
+            # Only need to check availability of single features, since all in
+            # the layer will be the same.
+            if f0.attributeMap()['availability'] in ['u', 'a']:
+                continue
+
+            symbol = QgsSymbol.defaultSymbol(layer.geometryType())
+            renderer = QgsRuleBasedRenderer(symbol)
+
+            root_rule = renderer.rootRule()
+
+            # TODO: For now, this will only work for BAS data! making
+            #  it work for everybody will require having relative filepaths
+            #  in the campaign tables (otherwise, I'd be reconstructing it
+            #  here in a campaign-specific way. Ugh.)
+            dl_rule = root_rule.children()[0].clone()
+            dl_rule.setLabel("Downloaded")
+            region = f0.attributeMap()['region'].upper()
+            institution = f0.attributeMap()['institution']
+            campaign = f0.attributeMap()['campaign']
+            dl_rule.setFilterExpression(f"""file_exists('{self.config.rootdir}/' + "relative_path")""")
+            dl_rule.symbol().setColor(QtGui.QColor(133, 54, 229, 255))
+            root_rule.appendChild(dl_rule)
+
+            else_rule = root_rule.children()[0].clone()
+            else_rule.setLabel("Available")
+            else_rule.setFilterExpression('ELSE')
+            else_rule.symbol().setColor(QtGui.QColor(31, 120, 180, 255))
+            root_rule.appendChild(else_rule)
+
+            root_rule.removeChildAt(0)
+
+            layer.setRenderer(renderer)
+            layer.triggerRepaint()  # This causes it to apply + redraw
+            ll.setExpanded(False)
+
+        self.download_renderer_added = True
+
     def run_downloader(self) -> None:
         QgsMessageLog.logMessage("run downloader")
         if not self.ensure_valid_configuration():
             return
         if self.spatial_index is None:
             self.build_spatial_index()
+        if not self.download_renderer_added:
+            self.add_download_renderer()
         # Don't want to bop back to other qiceradar tool after use;
         # should go back to e.g. zoom tool
         curr_tool = self.iface.mapCanvas().mapTool()
@@ -774,11 +848,11 @@ class QIceRadarPlugin(QtCore.QObject):
 
         # Next, make sure the spatial index has been initialized
         # TODO: detect when project changes and re-initialize!
-        # TODO: For now, the downloader and viewer share a spatial index
-        #  If I wind up creating a second database only showing downloaded
-        #  files, they will need separate indices
         if self.spatial_index is None:
             self.build_spatial_index()
+
+        if not self.download_renderer_added:
+            self.add_download_renderer()
 
         # Create a MapTool to select point on map. After this point, it is callback driven.
         # TODO: This feels like something that should be handled in the SelectionTool,

@@ -1,4 +1,4 @@
-from typing import Callable, List
+from typing import List
 
 import PyQt5.QtCore as QtCore
 import PyQt5.QtWidgets as QtWidgets
