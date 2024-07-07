@@ -179,6 +179,8 @@ class VerticalLine(QtWidgets.QFrame):
         self.setFrameShadow(QtWidgets.QFrame.Sunken)
 
 class DownloadWindow(QtWidgets.QMainWindow):
+    download_finished = QtCore.pyqtSignal()
+
     def __init__(self, iface) -> None:
         super().__init__()
         self.iface = iface
@@ -224,14 +226,15 @@ class DownloadWindow(QtWidgets.QMainWindow):
                 return
 
         print(f"Downloading {granule}")
-
         widget = DownloadWidget(granule, url, filesize, destination_filepath)
         self.download_widgets[granule] = widget
+        self.download_widgets[granule].download_finished.connect(self.download_finished.emit)
         self.scroll_vbox.insertWidget(0, widget)
 
 
 
 class DownloadWidget(QtWidgets.QWidget):
+    download_finished = QtCore.pyqtSignal()
     """
     Widget in charge of downloading a single granule.
     """
@@ -364,6 +367,7 @@ class DownloadWidget(QtWidgets.QWidget):
         pp = self.palette()
         pp.setColor(self.backgroundRole(), QtGui.QColor(0, 0, 0, 25))
         self.setPalette(pp)
+        self.download_finished.emit()
 
     def handle_failed(self) -> None:
         self.failed = True

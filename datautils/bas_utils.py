@@ -6,7 +6,12 @@ import numpy as np
 # * get_trace_times: returns posix time for each trace in radargram
 # * get_sample_times: returns time-since-transmission, in us, for each row in radargram
 # * .data[::row_skip,::col_skip]
-# * set_product(product); since BAS radargrams don't have consistent diensions across products, any caller instantiating this class ALWAYS need to call the above accessors, rather than caching their output.
+# * set_product(product); since BAS radargrams don't have consistent diensions
+#   across products, any caller instantiating this class ALWAYS need to call
+#   the above accessors, rather than caching their output.
+# QUESTION: Better to take product as an argument? Seems like the
+#   path forward for switching between them. However, getting the
+#   edge cases right for switching will be a pain, since the arrays are different sizes.
 
 
 # For now, just using duck typing for the institution-specific radargram classes

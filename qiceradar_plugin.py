@@ -506,7 +506,7 @@ class QIceRadarPlugin(QtCore.QObject):
                         self.config,
                         institution,
                         campaign,
-                        granule,
+                        db_granule_name,
                         download_method,
                         url,
                         destination_path,
@@ -515,7 +515,7 @@ class QIceRadarPlugin(QtCore.QObject):
                     dcd.configure.connect(self.handle_configure_signal)
 
                     dcd.download_confirmed.connect(
-                        lambda gg=granule,
+                        lambda gg=db_granule_name,
                         url=url,
                         fp=transect_filepath,
                         fs=filesize: self.start_download(gg, url, fp, fs)
@@ -743,7 +743,7 @@ class QIceRadarPlugin(QtCore.QObject):
         # Config is set via callback, rather than direct return value
         cw.run()
 
-    def add_download_renderer(self):
+    def update_download_renderer(self):
         """
         We indicate which data has been downloaded by changing the
         renderer to be rule-based, checking whether the file exists.
@@ -819,7 +819,7 @@ class QIceRadarPlugin(QtCore.QObject):
         if self.spatial_index is None:
             self.build_spatial_index()
         if not self.download_renderer_added:
-            self.add_download_renderer()
+            self.update_download_renderer()
         # Don't want to bop back to other qiceradar tool after use;
         # should go back to e.g. zoom tool
         curr_tool = self.iface.mapCanvas().mapTool()
@@ -859,7 +859,7 @@ class QIceRadarPlugin(QtCore.QObject):
             self.build_spatial_index()
 
         if not self.download_renderer_added:
-            self.add_download_renderer()
+            self.update_download_renderer()
 
         # Create a MapTool to select point on map. After this point, it is callback driven.
         # TODO: This feels like something that should be handled in the SelectionTool,
@@ -894,6 +894,7 @@ class QIceRadarPlugin(QtCore.QObject):
         # main plugin handles.
         if self.download_window is None:
             self.download_window = DownloadWindow(self.iface)
+            self.download_window.download_finished.connect(self.update_download_renderer)
             self.dock_widget = QtWidgets.QDockWidget("QIceRadar Downloader")
             self.dock_widget.setWidget(self.download_window)
             # TODO: Figure out how to handle the user closing the dock widget
