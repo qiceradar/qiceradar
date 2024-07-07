@@ -324,6 +324,8 @@ class QIceRadarPlugin(QtCore.QObject):
         segment = feature.attributeMap()["segment"]
         granule = feature.attributeMap()["granule"]
         uri = feature.attributeMap()["uri"]
+        granule_name = feature.attributeMap()["name"]
+        relative_path = feature.attributeMap()["relative_path"]
 
         if availability == "u":
             # TODO: Consider special case for BEDMAP1?
@@ -388,8 +390,8 @@ class QIceRadarPlugin(QtCore.QObject):
                     "Invalid config. Can't download or view radargrams."
                 )
                 return
-            transect_filepath = get_granule_filepath(
-                self.config.rootdir, region, institution, campaign, segment, granule
+            transect_filepath = pathlib.Path(
+                self.config.rootdir, relative_path
             )
             downloaded = transect_filepath is not None and transect_filepath.is_file()
             if downloaded:
@@ -416,7 +418,7 @@ class QIceRadarPlugin(QtCore.QObject):
                     message_box.setText(msg)
                     message_box.exec()
 
-                else:
+                else: # operation == VIEW
                     # TODO: This needs to clean up if there's an exception!
                     # TODO: (So does the widget! I just tested, and it leaves layers when it is closed!)
                     self.setup_qgis_layers(transect_name)
@@ -457,7 +459,6 @@ class QIceRadarPlugin(QtCore.QObject):
                     cursor = connection.cursor()
                     # TODO: Constructing the granule_name like this is problematic;
                     #   it should be passed around as the identifier.
-                    granule_name = f"{institution}_{campaign}_{granule}"
                     sql_cmd = f"SELECT * FROM granules where name = '{granule_name}'"
                     result = cursor.execute(sql_cmd)
                     rows = result.fetchall()
@@ -468,8 +469,12 @@ class QIceRadarPlugin(QtCore.QObject):
                     #   rather than handling/propagating it right here.
                     try:
                         (
-                            _,
-                            download_method,
+                            db_granule_name,
+                            institution,
+                            db_campaign,
+                            segment,
+                            granule,
+                            product,
                             _data_format,
                             download_method,
                             url,
@@ -714,7 +719,8 @@ class QIceRadarPlugin(QtCore.QObject):
             neighbor_names
         )
         selection_widget.selected_radargram.connect(
-        lambda transect, op=operation: self.selected_transect_callback(op, transect))
+            lambda transect, op=operation: self.selected_transect_callback(op, transect)
+        )
         # Chosen transect is set via callback, rather than direct return value
         selection_widget.run()
 
@@ -787,6 +793,7 @@ class QIceRadarPlugin(QtCore.QObject):
             region = f0.attributeMap()['region'].upper()
             institution = f0.attributeMap()['institution']
             campaign = f0.attributeMap()['campaign']
+            # TODO: This may not work on windows ...
             dl_rule.setFilterExpression(f"""file_exists('{self.config.rootdir}/' + "relative_path")""")
             dl_rule.symbol().setColor(QtGui.QColor(133, 54, 229, 255))
             root_rule.appendChild(dl_rule)
