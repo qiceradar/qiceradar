@@ -802,8 +802,8 @@ class QIceRadarPlugin(QtCore.QObject):
             return True
 
     def handle_configure_signal(self) -> None:
-        cw = QIceRadarConfigWidget(self.iface, self.config, self.set_config)
-        # Config is set via callback, rather than direct return value
+        cw = QIceRadarConfigWidget(self.iface, self.config)
+        cw.config_saved.connect(self.set_config)
         cw.run()
 
     def update_download_renderer(self) -> None:
