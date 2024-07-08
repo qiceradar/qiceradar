@@ -97,7 +97,7 @@ class PlotConfig:
     changed at runtime.
     """
 
-    def __init__(self, available_products) -> None:
+    def __init__(self, available_products: List[str]) -> None:
         # TODO(lindzey): Clean this up. shouldn't need to have this in multiple places.
         self.all_products = available_products
         self.all_cmaps = ["gray", "jet", "viridis", "inferno", "seismic", "Greys"]
@@ -232,7 +232,7 @@ class PlotObjects:
         self.crosshair_x = None  # type: Optional[mpl.lines.Line2D]
         self.crosshair_y = None  # type: Optional[mpl.lines.Line2D]
 
-        self.trace_sparklinee: Optional[sparkline.Sparkline] = None
+        self.trace_sparkline: Optional[sparkline.Sparkline] = None
         self.trace_base = None  # type: Optional[mpl.lines.Line2D]
         self.simple_rcoeff_sparkline: Optional[sparkline.Sparkline] = None
         self.rcoeff_sparkline = None
@@ -383,8 +383,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
     # This is hooked up automagically!
     # However, it only works if the focus is on the frame, not the canvas.
     # So, I made the canvas unfocusable...
-    def keyPressEvent(self, event):
-        # type: (QtGui.QKeyEvent) -> None
+    def keyPressEvent(self, event: QtGui.QKeyEvent) -> None:
         if type(event) == QtGui.QKeyEvent:
             self._on_qt_key_press(event)
             # By doing this here, we don't let anybody downstream of this
@@ -394,8 +393,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         else:
             event.ignore()
 
-    def maybe_update_trace(self, trace_num):
-        # type: (int) -> bool
+    def maybe_update_trace(self, trace_num: int) -> bool:
         """
         Called if we want to check for frozen before moving the trace.
         """
@@ -405,8 +403,9 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         else:
             return False
 
-    def initialize_gui_from_params_data(self, plot_params, plot_config):
-        # type: (PlotParams, PlotConfig) -> None
+    def initialize_gui_from_params_data(
+        self, plot_params: PlotParams, plot_config: PlotConfig
+    ) -> None:
         """
         This just sets the current state of various GUI widgets based on:
         * plot params - initial state of buttons
@@ -432,8 +431,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         self.plot_objects.clim_slider.set_range((plot_params.cmin, plot_params.cmax))
         self.plot_objects.clim_slider.set_value(plot_params.clim)
 
-    def update_trace(self, trace_num):
-        # type: (int) -> None
+    def update_trace(self, trace_num: int) -> None:
         """
         Center trace on median, scaled to take up 1/16th of display..
         Raw values are reported in dBm, with a season-dependent offset.
@@ -578,8 +576,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
             ]
             self.parent_xlim_changed_cb(points)
 
-    def data_blit(self):
-        # type: () -> None
+    def data_blit(self) -> None:
         """
         This redraws all the various rcoeff/pick/etc plots, but not the
         radar background.
@@ -603,8 +600,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
 
         self.cursor_blit()
 
-    def cursor_blit(self):
-        # type: () -> None
+    def cursor_blit(self) -> None:
         """
         Restores JUST the background, not any of the mouse-following
         artists, then redraws all of 'em.
@@ -645,11 +641,13 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
     # These were used for the various picking plot objects.
     # leaving around in case we need to add something that behaves
     # like those for blitting.
-    def data_set_invisible(self, plot_objects):
+    def data_set_invisible(self, plot_objects: PlotObjects) -> None:
         return
 
     # TODO(lindzey): It's weird that we need params to set visible, but not for invisible.
-    def data_set_visible(self, plot_objects, plot_params):
+    def data_set_visible(
+        self, plot_objects: PlotObjects, plot_params: PlotParams
+    ) -> None:
         return
 
     def cursor_set_invisible(self, plot_objects: PlotObjects) -> None:
@@ -670,8 +668,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         plot_objects.trace_sparkline.set_visible(plot_params.trace_visible)
         plot_objects.trace_base.set_visible(plot_params.trace_visible)
 
-    def radar_from_pick_coords(self, pick):
-        # type: (Tuple[float, float]) -> Tuple[int, int]
+    def radar_from_pick_coords(self, pick: Tuple[float, float]) -> Tuple[int, int]:
         """
         Converts point in display coords (from the pick axis) into data
         coords in the radar_ax. This thresholds to the shape of the radar
@@ -855,8 +852,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
     # TODO: connect to other canvas events ...
     # http://matplotlib.org/users/event_handling.html
 
-    def _on_mouse_mode_group_pressed(self):
-        # type: () -> None
+    def _on_mouse_mode_group_pressed(self) -> None:
         """
         TODO
         """
@@ -955,8 +951,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         self.update_xlim((xmin, xmax))
         self.full_redraw()
 
-    def _on_full_button_clicked(self):
-        # type: () -> None
+    def _on_full_button_clicked(self) -> None:
         """
         TODO
         """
@@ -984,8 +979,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         self.update_xlim((xmin, xmax))
         self.full_redraw()
 
-    def _on_colormap_group_pressed(self):
-        # type: () -> None
+    def _on_colormap_group_pressed(self) -> None:
         """
         TODO
         """
@@ -1002,8 +996,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
                     self.plot_objects.crosshair_y.set_color(major)
                     self.full_redraw()
 
-    def _on_product_group_pressed(self):
-        # type: () -> None
+    def _on_product_group_pressed(self) -> None:
         """
         TODO
         """
@@ -1093,8 +1086,9 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
             self.plot_params.crosshair_frozen = False  # want it responsive by default.
         self.cursor_blit()
 
-    def _on_motion_notify_event(self, event):
-        # type: (mpl.backend_bases.MotionNotifyEvent) -> None
+    def _on_motion_notify_event(
+        self, event: mpl.backend_bases.MotionNotifyEvent
+    ) -> None:
         """
         When mouse moved on radargram, update trace and crosshair.
         """
@@ -1118,16 +1112,14 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         if trace_changed or crosshair_changed:
             self.cursor_blit()
 
-    def _on_clim_slider_changed(self, clim):
-        # type: (Tuple[int, int]) -> None
+    def _on_clim_slider_changed(self, clim: Tuple[int, int]) -> None:
         """
         TODO
         """
         self.plot_params.clim = clim
         self.full_redraw()
 
-    def _on_quit_button_clicked(self):
-        # type: () -> None
+    def _on_quit_button_clicked(self) -> None:
         """
         TODO
         """
@@ -1162,8 +1154,9 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
     # I know that QObjects are deleted when they fall out of scope ... but
     # this seems to be working with my sporadic, inconsistent assignments to
     # plot_objects vs local vars ...
-    def create_layout(self, plot_params, plot_config):
-        # type: (PlotParams, PlotConfig) -> PlotObjects
+    def create_layout(
+        self, plot_params: PlotParams, plot_config: PlotConfig
+    ) -> PlotObjects:
         """
         Only uses self for connecting callbacks, calling ._on* callbacks, and
         one QtGui call. Does not modify any variables.
@@ -1527,8 +1520,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
 
         return plot_objects
 
-    def format_xlabel(self, trace, pos):
-        # type: (float, int) -> str
+    def format_xlabel(self, trace: float, pos: int) -> str:
         """
         This maps traces to time since start of transect.
         It would be cool to also do distance, but that requires pulling more
@@ -1604,8 +1596,8 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
 class ExperimentalRadarWindow(BasicRadarWindow):
     def __init__(
         self,
-        transect,  # type: str
-        filename=None,  # type: Optional[str]
+        transect: str,
+        filename: Optional[str] = None,
         parent=None,  # type: Optional[Any]
         parent_xlim_changed_cb=None,  # type: Optional[Callable[List[float]]]
         parent_cursor_cb=None,  # type: Optional[Callable[float]]
@@ -1632,8 +1624,9 @@ class ExperimentalRadarWindow(BasicRadarWindow):
         # NB - for now, a hack in conversions.py means that it loads
         # time/positions from deva/psts, so there's no need to pass 'em in here.
 
-    def create_layout(self, plot_params, plot_config):
-        # type: (PlotParams, PlotConfig) -> PlotObjects
+    def create_layout(
+        self, plot_params: PlotParams, plot_config: PlotConfig
+    ) -> PlotObjects:
         """
         TODO
         """
@@ -1794,8 +1787,7 @@ class ExperimentalRadarWindow(BasicRadarWindow):
 
         return plot_objects
 
-    def data_blit(self):
-        # type: () -> None
+    def data_blit(self) -> None:
         """
         TODO
         """
@@ -1842,8 +1834,7 @@ class ExperimentalRadarWindow(BasicRadarWindow):
 
         self.cursor_blit()
 
-    def data_set_invisible(self, plot_objects):
-        # type: (PlotObjects) -> None
+    def data_set_invisible(self, plot_objects: PlotObjects) -> None:
         """
         Set ALL overlays invisible.
         """
@@ -1851,8 +1842,9 @@ class ExperimentalRadarWindow(BasicRadarWindow):
         plot_objects.vert_scale.set_visible(False)
         plot_objects.horiz_scale.set_visible(False)
 
-    def data_set_visible(self, plot_objects, plot_params):
-        # type: (PlotObjects, PlotParams) -> None
+    def data_set_visible(
+        self, plot_objects: PlotObjects, plot_params: PlotParams
+    ) -> None:
         """
         Replot various data overlays based on configuration in plot_params.
         Does NOT turn everything on; only those that are enabled.
@@ -1861,8 +1853,7 @@ class ExperimentalRadarWindow(BasicRadarWindow):
         plot_objects.vert_scale.set_visible(plot_params.vert_scale_visible)
         plot_objects.horiz_scale.set_visible(plot_params.horiz_scale_visible)
 
-    def plot_scalebars(self):
-        # type: () -> None
+    def plot_scalebars(self) -> None:
         """
         TODO
         """
@@ -1895,8 +1886,7 @@ class ExperimentalRadarWindow(BasicRadarWindow):
         for element in self.plot_objects.horiz_scale.elements.values():
             self.plot_objects.radar_ax.draw_artist(element)
 
-    def _on_vert_scale_checkbox_changed(self):
-        # type: () -> None
+    def _on_vert_scale_checkbox_changed(self) -> None:
         """
         TODO
         """
@@ -1906,8 +1896,7 @@ class ExperimentalRadarWindow(BasicRadarWindow):
         # callback the next time around ... but it works again on the 2nd click.
         self.data_blit()
 
-    def _on_vert_scale_length_textbox_edited(self):
-        # type: () -> None
+    def _on_vert_scale_length_textbox_edited(self) -> None:
         """
         Update plot_objects with new length and redraw, after sanity checking.
         """
@@ -1930,8 +1919,7 @@ class ExperimentalRadarWindow(BasicRadarWindow):
             self.plot_params.vert_scale_length = length
             self.data_blit()
 
-    def _on_vert_scale_x0_textbox_edited(self):
-        # type: () -> None
+    def _on_vert_scale_x0_textbox_edited(self) -> None:
         """
         Update plot_objects with new x0 and redraw
         """
@@ -1954,8 +1942,7 @@ class ExperimentalRadarWindow(BasicRadarWindow):
             self.plot_params.vert_scale_x0 = x0
             self.data_blit()
 
-    def _on_vert_scale_y0_textbox_edited(self):
-        # type: () -> None
+    def _on_vert_scale_y0_textbox_edited(self) -> None:
         """
         Update plot_objects with new y0 and redraw
         """
@@ -1978,8 +1965,7 @@ class ExperimentalRadarWindow(BasicRadarWindow):
             self.plot_params.vert_scale_y0 = y0
             self.data_blit()
 
-    def _on_horiz_scale_checkbox_changed(self):
-        # type: () -> None
+    def _on_horiz_scale_checkbox_changed(self) -> None:
         """
         TODO
         """
@@ -1989,8 +1975,7 @@ class ExperimentalRadarWindow(BasicRadarWindow):
         # callback the next time around ... but it works again on the 2nd click.
         self.data_blit()
 
-    def _on_horiz_scale_length_textbox_edited(self):
-        # type: () -> None
+    def _on_horiz_scale_length_textbox_edited(self) -> None:
         """
         Update plot_objects with new length and redraw, after sanity checking.
         """
@@ -2015,8 +2000,7 @@ class ExperimentalRadarWindow(BasicRadarWindow):
 
     # This is crying out for a lambda taking the textbox object and the var it
     # goes into ...
-    def _on_horiz_scale_x0_textbox_edited(self):
-        # type: () -> None
+    def _on_horiz_scale_x0_textbox_edited(self) -> None:
         """
         Update plot_objects with new x0 and redraw
         """
@@ -2039,8 +2023,7 @@ class ExperimentalRadarWindow(BasicRadarWindow):
             self.plot_params.horiz_scale_x0 = x0
             self.data_blit()
 
-    def _on_horiz_scale_y0_textbox_edited(self):
-        # type: () -> None
+    def _on_horiz_scale_y0_textbox_edited(self) -> None:
         """
         Update plot_objects with new y0 and redraw
         """
