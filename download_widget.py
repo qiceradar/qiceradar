@@ -46,25 +46,23 @@ class DownloadConfirmationDialog(QtWidgets.QDialog):
     # TODO: This should be given all the info it needs;
     def __init__(
         self,
-        rootdir: str,
+        dest_filepath: pathlib.Path,
         institution: str,
         campaign: str,
-        granule: str,
+        granule_name: str,
         download_method: str,
         url: str,
-        granule_filepath: pathlib.Path,
         filesize: int,
     ) -> None:
         super(DownloadConfirmationDialog, self).__init__()
 
-        self.rootdir = rootdir
+        self.dest_filepath = dest_filepath
         self.institution = institution
         self.campaign = campaign
-        self.granule = granule
+        self.granule_name = granule_name
 
         self.download_method = download_method
         self.url = url
-        self.granule_filepath = granule_filepath
         self.filesize = filesize
 
         # TODO: We need to check whether the full granule_filepath can be created
@@ -102,9 +100,7 @@ class DownloadConfirmationDialog(QtWidgets.QDialog):
             "".join(
                 [
                     "You requested download of: \n\n",
-                    f"institution: {self.institution} \n",
-                    f"campaign: {self.campaign} \n",
-                    f"granule: {self.granule}",
+                    f"{self.granule_name}",
                 ]
             )
         )
@@ -120,7 +116,7 @@ class DownloadConfirmationDialog(QtWidgets.QDialog):
                     "It can be downloaded from: \n",
                     self.url,
                     "\n\n And will be saved to: \n",
-                    str(pathlib.Path(self.rootdir, self.granule_filepath)),
+                    str(self.dest_filepath),
                     "\n",
                 ]
             )

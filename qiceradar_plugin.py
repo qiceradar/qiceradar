@@ -60,6 +60,11 @@ class QIceRadarPlugin(QtCore.QObject):
         super(QIceRadarPlugin, self).__init__()
         QgsMessageLog.logMessage("QIceRadarPlugin.__init__")
         self.iface = iface
+
+        # TODO: Probably better to get this from the radar_viewer / radar_downloader
+        self.supported_data_formats = ["bas_netcdf"]
+        self.supported_download_methods = ["wget"]
+
         self.download_window: Optional[DownloadWindow] = None
         # The spatial index needs to be created for each new project
         # TODO: Consider whether to support user switching projects and
@@ -79,7 +84,7 @@ class QIceRadarPlugin(QtCore.QObject):
         self.transect_name_lookup: Dict[str, Tuple[str, int]] = {}
 
         # Cache this when starting the selection tool in order to reset state
-        self.prev_map_tool: Optional[QgsMapTool] = None
+        self.prev_map_tool_type: Optional[type] = None
 
         # Try loading config when plugin initialized (before project has been selected)
         self.config = UserConfig()
@@ -476,6 +481,8 @@ class QIceRadarPlugin(QtCore.QObject):
         """
         Callback for the QIceRadarSelectionWidget that launches the appropriate
         widget (download, viewer) for the chosen transect.
+        They share a callback because there is a common set of checks before
+        either QIceRadar widget can be run.
         """
         QgsMessageLog.logMessage(f"{transect_name} selected!")
         layer_id, feature_id = self.transect_name_lookup[transect_name]
@@ -502,233 +509,93 @@ class QIceRadarPlugin(QtCore.QObject):
         # database that also provided the geometry information for this
         # layer.
         database_file = layer.source().split("|")[0]
+        connection = sqlite3.connect(database_file)
+        cursor = connection.cursor()
 
-        availability = feature.attributeMap()["availability"]
-        institution = feature.attributeMap()["institution"]
-        region = feature.attributeMap()["region"]
-        campaign = feature.attributeMap()["campaign"]
-        segment = feature.attributeMap()["segment"]
-        granule = feature.attributeMap()["granule"]
-        uri = feature.attributeMap()["uri"]
-        granule_name = feature.attributeMap()["name"]
-        relative_path = feature.attributeMap()["relative_path"]
+        sql_cmd = f"SELECT * FROM granules where name is '{granule_name}'"
+        result = cursor.execute(sql_cmd)
+        rows = result.fetchall()
+        try:
+            db_granule = db_utils.DatabaseGranule(*rows[0])
+        except Exception as ex:
+            QgsMessageLog.logMessage(f"Invalid response {rows} from command {sql_cmd}")
+            raise (ex)
 
-        if availability == "u":
-            # TODO: Consider special case for BEDMAP1?
-            msg = (
-                "We have not found publicly-available radargrams for this transect."
-                "<br><br>"
-                f"Institution: {institution}"
-                "<br>"
-                f"Campaign: {campaign}"
-                "<br><br>"
-                "If these are now available, please let us know so we can update the database!"
-                "<br><br>"
-                'Submit an issue: <a href="https://github.com/qiceradar/qiceradar_plugin/issues/new">https://github.com/qiceradar/qiceradar_plugin/issues/new</a>'
-                "<br>"
-                'Or send us email: <a href="mailto:qiceradar@gmail.com">qiceradar@gmail.com</a>'
-                "<br><br>"
-                "If this is your data and you're thinking about releasing it, feel free to get in touch. We'd love to help if we can."
+        sql_cmd = f"SELECT * FROM campaigns where name is '{db_granule.db_campaign}'"
+        result = cursor.execute(sql_cmd)
+        rows = result.fetchall()
+        try:
+            db_campaign = db_utils.DatabaseCampaign(*rows[0])
+        except Exception as ex:
+            QgsMessageLog.logMessage(f"Invalid response {rows} from command {sql_cmd}")
+            raise (ex)
+
+        connection.close()
+
+        if operation == QIceRadarPlugin.Operation.DOWNLOAD:
+            self.download_selected_transect(self.config.rootdir, db_granule)
+        elif operation == QIceRadarPlugin.Operation.VIEW:
+            self.view_selected_transect(self.config.rootdir, db_granule, db_campaign)
+
+    def launch_radar_downloader(
+        self, dest_filepath: pathlib.Path, db_granule: db_utils.DatabaseGranule
+    ) -> None:
+        try:
+            QgsMessageLog.logMessage(f"Creating directory: {dest_filepath.parents[0]}")
+            dest_filepath.parents[0].mkdir(parents=True, exist_ok=True)
+        except Exception as ex:
+            QgsMessageLog.logMessage(f"Exception encountered in mkdir: {ex}")
+        dcd = DownloadConfirmationDialog(
+            dest_filepath,
+            db_granule.institution,
+            db_granule.db_campaign,
+            db_granule.granule_name,
+            db_granule.download_method,
+            db_granule.url,
+            db_granule.filesize,
+        )
+        dcd.configure.connect(self.handle_configure_signal)
+
+        dcd.download_confirmed.connect(
+            lambda gg=db_granule.granule_name, url=db_granule.url, fp=dest_filepath, fs=db_granule.filesize: self.start_download(
+                gg, url, fp, fs
             )
-            message_box = QtWidgets.QMessageBox()
-            message_box.setTextFormat(QtCore.Qt.RichText)
-            message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
-            message_box.setText(msg)
-            message_box.exec()
-            return
-        elif availability == "a":
-            # TODO: Consider special case for information about Stanford's digitization efforts?
-            # TODO: Rather than "available"/"Unavailable", maybe database should
-            #   have enum for what format the data IS, and then the code decides
-            #   whether it's supported?
-            # TODO: This may also be a prompt to update the code itself / present
-            #   a link to the page documenting supported formats.
-            # TODO: uri needs to be a proper link!
-            msg = (
-                "These radargrams are available, but their format is not currently supported in the viewer "
-                "<br><br>"
-                f"Institution: {institution}"
-                "<br>"
-                f"Campaign: {campaign}"
-                "<br>"
-                f"Segment: {segment}"
-                "<br>"
-                f"URI: {uri}"
-                "<br><br>"
-                "If these are particularly important to your work, let us know! "
-                "This feedback will help prioritize future development efforts. "
-                "<br><br>"
-                'Submit an issue: <a href="https://github.com/qiceradar/radar_viewer/issues/new">https://github.com/qiceradar/radar_viewer/issues/new</a>'
-                "<br>"
-                'Or send us an email: <a href="mailto:qiceradar@gmail.com">qiceradar@gmail.com</a>'
+        )
+        dcd.run()
+
+    def launch_radar_viewer(
+        self,
+        transect_filepath: pathlib.Path,
+        db_granule: db_utils.DatabaseGranule,
+        db_campaign: db_utils.DatabaseCampaign,
+    ) -> None:
+        # TODO: This needs to clean up if there's an exception!
+        # TODO: (So does the widget! I just tested, and it leaves layers when it is closed!)
+        self.setup_qgis_layers(db_granule.granule_name)
+
+        trace_cb = (
+            lambda lon, lat, tt=db_granule.granule_name: self.update_trace_callback(
+                tt, lon, lat
             )
-            message_box = QtWidgets.QMessageBox()
-            message_box.setTextFormat(QtCore.Qt.RichText)
-            message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
-            message_box.setText(msg)
-            message_box.exec()
-        elif availability == "s":
-            # mypy doesn't recognize the first option as doing the same check, so
-            # flags get_granule_filepath as having incompatible arguments.
-            # if not config_is_valid(self.config):
-            if self.config.rootdir is None:
-                QgsMessageLog.logMessage(
-                    "Invalid config. Can't download or view radargrams."
-                )
-                return
-            transect_filepath = pathlib.Path(
-                self.config.rootdir, relative_path
+        )
+        selection_cb = (
+            lambda pts, tt=db_granule.granule_name: self.update_radar_xlim_callback(
+                tt, pts
             )
-            downloaded = transect_filepath is not None and transect_filepath.is_file()
-            if downloaded:
-                if operation == QIceRadarPlugin.Operation.DOWNLOAD:
-                    # TODO: Should make this impossible by filtering the selection
-                    #   based on un-downloaded transects.
-                    #   I *could* make the unavailable impossible, but I want to display info
-                    #   about them, and a 3rd tooltip doesn't make sense.
-                    msg = (
-                        "Already downloaded transect!"
-                        "<br>"
-                        f"Institution: {institution}"
-                        "<br>"
-                        f"Campaign: {campaign}"
-                        "<br>"
-                        f"Segment: {segment}"
-                        "<br>"
-                    )
-                    message_box = QtWidgets.QMessageBox()
-                    message_box.setTextFormat(QtCore.Qt.RichText)
-                    message_box.setTextInteractionFlags(
-                        QtCore.Qt.TextBrowserInteraction
-                    )
-                    message_box.setText(msg)
-                    message_box.exec()
+        )
+        rw = RadarWindow(
+            transect_filepath,
+            db_granule,
+            db_campaign,
+            parent_xlim_changed_cb=selection_cb,
+            parent_cursor_cb=trace_cb,
+        )
+        points = list(zip(rw.radar_data.lon, rw.radar_data.lat))
+        self.update_segment_points(db_granule.granule_name, points)
 
-                else: # operation == VIEW
-                    # TODO: This needs to clean up if there's an exception!
-                    # TODO: (So does the widget! I just tested, and it leaves layers when it is closed!)
-                    self.setup_qgis_layers(transect_name)
-
-                    # Also, my NUI plugin had a "cleanup" step where it unsubscribed to LCM callbacks.
-                    # I'm not sure if something similar is necessary here,
-                    # or if we can let the user just close the window.
-                    # (We probably want to clean up the entries in the layers panel!)
-
-                    trace_cb = (
-                        lambda lon, lat, tt=transect_name: self.update_trace_callback(
-                            tt, lon, lat
-                        )
-                    )
-                    selection_cb = (
-                        lambda pts, tt=transect_name: self.update_radar_xlim_callback(
-                            tt, pts
-                        )
-                    )
-                    rw = RadarWindow(
-                        institution,
-                        campaign,
-                        transect_filepath,
-                        granule,
-                        database_file,
-                        parent_xlim_changed_cb=selection_cb,
-                        parent_cursor_cb=trace_cb,
-                    )
-                    points = list(zip(rw.radar_data.lon, rw.radar_data.lat))
-                    self.update_segment_points(transect_name, points)
-
-                    self.dw = QtWidgets.QDockWidget(transect_name)
-                    self.dw.setWidget(rw)
-                    self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.dw)
-            else:
-                if operation == QIceRadarPlugin.Operation.DOWNLOAD:
-                    connection = sqlite3.connect(database_file)
-                    cursor = connection.cursor()
-                    # TODO: Constructing the granule_name like this is problematic;
-                    #   it should be passed around as the identifier.
-                    sql_cmd = f"SELECT * FROM granules where name = '{granule_name}'"
-                    result = cursor.execute(sql_cmd)
-                    rows = result.fetchall()
-                    connection.close()
-                    # QUESTION: How do I want to log this? I need to figure out how these errors
-                    #    will propagate through the system.
-                    # TODO: I dislike this; setting to None requires checking for None later,
-                    #   rather than handling/propagating it right here.
-                    try:
-                        (
-                            db_granule_name,
-                            institution,
-                            db_campaign,
-                            segment,
-                            granule,
-                            product,
-                            _data_format,
-                            download_method,
-                            url,
-                            destination_path,
-                            filesize,
-                        ) = rows[0]
-                    except:
-                        QgsMessageLog.logMessage(
-                            f"Invalid response {rows} from command {sql_cmd}"
-                        )
-                        (
-                            _data_format,
-                            download_method,
-                            url,
-                            destination_path,
-                            filesize,
-                        ) = None, None, None, None, None
-
-                    self.granule_filepath = pathlib.Path(
-                        self.config.rootdir, destination_path
-                    )
-                    try:
-                        QgsMessageLog.logMessage(f"Creating directory: {self.granule_filepath.parents[0]}")
-                        self.granule_filepath.parents[0].mkdir(parents=True, exist_ok=True)
-                    except Exception as ex:
-                        QgsMessageLog.logMessage(f"Exception encountered in mkdir: {ex}")
-
-                    dcd = DownloadConfirmationDialog(
-                        self.config,
-                        institution,
-                        campaign,
-                        db_granule_name,
-                        download_method,
-                        url,
-                        destination_path,
-                        filesize,
-                    )
-                    dcd.configure.connect(self.handle_configure_signal)
-
-                    dcd.download_confirmed.connect(
-                        lambda gg=db_granule_name,
-                        url=url,
-                        fp=transect_filepath,
-                        fs=filesize: self.start_download(gg, url, fp, fs)
-                    )
-                    dcd.run()
-                else:
-                    # TODO: This should be made impossible -- only offer already-downloaded
-                    #  transects to the viewer selection tooltip.
-                    msg = (
-                        "Must download transect before viewing it"
-                        "<br>"
-                        f"Institution: {institution}"
-                        "<br>"
-                        f"Campaign: {campaign}"
-                        "<br>"
-                        f"Segment: {segment}"
-                        "<br>"
-                        f"(Looking for data in: {transect_filepath})"
-                        "<br>"
-                    )
-                    message_box = QtWidgets.QMessageBox()
-                    message_box.setTextFormat(QtCore.Qt.RichText)
-                    message_box.setTextInteractionFlags(
-                        QtCore.Qt.TextBrowserInteraction
-                    )
-                    message_box.setText(msg)
-                    message_box.exec()
+        self.dw = QtWidgets.QDockWidget(db_granule.granule_name)
+        self.dw.setWidget(rw)
+        self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.dw)
 
     def setup_qgis_layers(self, transect_name: str) -> None:
         if self.radar_viewer_group is None:
@@ -1032,7 +899,9 @@ class QIceRadarPlugin(QtCore.QObject):
         # TODO: this lambda is the only place run_download differs from run_viewer
         # Should I re-combine them with another "operation" parameter?
         download_selection_tool = QIceRadarSelectionTool(self.iface.mapCanvas())
-        download_selection_tool.selected_point.connect(self.selected_download_point_callback)
+        download_selection_tool.selected_point.connect(
+            self.selected_download_point_callback
+        )
         try:
             download_selection_tool.deactivated.connect(
                 lambda ch=False: self.downloader_action.setChecked(ch)
