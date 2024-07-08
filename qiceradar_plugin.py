@@ -890,12 +890,12 @@ class QIceRadarPlugin(QtCore.QObject):
             self.update_download_renderer()
         # Don't want to bop back to other qiceradar tool after use;
         # should go back to e.g. zoom tool
-        curr_tool = self.iface.mapCanvas().mapTool()
-        if not isinstance(curr_tool, QIceRadarSelectionTool):
-            self.prev_map_tool = curr_tool
-        if self.prev_map_tool is None:
+        curr_tool_type = type(self.iface.mapCanvas().mapTool())
+        if not issubclass(curr_tool_type, QIceRadarSelectionTool):
+            self.prev_map_tool_type = curr_tool_type
+        if self.prev_map_tool_type is None:
             # mypy doesn't like this; not sure why QgsMapToolPan isn't accepted as a QgsMapTool, which is its base class
-            self.prev_map_tool = QgsMapToolPan
+            self.prev_map_tool_type = QgsMapToolPan
         # TODO: this lambda is the only place run_download differs from run_viewer
         # Should I re-combine them with another "operation" parameter?
         download_selection_tool = QIceRadarSelectionTool(self.iface.mapCanvas())
@@ -935,18 +935,27 @@ class QIceRadarPlugin(QtCore.QObject):
         # TODO: This feels like something that should be handled in the SelectionTool,
         #  not in the plugin
         # mypy doesn't like this: "expression has type "type[QgsMapToolPan]", variable has type "QgsMapTool | None")"
-        self.prev_map_tool = self.iface.mapCanvas().mapTool()
-        if self.prev_map_tool is None:
-            # mypy doesn't like this; not sure why QgsMapToolPan isn't accepted as a QgsMapTool, which is its base class
-            self.prev_map_tool = QgsMapToolPan
+        prev_map_tool = self.iface.mapCanvas().mapTool()
+        if prev_map_tool is None:
+            self.prev_map_tool_type = QgsMapToolPan
+        else:
+            self.prev_map_tool_type = type(prev_map_tool)
         viewer_selection_tool = QIceRadarSelectionTool(self.iface.mapCanvas())
-        viewer_selection_tool.selected_point.connect(self.selected_viewer_point_callback)
-        viewer_selection_tool.deactivated.connect(
-            lambda ch=False: self.viewer_action.setChecked(ch)
+        viewer_selection_tool.selected_point.connect(
+            self.selected_viewer_point_callback
         )
-        viewer_selection_tool.activated.connect(
-            lambda ch=True: self.viewer_action.setChecked(ch)
-        )
+        try:
+            # TODO: why does mypy not like this?
+            viewer_selection_tool.deactivated.connect(
+                lambda ch=False: self.viewer_action.setChecked(ch)
+            )
+            viewer_selection_tool.activated.connect(
+                lambda ch=True: self.viewer_action.setChecked(ch)
+            )
+        except AttributeError:
+            # TODO: Figure out why sometimes these actions don't exist at startup
+            pass
+
         self.iface.mapCanvas().setMapTool(viewer_selection_tool)
 
     def start_download(
