@@ -3,7 +3,7 @@ from typing import List
 import PyQt5.QtCore as QtCore
 import PyQt5.QtWidgets as QtWidgets
 from qgis.core import QgsMessageLog, QgsPointXY
-from qgis.gui import QgsMapTool
+from qgis.gui import QgisInterface, QgsMapCanvas, QgsMapMouseEvent, QgsMapTool
 
 
 class QIceRadarSelectionTool(QgsMapTool):
@@ -16,12 +16,13 @@ class QIceRadarSelectionTool(QgsMapTool):
     A new tool will be created for each time a qiceradar tooltip
     icon is clicked.
     """
+
     selected_point = QtCore.pyqtSignal(QgsPointXY)
 
-    def __init__(self, canvas):
+    def __init__(self, canvas: QgsMapCanvas) -> None:
         super(QIceRadarSelectionTool, self).__init__(canvas)
 
-    def canvasReleaseEvent(self, event):
+    def canvasReleaseEvent(self, event: QgsMapMouseEvent) -> None:
         QgsMessageLog.logMessage("canvas release event!")
         pt = event.mapPoint()
         self.selected_point.emit(pt)
@@ -38,21 +39,22 @@ class QIceRadarSelectionWidget(QtWidgets.QDialog):
     For now, both the download and the viewer code are sharing this
     widget; the list of transects to choose between is calculated elsewhere
     """
+
     selected_radargram = QtCore.pyqtSignal(str)
 
-    def __init__(self, iface, transects: List[str]):
+    def __init__(self, iface: QgisInterface, transects: List[str]) -> None:
         super(QIceRadarSelectionWidget, self).__init__()
         self.iface = iface
         self.transects = transects
         self.setup_ui()
 
-    def ok_pushbutton_clicked(self, _event):
+    def ok_pushbutton_clicked(self, _checked: bool) -> None:
         for rb in self.transect_radiobuttons:
             if rb.isChecked():
                 self.close()
                 self.selected_radargram.emit(rb.text())
 
-    def setup_ui(self):
+    def setup_ui(self) -> None:
         self.radio_vbox = QtWidgets.QVBoxLayout()
         self.transect_radiobuttons = []
         for transect in self.transects:
@@ -75,7 +77,7 @@ class QIceRadarSelectionWidget(QtWidgets.QDialog):
         self.setLayout(self.vbox)
         self.setWindowTitle("Select Transect")
 
-    def run(self):
+    def run(self) -> None:
         QgsMessageLog.logMessage("QIceRadarSelectionWidget.run()")
         # NB: using `exec` creates a modal dialogue, that the user must
         #     deal with before continuing to interact with QGIS
