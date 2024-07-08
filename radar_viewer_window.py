@@ -690,8 +690,8 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
 
     def _on_left_rect_click_zoom(
         self,
-        eclick: mpl.backend_bases.MouseEvent,
-        erelease: mpl.backend_bases.MouseEvent,
+        eclick: matplotlib.backend_bases.MouseEvent,
+        erelease: matplotlib.backend_bases.MouseEvent,
     ) -> None:
         """left click-and-drag zooms in."""
         num_traces = self.radar_data.num_traces
@@ -716,8 +716,8 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
 
     def _on_right_rect_click_zoom(
         self,
-        eclick: mpl.backend_bases.MouseEvent,
-        erelease: mpl.backend_bases.MouseEvent,
+        eclick: matplotlib.backend_bases.MouseEvent,
+        erelease: matplotlib.backend_bases.MouseEvent,
     ) -> None:
         """
         Right click-and-drag zooms out s.t. the region presently displayed
@@ -760,8 +760,8 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
 
     def _on_rect_click_pan(
         self,
-        eclick: mpl.backend_bases.MouseEvent,
-        erelease: mpl.backend_bases.MouseEvent,
+        eclick: matplotlib.backend_bases.MouseEvent,
+        erelease: matplotlib.backend_bases.MouseEvent,
     ) -> None:
         """left and right clicks both pan identically."""
         xmin, xmax = self.plot_params.curr_xlim
@@ -781,7 +781,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         self.update_ylim((ymax - dy, ymin - dy))
         self.full_redraw()
 
-    def _on_resize_event(self, event: mpl.backend_bases.ResizeEvent) -> None:
+    def _on_resize_event(self, event: matplotlib.backend_bases.ResizeEvent) -> None:
         """
         TODO
         """
@@ -1046,7 +1046,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         self.cursor_blit()
 
     def _on_motion_notify_event(
-        self, event: mpl.backend_bases.MotionNotifyEvent
+        self, event: matplotlib.backend_bases.MouseEvent
     ) -> None:
         """
         When mouse moved on radargram, update trace and crosshair.
