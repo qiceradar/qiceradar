@@ -30,6 +30,7 @@ import sys
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import matplotlib as mpl
+import matplotlib.backend_bases
 import numpy as np
 
 mpl.use("Qt5Agg")

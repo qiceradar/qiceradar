@@ -340,17 +340,13 @@ class QIceRadarPlugin(QtCore.QObject):
         message_box.setText(msg)
         message_box.exec()
 
-    def display_unsupported_download_method_dialog(
-        self, db_granule: db_utils.DatabaseGranule
-    ) -> None:
+    def display_unsupported_download_method_dialog(self, granule_name: str) -> None:
         msg = (
-            "These radargrams are available, but we are not able to assist with downloading them"
+            "This radargram is available, but we are not able to assist with downloading it."
             "<br><br>"
-            f"Granule: {db_granule.granule_name}"
-            "<br>"
-            f"method: {db_granule.download_method}"
+            f"Granule: {granule_name}"
             "<br><br>"
-            "If these are particularly important to your work, let us know! "
+            "If this campaign is particularly important to your work, let us know! "
             "This feedback will help prioritize future development efforts. "
             "<br><br>"
             'Submit an issue: <a href="https://github.com/qiceradar/radar_viewer/issues/new">https://github.com/qiceradar/radar_viewer/issues/new</a>'
@@ -362,20 +358,16 @@ class QIceRadarPlugin(QtCore.QObject):
         message_box.setText(msg)
         message_box.exec()
 
-    def display_unsupported_data_format_dialog(
-        self, data_format: str, institution: str, campaign: str
-    ) -> None:
+    def display_unsupported_data_format_dialog(self, granule_name: str) -> None:
         # TODO: Consider special case for information about Stanford's digitization efforts?
         # TODO: This may also be a prompt to update the code itself / present
         #   a link to the page documenting supported formats.
         msg = (
-            "These radargrams are available, but their format is not currently supported in the viewer "
+            "This radargram is available, but its format is not currently supported in the viewer "
             "<br><br>"
-            f"Institution: {institution}"
-            "<br>"
-            f"Campaign: {campaign}"
+            f"Granule: {granule_name}"
             "<br><br>"
-            "If these are particularly important to your work, let us know! "
+            "If this campaign is particularly important to your work, let us know! "
             "This feedback will help prioritize future development efforts. "
             "<br><br>"
             'Submit an issue: <a href="https://github.com/qiceradar/radar_viewer/issues/new">https://github.com/qiceradar/radar_viewer/issues/new</a>'
@@ -471,7 +463,7 @@ class QIceRadarPlugin(QtCore.QObject):
         if already_downloaded:
             self.display_already_downloaded_dialog(db_granule)
         elif db_granule.download_method not in self.supported_download_methods:
-            self.display_unsupported_download_method_dialog(db_granule)
+            self.display_unsupported_download_method_dialog(db_granule.granule_name)
         else:
             self.launch_radar_downloader(transect_filepath, db_granule)
 
@@ -517,25 +509,53 @@ class QIceRadarPlugin(QtCore.QObject):
         rows = result.fetchall()
         try:
             db_granule = db_utils.DatabaseGranule(*rows[0])
+        except IndexError as ex:
+            QgsMessageLog.logMessage(
+                f"Cannot select {granule_name}. Invalid response {rows} from command {sql_cmd}"
+            )
+            db_granule = None
         except Exception as ex:
             QgsMessageLog.logMessage(f"Invalid response {rows} from command {sql_cmd}")
-            raise (ex)
+            db_granule = None
 
-        sql_cmd = f"SELECT * FROM campaigns where name is '{db_granule.db_campaign}'"
-        result = cursor.execute(sql_cmd)
-        rows = result.fetchall()
-        try:
-            db_campaign = db_utils.DatabaseCampaign(*rows[0])
-        except Exception as ex:
-            QgsMessageLog.logMessage(f"Invalid response {rows} from command {sql_cmd}")
-            raise (ex)
+        if db_granule is not None:
+            sql_cmd = (
+                f"SELECT * FROM campaigns where name is '{db_granule.db_campaign}'"
+            )
+            result = cursor.execute(sql_cmd)
+            rows = result.fetchall()
+            try:
+                db_campaign = db_utils.DatabaseCampaign(*rows[0])
+            except Exception as ex:
+                QgsMessageLog.logMessage(
+                    f"Invalid response {rows} from command {sql_cmd}"
+                )
+                db_campaign = None
 
         connection.close()
 
-        if operation == QIceRadarPlugin.Operation.DOWNLOAD:
-            self.download_selected_transect(self.config.rootdir, db_granule)
-        elif operation == QIceRadarPlugin.Operation.VIEW:
-            self.view_selected_transect(self.config.rootdir, db_granule, db_campaign)
+        if db_granule is None:
+            availability = feature.attributeMap()["availability"]
+            if availability == "u":
+                institution = feature.attributeMap()["institution"]
+                campaign = feature.attributeMap()["campaign"]
+                self.display_unavailable_dialog(institution, campaign)
+            else:
+                if operation == QIceRadarPlugin.Operation.DOWNLOAD:
+                    self.display_unsupported_download_method_dialog(granule_name)
+                elif operation == QIceRadarPlugin.Operation.VIEW:
+                    self.display_unsupported_data_format_dialog(granule_name)
+        else:
+            if operation == QIceRadarPlugin.Operation.DOWNLOAD:
+                self.download_selected_transect(self.config.rootdir, db_granule)
+            elif operation == QIceRadarPlugin.Operation.VIEW:
+                if db_campaign is None:
+                    raise Exception(
+                        f"Unable to look up campaign data for {granule_name}"
+                    )
+                self.view_selected_transect(
+                    self.config.rootdir, db_granule, db_campaign
+                )
 
     def launch_radar_downloader(
         self, dest_filepath: pathlib.Path, db_granule: db_utils.DatabaseGranule
@@ -837,7 +857,13 @@ class QIceRadarPlugin(QtCore.QObject):
             layer: QgsMapLayer = ll.layer()
             assert isinstance(layer, QgsVectorLayer)
             features = layer.getFeatures()
-            f0 = next(features)
+            try:
+                f0 = next(features)
+            except StopIteration:
+                # This will happen if there are layers with missing data
+                # (I saw it when I accidentally used an incomplete database)
+                QgsMessageLog.logMessage(f"Could not find features for {layer}")
+                continue
             # Only need to check availability of single features, since all in
             # the layer will be the same.
             if f0.attributeMap()["availability"] in ["u", "a"]:
