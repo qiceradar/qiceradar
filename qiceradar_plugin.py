@@ -302,7 +302,7 @@ class QIceRadarPlugin(QtCore.QObject):
                         if feature_name in self.transect_name_lookup:
                             # Don't die, but do log a message
                             errmsg = (
-                                "Malformed index layer! {feature_name} appears twice!"
+                                f"Malformed index layer! {feature_name} appears twice!"
                             )
                             QgsMessageLog.logMessage(errmsg)
                         self.transect_name_lookup[feature_name] = (
