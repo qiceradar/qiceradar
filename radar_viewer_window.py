@@ -24,6 +24,7 @@ export DYLD_INSERT_LIBRARIES=/Applications/$QGIS_VERSION.app/Contents/MacOS/lib/
 
 import argparse
 import datetime
+import pathlib
 import sqlite3
 import sys
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -46,6 +47,7 @@ from qgis.core import QgsMessageLog
 
 # import radutils.radutils as radutils
 from .datautils import radar_utils
+from .datautils import db_utils
 
 # This breaks it on the command line, but works with QGIS.
 from .mplUtilities import (
@@ -302,12 +304,9 @@ def calc_radar_skip(fig: Figure, ax: mpl.axes.Axes, xlim: Tuple[int, int]) -> in
 class BasicRadarWindow(QtWidgets.QMainWindow):
     def __init__(
         self,
-        institution: str,
-        campaign: str,
-        filepath: str,
-        transect: str,
-        database_file: Optional[str] = None,
-        parent=None,
+        filepath: pathlib.Path,  # Fully-specified path
+        db_granule: db_utils.DatabaseGranule,
+        db_campaign: db_utils.DatabaseCampaign,
         parent_xlim_changed_cb: Optional[
             Callable[[List[Tuple[float, float]]], None]
         ] = None,
@@ -316,8 +315,6 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
     ) -> None:
         """
         params:
-        * institution
-        * campaign --
         * filepath - direct path to the file to load
         TODO: should transect be granule?
         * transect -- name of transect
@@ -331,23 +328,25 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
           the main QGIS plugin can clear the related layers.
         """
         # This is for the QtGui stuff
-        super(BasicRadarWindow, self).__init__(parent)
+        super(BasicRadarWindow, self).__init__()
 
-        self.pst = transect
-        self.institution = institution
-        self.campaign = campaign
-        self.filepath = filepath
-        self.database_file = database_file
+        self.pst = db_granule.granule_name
+        self.db_granule = db_granule
+        self.db_campaign = db_campaign
 
         self.parent_xlim_changed_cb = parent_xlim_changed_cb
         self.parent_cursor_cb = parent_cursor_cb
         self.close_cb = close_cb
 
-        self.setWindowTitle(f"{institution}, {campaign}: {transect}")
+        # This doesn't seem to work? Instead, the title is just the granule
+        # self.setWindowTitle(f"{institution}, {campaign}: {granule}")
 
         # These parameters should be independent of the plotting tool we use
+        # TODO: RadarData should probably have a list of data formats that it
+        #   supports, mapped to the
 
-        self.radar_data = radar_utils.RadarData(institution, campaign, filepath)
+        # TODO: Fix this!
+        self.radar_data = radar_utils.RadarData(self.db_granule, filepath)
         self.plot_config = PlotConfig(self.radar_data.available_products)
         self.plot_params = PlotParams()
         self.plot_params.initialize_from_radar(self.radar_data)
@@ -869,58 +868,17 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         """
         Pop up dialog box with metadata about currently-displayed transect.
         """
-        data_citation, science_citation, db_institution, db_campaign = None, None, None, None
-        # I'm sure there's a cleaner way to do this
-        try:
-            connection = sqlite3.connect(self.database_file)
-            cursor = connection.cursor()
-            # TODO: It's ugly how many places this gets re-formatted.
-            granule_name = f"{self.institution}_{self.campaign}_{self.pst}"
-            granule_command = f"SELECT campaign FROM granules WHERE name = '{granule_name}'"
-            QgsMessageLog.logMessage(f"Attempting query: {granule_command}")
-            result = cursor.execute(granule_command)
-            granule_rows = result.fetchall()
-            QgsMessageLog.logMessage(f"Accessed database. rows = {granule_rows}")
-            if len(granule_rows) > 1:
-                errmsg = f"found more than one granule matching {granule_name}"
-            elif len(granule_rows) == 0:
-                errmsg = f"Could not find {granule_name}"
-            else:
-                db_campaign, = granule_rows[0]
-
-            campaign_command = f"SELECT * FROM campaigns WHERE name = '{db_campaign}'"
-            QgsMessageLog.logMessage(f"Attempting query: {campaign_command}")
-            result = cursor.execute(campaign_command)
-            campaign_rows = result.fetchall()
-            QgsMessageLog.logMessage(f"Accessed database. rows = {campaign_rows}")
-            if len(campaign_rows) > 1:
-                errmsg = f"found more than one campaign matching {db_campaign}"
-            elif len(campaign_rows) == 0:
-                errmsg = f"Could not find {db_campaign}"
-            else:
-                _, data_citation, science_citation, db_institution = campaign_rows[0]
-
-            connection.close()
-
-        except sqlite3.OperationalError as ex:
-            QgsMessageLog.logMessage(
-                f"Tried to access database. OperationalError: {ex}"
-            )
-        except Exception as ex:
-            QgsMessageLog.logMessage(
-                f"Tried to access database. ({type(ex)})  exception: {ex}"
-            )
-        science_citation = science_citation.replace("\n", "<br>")
+        science_citation = self.db_campaign.science_citation.replace("\n", "<br>")
         citation_info = (
-            f"Granule: {self.pst}"
+            f"Granule: {self.db_granule.granule_name}"
             "<br><br>"
-            f"Institution: {db_institution}"
+            f"Institution: {self.db_campaign.institution}"
             "<br><br>"
-            f"Campaign: {db_campaign}"
+            f"Campaign: {self.db_campaign.db_campaign}"
             "<br><br>"
             "Data citation:"
             "<br>"
-            f"{data_citation}"
+            f"{self.db_campaign.data_citation}"
             "<br><br>"
             "Science citation(s):"
             "<br>"

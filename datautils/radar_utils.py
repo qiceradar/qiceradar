@@ -1,12 +1,14 @@
+import enum
 import numpy as np
+import pathlib
 import pyproj
 from typing import List
 
 from . import bas_utils
+from . import db_utils
 
 
-# Purely using this as an enum
-class Institutions:
+class Institutions(enum.IntEnum):
     AWI = 0
     BAS = 1
     CRESIS = 2
@@ -23,9 +25,11 @@ class RadarData:
     """
 
     # TODO: Refactor this so institution and campaign are enums, and filepath is actually a pathlib.Path
-    def __init__(self, institution: str, campaign: str, filepath: str) -> None:
+    def __init__(
+        self, db_granule: db_utils.DatabaseGranule, filepath: pathlib.Path
+    ) -> None:
         # TODO: look this up from institution+campaign?
-        self.institution = institution
+        self.institution = db_granule.institution
         if self.institution == "BAS":
             # TODO: consider supporting pulse
             # TODO: Note that the BAS data has campaign embedded, so no need to pass it in.

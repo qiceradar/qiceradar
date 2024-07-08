@@ -1,5 +1,7 @@
 import netCDF4 as nc
 import numpy as np
+import pathlib
+from typing import Any, Tuple
 
 # All institution-specific Radargram classes will need to have
 # * get_track: returns lat, lon arrays
@@ -16,11 +18,13 @@ import numpy as np
 
 # For now, just using duck typing for the institution-specific radargram classes
 class BasRadargram:
-    def __init__(self, filepath):
+    def __init__(self, filepath: pathlib.Path) -> None:
         pass
 
 
-def load_chirp_data(filepath: str):
+# At least for now, we return the data as np.ndarray, which isn't yet
+# well supported in mypy.
+def load_chirp_data(filepath: pathlib.Path) -> Tuple[Any, Any, Any, Any, Any]:
     dd = nc.Dataset(filepath, "r")
 
     # NOTE: I'm torn on whether to use campaign vs. data fields to make this decision.
