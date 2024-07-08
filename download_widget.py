@@ -9,6 +9,7 @@ import PyQt5.QtWidgets as QtWidgets
 import requests  # for downloading files
 from PyQt5.QtCore import Qt
 from qgis.core import QgsMessageLog
+from qgis.gui import QgisInterface
 
 from .qiceradar_config import UserConfig
 
@@ -41,21 +42,22 @@ class DownloadConfirmationDialog(QtWidgets.QDialog):
     On confirmation, tells the DownloadMangerWidget to start handling
     a new transect (creating the DownloadManagerWidget if necessary.)
     """
+
     # TODO: This should be given all the info it needs;
     def __init__(
         self,
-        config: UserConfig,
-        institution,
-        campaign,
-        granule,
-        download_method,
-        url,
+        rootdir: str,
+        institution: str,
+        campaign: str,
+        granule: str,
+        download_method: str,
+        url: str,
         granule_filepath: pathlib.Path,
-        filesize,
-    ):
+        filesize: int,
+    ) -> None:
         super(DownloadConfirmationDialog, self).__init__()
 
-        self.user_config = config
+        self.rootdir = rootdir
         self.institution = institution
         self.campaign = campaign
         self.granule = granule
@@ -72,7 +74,7 @@ class DownloadConfirmationDialog(QtWidgets.QDialog):
         #  be to check it when the "Download" button is pressed.
         self.setup_ui()
 
-    def setup_ui(self):
+    def setup_ui(self) -> None:
         """
         UI should be something like:
 
@@ -118,12 +120,14 @@ class DownloadConfirmationDialog(QtWidgets.QDialog):
                     "It can be downloaded from: \n",
                     self.url,
                     "\n\n And will be saved to: \n",
-                    str(pathlib.Path(self.user_config.rootdir, self.granule_filepath)),
-                    "\n"
+                    str(pathlib.Path(self.rootdir, self.granule_filepath)),
+                    "\n",
                 ]
             )
         )
-        self.info_label.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.info_label.setTextInteractionFlags(
+            QtCore.Qt.TextInteractionFlag.TextSelectableByMouse
+        )
         self.text_scroll.setWidget(self.info_label)
 
         # TODO: I don't love this. Better to only create the config
@@ -160,34 +164,35 @@ class DownloadConfirmationDialog(QtWidgets.QDialog):
         self.setLayout(self.vbox_layout)
         self.setWindowTitle("Download Data")
 
-    def run(self):
+    def run(self) -> None:
         QgsMessageLog.logMessage("DownloadConfirmationDialog.run()")
         self.exec()
 
 
 class HorizontalLine(QtWidgets.QFrame):
-    def __init__(self):
+    def __init__(self) -> None:
         super(HorizontalLine, self).__init__()
         self.setFrameShape(QtWidgets.QFrame.HLine)
         self.setFrameShadow(QtWidgets.QFrame.Sunken)
 
 
 class VerticalLine(QtWidgets.QFrame):
-    def __init__(self):
+    def __init__(self) -> None:
         super(VerticalLine, self).__init__()
         self.setFrameShape(QtWidgets.QFrame.VLine)
         self.setFrameShadow(QtWidgets.QFrame.Sunken)
 
+
 class DownloadWindow(QtWidgets.QMainWindow):
     download_finished = QtCore.pyqtSignal()
 
-    def __init__(self, iface) -> None:
+    def __init__(self, iface: QgisInterface) -> None:
         super().__init__()
         self.iface = iface
         self.setWindowTitle("QIceRadar Radargram Downloader")
         self.setup_ui()
 
-    def setup_ui(self):
+    def setup_ui(self) -> None:
         central_widget = QtWidgets.QWidget()
         vbox = QtWidgets.QVBoxLayout()
         scroll = QtWidgets.QScrollArea()
@@ -206,16 +211,17 @@ class DownloadWindow(QtWidgets.QMainWindow):
         central_widget.setLayout(vbox)
         self.setCentralWidget(central_widget)
 
-    def download(self,
-                 granule: str,
-                 url: str,
-                 destination_filepath: str,
-                 filesize: int) -> None:
+    def download(
+        self, granule: str, url: str, destination_filepath: pathlib.Path, filesize: int
+    ) -> None:
         # TODO: This means that once a download has been canceled, you won't
         #   be able to retry it until the plugin is reloaded.
         # Consider allowing multiple downloads? (or adding a "retry" button?)
         if granule in self.download_widgets:
-            if self.download_widgets[granule].canceled or self.download_widgets[granule].failed:
+            if (
+                self.download_widgets[granule].canceled
+                or self.download_widgets[granule].failed
+            ):
                 # OK, we can retry
                 QgsMessageLog.logMessage(f"Retrying download of {granule}")
             elif self.download_widgets[granule].finished:
@@ -228,9 +234,10 @@ class DownloadWindow(QtWidgets.QMainWindow):
         print(f"Downloading {granule}")
         widget = DownloadWidget(granule, url, filesize, destination_filepath)
         self.download_widgets[granule] = widget
-        self.download_widgets[granule].download_finished.connect(self.download_finished.emit)
+        self.download_widgets[granule].download_finished.connect(
+            self.download_finished.emit
+        )
         self.scroll_vbox.insertWidget(0, widget)
-
 
 
 class DownloadWidget(QtWidgets.QWidget):
@@ -241,7 +248,10 @@ class DownloadWidget(QtWidgets.QWidget):
     request_pause = QtCore.pyqtSignal()
     request_resume = QtCore.pyqtSignal()
     request_cancel = QtCore.pyqtSignal()
-    def __init__(self, granule: str, url: str, filesize: int, destination_filepath: str) -> None:
+
+    def __init__(
+        self, granule: str, url: str, filesize: int, destination_filepath: pathlib.Path
+    ) -> None:
         super().__init__()
         self.granule = granule
         self.url = url
@@ -252,7 +262,6 @@ class DownloadWidget(QtWidgets.QWidget):
         self.finished = False
         self.setup_ui()
         self.run()
-
 
     def setup_ui(self) -> None:
         # I don't love this -- I'm changing the background color so the
@@ -265,7 +274,6 @@ class DownloadWidget(QtWidgets.QWidget):
 
         # arg order is horizontal, vertical
         self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
-
 
         layout = QtWidgets.QHBoxLayout()
         # TODO: When porting to QGIS, use
@@ -290,7 +298,7 @@ class DownloadWidget(QtWidgets.QWidget):
         # The QProgressBar only supports up to 32-bit signed ints,
         # which isn't enough for some of our > 3GB file sizes!
         # So, we'll plot 100*percent_finished, rather than bytes.
-        self.progress_bar.setRange(0, 100*100)
+        self.progress_bar.setRange(0, 100 * 100)
 
         # mIconTimerPause.svg
         # mActionPlay.svg
@@ -305,7 +313,6 @@ class DownloadWidget(QtWidgets.QWidget):
         self.resume_button.clicked.connect(self.handle_resume_button_clicked)
         self.cancel_button.clicked.connect(self.handle_cancel_button_clicked)
         self.help_button.clicked.connect(self.handle_help_button_clicked)
-
 
         # Trying to reduce jitter by using fixed-width font.
         # Unfortunately, this doesn't eem to work on OSX, and I found a mention
@@ -338,9 +345,9 @@ class DownloadWidget(QtWidgets.QWidget):
         # print(f"DownloadWidget.handle_progress({progress})")
         msg = f"{format_bytes(progress)} / {format_bytes(self.filesize)}"
         self.progress_label.setText(msg)
-        pct = 100.0 * progress/self.filesize
+        pct = 100.0 * progress / self.filesize
         self.percent_label.setText(f"({pct:0.1f}%)")
-        self.progress_bar.setValue(int(100*pct))
+        self.progress_bar.setValue(int(100 * pct))
 
     def handle_paused(self) -> None:
         # TODO: this should become an icon
@@ -399,7 +406,6 @@ class DownloadWidget(QtWidgets.QWidget):
 
         self.setPalette(pp)
 
-
     def run(self) -> None:
         self.download_worker_thread = QtCore.QThread()
         self.worker = DownloadWorker(self.url, self.destination_filepath)
@@ -407,7 +413,9 @@ class DownloadWidget(QtWidgets.QWidget):
 
         self.download_worker_thread.started.connect(self.worker.run)
         # QUESTION: I'm not clear on how this differs from the worker ones.
-        self.download_worker_thread.finished.connect(self.download_worker_thread.deleteLater)
+        self.download_worker_thread.finished.connect(
+            self.download_worker_thread.deleteLater
+        )
         # self.thread.finished.connect(self.handle_thread_finished)
 
         # Hook up signals from the worker to updates in the widget
@@ -446,10 +454,12 @@ class DownloadWidget(QtWidgets.QWidget):
         self.request_cancel.emit()
 
     def handle_help_button_clicked(self) -> None:
-        msg = ("You can manually download this radargram (e.g. using Chrome) from: \n"
-        f"{self.url}\n"
-        "and save it to: \n"
-        f"{self.destination_filepath}")
+        msg = (
+            "You can manually download this radargram (e.g. using Chrome) from: \n"
+            f"{self.url}\n"
+            "and save it to: \n"
+            f"{self.destination_filepath}"
+        )
         message_box = QtWidgets.QMessageBox()
         message_box.setText(msg)
         message_box.exec()
@@ -459,6 +469,7 @@ class DownloadWorker(QtCore.QObject):
     """
     The DownloadWorker class actually handles the download.
     """
+
     paused = QtCore.pyqtSignal()
     resumed = QtCore.pyqtSignal()  # Also emitted on "running"
     finished = QtCore.pyqtSignal()
@@ -467,7 +478,7 @@ class DownloadWorker(QtCore.QObject):
     # Qt's signals use an int32 if I specify "int" here, so use "object"
     progress = QtCore.pyqtSignal(object)
 
-    def __init__(self, url: str, destination_filepath: str) -> None:
+    def __init__(self, url: str, destination_filepath: pathlib.Path) -> None:
         super().__init__()
         self.url = url
         self.destination_filepath = destination_filepath
@@ -481,7 +492,6 @@ class DownloadWorker(QtCore.QObject):
         self.temp_file = tempfile.NamedTemporaryFile(delete=False)
         print(f"DownloadWorker saving to {self.temp_file.name}")
 
-
     # TODO: This blocks in the thread; doesn't allow cancel_download slot to be called
     """
     def run(self) -> None:
@@ -492,6 +502,7 @@ class DownloadWorker(QtCore.QObject):
             return
         self.download(req)
     """
+
     def resume_download(self) -> None:
         self.resumed.emit()
         self.run()
@@ -510,8 +521,10 @@ class DownloadWorker(QtCore.QObject):
         # At least for BAS's data center, Accept-Ranges is set in GET but not HEAD,
         # so we can't check ahead of time whether to expect the Range to work.
         if self.bytes_received > 0 and self.if_range is not None:
-            req_headers = {'Range': f'bytes={self.bytes_received}-',
-                            'If-Range': self.if_range}
+            req_headers = {
+                "Range": f"bytes={self.bytes_received}-",
+                "If-Range": self.if_range,
+            }
         else:
             req_headers = {}
 
@@ -521,9 +534,11 @@ class DownloadWorker(QtCore.QObject):
             #    Leaving this in here for now, since it correctly detects
             #    that we're starting from scratch.
             print(f"calling requests.get with headers={req_headers}")
-            req = requests.get(self.url, stream=True, headers=req_headers, timeout=self.timeout)
-            if 'Last-Modified' in req.headers:
-                self.if_range = req.headers['Last-Modified']
+            req = requests.get(
+                self.url, stream=True, headers=req_headers, timeout=self.timeout
+            )
+            if "Last-Modified" in req.headers:
+                self.if_range = req.headers["Last-Modified"]
                 print(f"Got Last-Modified: {self.if_range} ")
             else:
                 print(f"Could not find last-modified. Huh. Headers = {req.headers}")
@@ -557,9 +572,9 @@ class DownloadWorker(QtCore.QObject):
         # Only append to temp file if we can resume download partway through.
         # If range requests are not supported, then have to start from the beginning again
         if resuming:
-            permissions = 'ab'
+            permissions = "ab"
         else:
-            permissions = 'wb'
+            permissions = "wb"
             self.bytes_received = 0
 
         with open(self.temp_file.name, permissions) as fp:
@@ -603,7 +618,9 @@ class DownloadWorker(QtCore.QObject):
         elif self.pause_requested:
             self.paused.emit()
         else:
-            print(f"DownloadWorker finished! Moving data to {self.destination_filepath}")
+            print(
+                f"DownloadWorker finished! Moving data to {self.destination_filepath}"
+            )
             shutil.move(self.temp_file.name, self.destination_filepath)
             self.finished.emit()
         self.downloading = False
@@ -615,8 +632,3 @@ class DownloadWorker(QtCore.QObject):
     def cancel_download(self) -> None:
         print("DownloadWorker: cancel_download")
         self.cancel_requested = True
-
-
-if __name__ == "__main__":
-    app = myApp()
-    app.run()
