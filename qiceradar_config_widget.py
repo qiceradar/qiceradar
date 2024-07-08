@@ -4,6 +4,7 @@ import PyQt5.QtCore as QtCore
 import PyQt5.QtWidgets as QtWidgets
 import qgis.core
 from qgis.core import QgsMessageLog
+from qgis.gui import QgisInterface
 
 from .qiceradar_config import UserConfig, config_is_valid, parse_config
 
@@ -31,7 +32,7 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
         self.iface = iface
         self.setup_ui(user_config)
 
-    def setup_ui(self, user_config):
+    def setup_ui(self, user_config: UserConfig) -> None:
         self.grid = QtWidgets.QGridLayout()
 
         datadir_row = 0
@@ -122,7 +123,7 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
         # self.setWindowFlags(self.windowFlags() & QtCore.Qt.Window)
         # self.setWindowModality(QtCore.Qt.WindowModal)
 
-    def datadir_question_button_clicked(self, _event):
+    def datadir_question_button_clicked(self, _checked: bool) -> None:
         QgsMessageLog.logMessage("User clicked question button about data directory!")
         datadir_info = (
             "Root directory used by QIceRadar. \n\n "
@@ -134,7 +135,7 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
         datadir_message_box.setText(datadir_info)
         datadir_message_box.exec()
 
-    def datadir_set_button_clicked(self, _event):
+    def datadir_set_button_clicked(self, _checked: bool) -> None:
         QgsMessageLog.logMessage("User clicked button to set data directory!")
         # TODO: Fill this in ... I can't find anything better than QFileDialog, which would be yet another modal window.
         file_dialog = QtWidgets.QFileDialog()
@@ -151,7 +152,7 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
             )
             self.datadir_set_button.setText(rootdir)
 
-    def nsidc_question_button_clicked(self, _event):
+    def nsidc_question_button_clicked(self, _checked: bool) -> None:
         QgsMessageLog.logMessage("User clicked NSIDC questions button")
         # Using rich text for the hyperlink forces using <br> rather than \n
         nsidc_info = (
@@ -173,13 +174,13 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
 
         nsidc_message_box.exec()
 
-    def nsidc_credentials_lineedit_editingfinished(self):
+    def nsidc_credentials_lineedit_editingfinished(self) -> None:
         QgsMessageLog.logMessage("User finished editing NSIDC credentials")
 
-    def nsidc_token_lineedit_editingfinished(self):
+    def nsidc_token_lineedit_editingfinished(self) -> None:
         QgsMessageLog.logMessage("User finished editing NSIDC token")
 
-    def aad_question_button_clicked(self, _event):
+    def aad_question_button_clicked(self, _checked: bool) -> None:
         QgsMessageLog.logMessage("User clicked AAD questions button")
         aad_info = (
             "Credentials for downloading ICECAP OIA radargrams from AAD"
@@ -202,13 +203,13 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
         aad_message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
         aad_message_box.exec()
 
-    def aad_access_key_lineedit_editingfinished(self):
+    def aad_access_key_lineedit_editingfinished(self) -> None:
         QgsMessageLog.logMessage("User finished editing AAD credentials")
 
-    def aad_secret_key_lineedit_editingfinished(self):
+    def aad_secret_key_lineedit_editingfinished(self) -> None:
         QgsMessageLog.logMessage("User finished editing AAD token")
 
-    def ok_button_clicked(self, _event):
+    def ok_button_clicked(self, _checked: bool) -> None:
         QgsMessageLog.logMessage("User clicked OK")
         # read in all values; we want to return a configuration struct
         pp = pathlib.Path(self.datadir_set_button.text())
@@ -256,10 +257,10 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
             error_message_box.exec()
             return
 
-    def close(self):
+    def close(self) -> bool:
         self.closed.emit()
-        super().close()
+        return super().close()
 
-    def run(self):
+    def run(self) -> None:
         QgsMessageLog.logMessage("QIceRadarConfigWidget.run()")
         self.exec()
