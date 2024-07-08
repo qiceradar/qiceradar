@@ -20,13 +20,15 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
     # when it is closed.
     closed = QtCore.pyqtSignal()
     canceled = QtCore.pyqtSignal()
-    config_saved = QtCore.pyqtSignal()
+    config_saved = QtCore.pyqtSignal(UserConfig)
 
-    def __init__(self, iface, user_config: UserConfig, config_callback):
+    def __init__(
+        self,
+        iface: QgisInterface,
+        user_config: UserConfig,
+    ) -> None:
         super().__init__()
         self.iface = iface
-        # Will be called with new configuration if user presses "OK"
-        self.config_callback = config_callback
         self.setup_ui(user_config)
 
     def setup_ui(self, user_config):
@@ -109,7 +111,6 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
         self.cancel_button.clicked.connect(self.close)
         # The OK button validates the file, then closes.
         self.ok_button = QtWidgets.QPushButton("OK")
-        self.ok_button.clicked.connect(self.config_saved.emit)
         self.ok_button.clicked.connect(self.ok_button_clicked)
         self.grid.addWidget(self.cancel_button, button_row, 0)
         self.grid.addWidget(self.ok_button, button_row, 5)
@@ -246,7 +247,7 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
 
         # If configuration isn't valid, we can't do anything useful.
         if config_is_valid(config):
-            self.config_callback(config)
+            self.config_saved.emit(config)
             self.close()
         else:
             errmsg = "Please specify a valid directory for data"

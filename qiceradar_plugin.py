@@ -727,8 +727,8 @@ class QIceRadarPlugin(QtCore.QObject):
     def ensure_valid_configuration(self) -> bool:
         # First, make sure we at least have the root data directory configured
         if not config_is_valid(self.config):
-            cw = QIceRadarConfigWidget(self.iface, self.config, self.set_config)
-            # Config is set via callback, rather than direct return value
+            cw = QIceRadarConfigWidget(self.iface, self.config)
+            cw.config_saved.connect(self.set_config)
             cw.run()
 
         if not config_is_valid(self.config):
