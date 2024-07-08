@@ -312,6 +312,164 @@ class QIceRadarPlugin(QtCore.QObject):
                 except Exception as ex:
                     QgsMessageLog.logMessage(f"{repr(ex)}")
 
+    def display_unavailable_dialog(self, institution: str, campaign: str) -> None:
+        # TODO: Consider special case for BEDMAP1?
+        msg = (
+            "We have not found publicly-available radargrams for this transect."
+            "<br><br>"
+            f"Institution: {institution}"
+            "<br>"
+            f"Campaign: {campaign}"
+            "<br><br>"
+            "If these are now available, please let us know so we can update the database!"
+            "<br><br>"
+            'Submit an issue: <a href="https://github.com/qiceradar/qiceradar_plugin/issues/new">https://github.com/qiceradar/qiceradar_plugin/issues/new</a>'
+            "<br>"
+            'Or send us email: <a href="mailto:qiceradar@gmail.com">qiceradar@gmail.com</a>'
+            "<br><br>"
+            "If this is your data and you're thinking about releasing it, feel free to get in touch. We'd love to help if we can."
+        )
+        message_box = QtWidgets.QMessageBox()
+        message_box.setTextFormat(QtCore.Qt.RichText)
+        message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+        message_box.setText(msg)
+        message_box.exec()
+
+    def display_unsupported_download_method_dialog(
+        self, db_granule: db_utils.DatabaseGranule
+    ) -> None:
+        msg = (
+            "These radargrams are available, but we are not able to assist with downloading them"
+            "<br><br>"
+            f"Granule: {db_granule.granule_name}"
+            "<br>"
+            f"method: {db_granule.download_method}"
+            "<br><br>"
+            "If these are particularly important to your work, let us know! "
+            "This feedback will help prioritize future development efforts. "
+            "<br><br>"
+            'Submit an issue: <a href="https://github.com/qiceradar/radar_viewer/issues/new">https://github.com/qiceradar/radar_viewer/issues/new</a>'
+            "<br>"
+        )
+        message_box = QtWidgets.QMessageBox()
+        message_box.setTextFormat(QtCore.Qt.RichText)
+        message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+        message_box.setText(msg)
+        message_box.exec()
+
+    def display_unsupported_data_format_dialog(
+        self, data_format: str, institution: str, campaign: str
+    ) -> None:
+        # TODO: Consider special case for information about Stanford's digitization efforts?
+        # TODO: This may also be a prompt to update the code itself / present
+        #   a link to the page documenting supported formats.
+        msg = (
+            "These radargrams are available, but their format is not currently supported in the viewer "
+            "<br><br>"
+            f"Institution: {institution}"
+            "<br>"
+            f"Campaign: {campaign}"
+            "<br><br>"
+            "If these are particularly important to your work, let us know! "
+            "This feedback will help prioritize future development efforts. "
+            "<br><br>"
+            'Submit an issue: <a href="https://github.com/qiceradar/radar_viewer/issues/new">https://github.com/qiceradar/radar_viewer/issues/new</a>'
+            "<br>"
+            'Or send us an email: <a href="mailto:qiceradar@gmail.com">qiceradar@gmail.com</a>'
+        )
+        message_box = QtWidgets.QMessageBox()
+        message_box.setTextFormat(QtCore.Qt.RichText)
+        message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+        message_box.setText(msg)
+        message_box.exec()
+
+    def display_already_downloaded_dialog(
+        self, db_granule: db_utils.DatabaseGranule
+    ) -> None:
+        # TODO: Should make this impossible by filtering the selection
+        #   based on un-downloaded transects.
+        #   I *could* make the unavailable impossible, but I want to display info
+        #   about them, and a 3rd tooltip doesn't make sense.
+        msg = (
+            "Already downloaded requested data!"
+            "<br>"
+            f"Granule: {db_granule.granule_name}"
+            "<br>"
+        )
+        message_box = QtWidgets.QMessageBox()
+        message_box.setTextFormat(QtCore.Qt.RichText)
+        message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+        message_box.setText(msg)
+        message_box.exec()
+
+    def display_must_download_dialog(
+        self, radargram_filepath: pathlib.Path, db_granule: db_utils.DatabaseGranule
+    ) -> None:
+        msg = (
+            "Must download radargram before viewing it"
+            "<br>"
+            f"Granule: {db_granule.granule_name}"
+            "<br>"
+            f"(Looking for data in: {radargram_filepath})"
+            "<br>"
+        )
+        message_box = QtWidgets.QMessageBox()
+        message_box.setTextFormat(QtCore.Qt.RichText)
+        message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+        message_box.setText(msg)
+        message_box.exec()
+
+    def view_selected_transect(
+        self,
+        rootdir: pathlib.Path,
+        db_granule: db_utils.DatabaseGranule,
+        db_campaign: db_utils.DatabaseCampaign,
+    ) -> None:
+        transect_filepath = pathlib.Path(rootdir, db_granule.relative_path)
+        already_downloaded = (
+            db_granule.relative_path != ""
+        ) and transect_filepath.is_file()
+
+        if already_downloaded:
+            # It would probably be more pythonic to just try creating the viewer
+            # and catching an error if it's "unsupported"...
+            if db_granule.data_format in self.supported_data_formats:
+                self.launch_radar_viewer(
+                    transect_filepath,
+                    db_granule,
+                    db_campaign,
+                )
+            else:
+                self.display_unsupported_data_format_dialog(
+                    db_granule.data_format,
+                    db_granule.institution,
+                    db_granule.db_campaign,
+                )
+        else:
+            self.display_must_download_dialog(transect_filepath, db_granule)
+
+    def download_selected_transect(
+        self, rootdir: pathlib.Path, db_granule: db_utils.DatabaseGranule
+    ) -> None:
+        """
+        Actually download selected transect.
+
+        Explicitly passes the root directory because anybody
+        calling this method needs to have already confirmed that
+        self.user_config is valid and self.user_config.rootdir
+        is not None.
+        """
+        transect_filepath = pathlib.Path(rootdir, db_granule.relative_path)
+        already_downloaded = (
+            db_granule.relative_path != ""
+        ) and transect_filepath.is_file()
+        if already_downloaded:
+            self.display_already_downloaded_dialog(db_granule)
+        elif db_granule.download_method not in self.supported_download_methods:
+            self.display_unsupported_download_method_dialog(db_granule)
+        else:
+            self.launch_radar_downloader(transect_filepath, db_granule)
+
     def selected_transect_callback(
         self, operation: Operation, transect_name: str
     ) -> None:
