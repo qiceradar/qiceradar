@@ -3,6 +3,9 @@ import inspect
 import os
 import pathlib
 import sqlite3
+
+# from db_utils import DatabaseGranule, DatabaseCampaign
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 import PyQt5.QtCore as QtCore
@@ -30,6 +33,7 @@ from qgis.core import (
 )
 from qgis.gui import QgisInterface, QgsMapTool, QgsMapToolPan
 
+from .datautils import db_utils
 from .download_widget import DownloadConfirmationDialog, DownloadWindow
 from .qiceradar_config import UserConfig, config_is_valid, parse_config
 from .qiceradar_config_widget import QIceRadarConfigWidget
@@ -39,12 +43,6 @@ from .qiceradar_selection_widget import (
 )
 from .radar_viewer_data_utils import get_granule_filepath
 from .radar_viewer_window import BasicRadarWindow as RadarWindow
-
-from .datautils import db_utils
-
-# from db_utils import DatabaseGranule, DatabaseCampaign
-
-from dataclasses import dataclass
 
 
 class QIceRadarPlugin(QtCore.QObject):
@@ -62,7 +60,7 @@ class QIceRadarPlugin(QtCore.QObject):
         self.iface = iface
 
         # TODO: Probably better to get this from the radar_viewer / radar_downloader
-        self.supported_data_formats = ["bas_netcdf"]
+        self.supported_data_formats = ["bas_netcdf", "utig_netcdf"]
         self.supported_download_methods = ["wget"]
 
         self.download_window: Optional[DownloadWindow] = None
@@ -84,7 +82,7 @@ class QIceRadarPlugin(QtCore.QObject):
         self.transect_name_lookup: Dict[str, Tuple[str, int]] = {}
 
         # Cache this when starting the selection tool in order to reset state
-        self.prev_map_tool_type: Optional[type] = None
+        # self.prev_map_tool_type: Optional[type] = None
 
         # Try loading config when plugin initialized (before project has been selected)
         self.config = UserConfig()
@@ -768,10 +766,12 @@ class QIceRadarPlugin(QtCore.QObject):
         QgsMessageLog.logMessage(f"Got point! {point.x()}, {point.y()}")
 
         # TODO: Really, if it is None, this should be an error condition.
+        """
         if self.prev_map_tool_type is not None:
             self.iface.mapCanvas().setMapTool(
                 self.prev_map_tool_type(self.iface.mapCanvas())
             )
+        """
 
         if self.spatial_index is None:
             errmsg = "Spatial index not created -- bug!!"
@@ -869,7 +869,7 @@ class QIceRadarPlugin(QtCore.QObject):
                 continue
             # Only need to check availability of single features, since all in
             # the layer will be the same.
-            if f0.attributeMap()["availability"] in ["u", "a"]:
+            if f0.attributeMap()["availability"] == "u":
                 continue
 
             symbol = QgsSymbol.defaultSymbol(layer.geometryType())
@@ -890,15 +890,23 @@ class QIceRadarPlugin(QtCore.QObject):
             campaign = f0.attributeMap()["campaign"]
             # TODO: This may not work on windows ...
             dl_rule.setFilterExpression(
-                f"""file_exists('{self.config.rootdir}/' + "relative_path")"""
+                f"""length("relative_path") > 0 and file_exists('{self.config.rootdir}/' + "relative_path")"""
             )
             dl_rule.symbol().setColor(QtGui.QColor(133, 54, 229, 255))
             root_rule.appendChild(dl_rule)
 
+            # TODO: add additional "supported" rule here, and remove the
+            #  distinction between "a" and "s" in the geopackage database
+            supported_rule = root_rule.children()[0].clone()
+            supported_rule.setLabel("Supported")
+            supported_rule.setFilterExpression(f"""length("relative_path") > 0 and not file_exists('{self.config.rootdir}/' + "relative_path")""")
+            supported_rule.symbol().setColor(QtGui.QColor(31, 120, 180, 255))
+            root_rule.appendChild(supported_rule)
+
             else_rule = root_rule.children()[0].clone()
             else_rule.setLabel("Available")
             else_rule.setFilterExpression("ELSE")
-            else_rule.symbol().setColor(QtGui.QColor(31, 120, 180, 255))
+            else_rule.symbol().setColor(QtGui.QColor(68, 68, 68, 255))
             root_rule.appendChild(else_rule)
 
             root_rule.removeChildAt(0)
@@ -919,12 +927,14 @@ class QIceRadarPlugin(QtCore.QObject):
             self.update_download_renderer()
         # Don't want to bop back to other qiceradar tool after use;
         # should go back to e.g. zoom tool
+        """
         curr_tool_type = type(self.iface.mapCanvas().mapTool())
         if not issubclass(curr_tool_type, QIceRadarSelectionTool):
             self.prev_map_tool_type = curr_tool_type
         if self.prev_map_tool_type is None:
             # mypy doesn't like this; not sure why QgsMapToolPan isn't accepted as a QgsMapTool, which is its base class
             self.prev_map_tool_type = QgsMapToolPan
+        """
         # TODO: this lambda is the only place run_download differs from run_viewer
         # Should I re-combine them with another "operation" parameter?
         download_selection_tool = QIceRadarSelectionTool(self.iface.mapCanvas())
@@ -964,11 +974,13 @@ class QIceRadarPlugin(QtCore.QObject):
         # TODO: This feels like something that should be handled in the SelectionTool,
         #  not in the plugin
         # mypy doesn't like this: "expression has type "type[QgsMapToolPan]", variable has type "QgsMapTool | None")"
+        """
         prev_map_tool = self.iface.mapCanvas().mapTool()
         if prev_map_tool is None:
             self.prev_map_tool_type = QgsMapToolPan
         else:
             self.prev_map_tool_type = type(prev_map_tool)
+        """
         viewer_selection_tool = QIceRadarSelectionTool(self.iface.mapCanvas())
         viewer_selection_tool.selected_point.connect(
             self.selected_viewer_point_callback
@@ -994,12 +1006,6 @@ class QIceRadarPlugin(QtCore.QObject):
         After the confirmation dialog has finished, this section
         actually kicks off the download
         """
-        # TODO: remove below mkdir after making sure it's in the other widgets
-        # self.granule_filepath.parents[0].mkdir(parents=True, exist_ok=True)
-        QgsMessageLog.logMessage("TODO: Actually download radargram!")
-        # Oooooh. drat. the confirmation dialogue can't own the widget.abs
-        # So, I need to figure out how to have this emit a signal that the
-        # main plugin handles.
         if self.download_window is None:
             self.download_window = DownloadWindow(self.iface)
             self.download_window.download_finished.connect(

@@ -1,11 +1,11 @@
 import enum
-import numpy as np
 import pathlib
-import pyproj
 from typing import List
 
-from . import bas_utils
-from . import db_utils
+import numpy as np
+import pyproj
+
+from . import bas_utils, db_utils, utig_utils
 
 
 class Institutions(enum.IntEnum):
@@ -30,7 +30,7 @@ class RadarData:
     ) -> None:
         # TODO: look this up from institution+campaign?
         self.institution = db_granule.institution
-        if self.institution == "BAS":
+        if db_granule.data_format == "bas_netcdf":
             # TODO: consider supporting pulse
             # TODO: Note that the BAS data has campaign embedded, so no need to pass it in.
             self.available_products = ["chirp"]
@@ -43,8 +43,19 @@ class RadarData:
                 self.utc,
                 self.fast_time_us,
             ) = bas_utils.load_chirp_data(filepath)
+        elif db_granule.data_format == "utig_netcdf":
+            # TODO: Add this to the granules database and plumb it through
+            #   to radargram
+            self.available_products = ["pik1"]
+            (
+                self.data,  # TODO: rename this to radargram
+                self.lat,
+                self.lon,
+                self.utc,
+                self.fast_time_us,
+            ) = utig_utils.load_radargram(filepath)
         else:
-            raise Exception("Only BAS supported for now!")
+            raise Exception("Only BAS & UTIG formats supported for now!")
 
         # elif self.institution == "UTIG":
         #     self.available_products = ["high_gain", "low_gain"]
