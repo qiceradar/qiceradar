@@ -778,6 +778,9 @@ class QIceRadarPlugin(QtCore.QObject):
             QgsMessageLog.logMessage(errmsg)
             return
 
+        # TODO: We need much better spatial index filtering!
+        #   ideally, I'd like a generator that returns the next
+        #   nearest point until I've amassed 5 valid options.
         neighbors = self.spatial_index.nearestNeighbor(point, 5)
         neighbor_names: List[str] = []
         QgsMessageLog.logMessage("Got neighbors!")
