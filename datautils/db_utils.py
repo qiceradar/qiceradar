@@ -36,6 +36,9 @@ class DatabaseGranule:
     # e.g. "wget" (simplest case), "nsidc" (requres nsidc auth), etc
     # Used to determine whether the plugin supports downloading this granule,
     # and deciding which class to use to download it.
+    # TODO: Is it possible to have a string enum in a dataclass?
+    #  I don't love comparing strings in python code, so would rather
+    #  have e.g. if granule.download_method == DatabaseGranule.NSIDC
     download_method: str
     # url used for download
     url: str

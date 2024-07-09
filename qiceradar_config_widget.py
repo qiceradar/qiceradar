@@ -58,16 +58,9 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
         # suggests that they do exactly that for most workflows. Just don't
         # check them in anywhere!
         # https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html
-        self.nsidc_label = QtWidgets.QLabel("NSIDC credentials")
+        self.nsidc_label = QtWidgets.QLabel("NSIDC token")
         self.nsidc_question_button = QtWidgets.QPushButton("?")
         self.nsidc_question_button.clicked.connect(self.nsidc_question_button_clicked)
-        self.nsidc_credentials_label = QtWidgets.QLabel("credentials")
-        self.nsidc_credentials_lineedit = QtWidgets.QLineEdit()
-        if user_config.nsidc_credentials is not None:
-            self.nsidc_credentials_lineedit.setText(user_config.nsidc_credentials)
-        self.nsidc_credentials_lineedit.editingFinished.connect(
-            self.nsidc_credentials_lineedit_editingfinished
-        )
         self.nsidc_token_label = QtWidgets.QLabel("token")
         self.nsidc_token_lineedit = QtWidgets.QLineEdit()
         if user_config.nsidc_token is not None:
@@ -77,10 +70,7 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
         )
         self.grid.addWidget(self.nsidc_label, nsidc_row, 0)
         self.grid.addWidget(self.nsidc_question_button, nsidc_row, 1)
-        self.grid.addWidget(self.nsidc_credentials_label, nsidc_row, 2)
-        self.grid.addWidget(self.nsidc_credentials_lineedit, nsidc_row, 3)
-        self.grid.addWidget(self.nsidc_token_label, nsidc_row, 4)
-        self.grid.addWidget(self.nsidc_token_lineedit, nsidc_row, 5)
+        self.grid.addWidget(self.nsidc_token_lineedit, nsidc_row, 2)
 
         self.aad_label = QtWidgets.QLabel("AAD credentials")
         self.aad_question_button = QtWidgets.QPushButton("?")
@@ -108,6 +98,9 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
 
         # The Cancel button closes without saving.
         self.cancel_button = QtWidgets.QPushButton("Cancel")
+        # TODO: This means that cancel and close both emit closed,
+        #  so it's not possible to implement different behavior on
+        #  cancel. Fix this!
         self.cancel_button.clicked.connect(self.canceled.emit)
         self.cancel_button.clicked.connect(self.close)
         # The OK button validates the file, then closes.
@@ -158,12 +151,15 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
         nsidc_info = (
             "Credentials for downloading data from NSIDC."
             "<br><br>"
-            "A NASA EarthData login is necessary to download radargrams hosted at NSIDC. "
+            "A free NASA EarthData login is necessary to download radargrams hosted at NSIDC. "
+            "<br><br>"
+            "To obtain a token, go to "
+            '<a href="https://urs.earthdata.nasa.gov/profile">https://urs.earthdata.nasa.gov/profile</a>'
+            ". Log in, click 'Generate Token', and copy the result into this dialog"
+            "<br><br>"
             "If you don't already have an account or don't want to configure this now, "
             "you will be prompted again when you attempt to download data hosted there."
             "<br><br>"
-            "To create a free NASA EarthData login, go to "
-            '<a href="https://urs.earthdata.nasa.gov/">https://urs.earthdata.nasa.gov/</a>'
         )
         nsidc_message_box = QtWidgets.QMessageBox()
         # NB: won't display on OSX
@@ -173,9 +169,6 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
         nsidc_message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
 
         nsidc_message_box.exec()
-
-    def nsidc_credentials_lineedit_editingfinished(self) -> None:
-        QgsMessageLog.logMessage("User finished editing NSIDC credentials")
 
     def nsidc_token_lineedit_editingfinished(self) -> None:
         QgsMessageLog.logMessage("User finished editing NSIDC token")
@@ -218,12 +211,6 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
         else:
             rootdir = None
 
-        ll = self.nsidc_credentials_lineedit.text().strip()
-        if len(ll) > 0:
-            nsidc_credentials = ll
-        else:
-            nsidc_credentials = None
-
         ll = self.nsidc_token_lineedit.text().strip()
         if len(ll) > 0:
             nsidc_token = ll
@@ -243,7 +230,7 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
             aad_secret_key = None
 
         config = UserConfig(
-            rootdir, nsidc_credentials, nsidc_token, aad_access_key, aad_secret_key
+            rootdir, nsidc_token, aad_access_key, aad_secret_key
         )
 
         # If configuration isn't valid, we can't do anything useful.

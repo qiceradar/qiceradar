@@ -1,3 +1,4 @@
+import copy
 import pathlib
 import shutil
 import tempfile
@@ -208,7 +209,7 @@ class DownloadWindow(QtWidgets.QMainWindow):
         self.setCentralWidget(central_widget)
 
     def download(
-        self, granule: str, url: str, destination_filepath: pathlib.Path, filesize: int
+        self, granule: str, url: str, destination_filepath: pathlib.Path, filesize: int, headers: Dict[str, str]
     ) -> None:
         # TODO: This means that once a download has been canceled, you won't
         #   be able to retry it until the plugin is reloaded.
@@ -228,11 +229,12 @@ class DownloadWindow(QtWidgets.QMainWindow):
                 return
 
         print(f"Downloading {granule}")
-        widget = DownloadWidget(granule, url, filesize, destination_filepath)
+        widget = DownloadWidget(granule, url, filesize, destination_filepath, headers)
         self.download_widgets[granule] = widget
         self.download_widgets[granule].download_finished.connect(
             self.download_finished.emit
         )
+        widget.run()
         self.scroll_vbox.insertWidget(0, widget)
 
 
@@ -246,18 +248,18 @@ class DownloadWidget(QtWidgets.QWidget):
     request_cancel = QtCore.pyqtSignal()
 
     def __init__(
-        self, granule: str, url: str, filesize: int, destination_filepath: pathlib.Path
+        self, granule: str, url: str, filesize: int, destination_filepath: pathlib.Path, headers: Dict[str, str]
     ) -> None:
         super().__init__()
         self.granule = granule
         self.url = url
         self.filesize = filesize
+        self.headers = headers
         self.destination_filepath = destination_filepath
         self.canceled = False
         self.failed = False
         self.finished = False
         self.setup_ui()
-        self.run()
 
     def setup_ui(self) -> None:
         # I don't love this -- I'm changing the background color so the
@@ -404,7 +406,7 @@ class DownloadWidget(QtWidgets.QWidget):
 
     def run(self) -> None:
         self.download_worker_thread = QtCore.QThread()
-        self.worker = DownloadWorker(self.url, self.destination_filepath)
+        self.worker = DownloadWorker(self.url, self.headers, self.destination_filepath)
         self.worker.moveToThread(self.download_worker_thread)
 
         self.download_worker_thread.started.connect(self.worker.run)
@@ -474,9 +476,10 @@ class DownloadWorker(QtCore.QObject):
     # Qt's signals use an int32 if I specify "int" here, so use "object"
     progress = QtCore.pyqtSignal(object)
 
-    def __init__(self, url: str, destination_filepath: pathlib.Path) -> None:
+    def __init__(self, url: str, headers: Dict[str, str], destination_filepath: pathlib.Path) -> None:
         super().__init__()
         self.url = url
+        self.headers = headers
         self.destination_filepath = destination_filepath
         self.pause_requested = False
         self.resume_requested = False
@@ -487,17 +490,6 @@ class DownloadWorker(QtCore.QObject):
         self.timeout = 10  # TODO: Up this for production
         self.temp_file = tempfile.NamedTemporaryFile(delete=False)
         print(f"DownloadWorker saving to {self.temp_file.name}")
-
-    # TODO: This blocks in the thread; doesn't allow cancel_download slot to be called
-    """
-    def run(self) -> None:
-        req = requests.get(self.url, stream=True, timeout=self.timeout)
-        if req.status_code != 200:
-            print(f"Download failed! Code {req.status_code}")
-            self.failed.emit()
-            return
-        self.download(req)
-    """
 
     def resume_download(self) -> None:
         self.resumed.emit()
@@ -516,13 +508,10 @@ class DownloadWorker(QtCore.QObject):
         print("DownloadWorker.run()")
         # At least for BAS's data center, Accept-Ranges is set in GET but not HEAD,
         # so we can't check ahead of time whether to expect the Range to work.
+        req_headers = copy.deepcopy(self.headers)
         if self.bytes_received > 0 and self.if_range is not None:
-            req_headers = {
-                "Range": f"bytes={self.bytes_received}-",
-                "If-Range": self.if_range,
-            }
-        else:
-            req_headers = {}
+            req_headers["Range"] = f"bytes={self.bytes_received}-"
+            req_headers["If-Range"] = self.if_range
 
         try:
             # TODO: I'm not sure why I can't get resuming a download to work.

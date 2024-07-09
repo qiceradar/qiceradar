@@ -13,6 +13,7 @@ import PyQt5.QtGui as QtGui
 import PyQt5.QtWidgets as QtWidgets
 import yaml
 from qgis.core import (
+    Qgis,  # Used for warning levels in the message bar
     QgsFeature,
     QgsGeometry,
     QgsLayerTree,
@@ -31,7 +32,7 @@ from qgis.core import (
     QgsSymbol,
     QgsVectorLayer,
 )
-from qgis.gui import QgisInterface, QgsMapTool, QgsMapToolPan
+from qgis.gui import QgisInterface, QgsMapTool, QgsMapToolPan, QgsMessageBar
 
 from .datautils import db_utils
 from .download_widget import DownloadConfirmationDialog, DownloadWindow
@@ -58,10 +59,11 @@ class QIceRadarPlugin(QtCore.QObject):
         super(QIceRadarPlugin, self).__init__()
         QgsMessageLog.logMessage("QIceRadarPlugin.__init__")
         self.iface = iface
+        self.message_bar = self.iface.messageBar()
 
         # TODO: Probably better to get this from the radar_viewer / radar_downloader
         self.supported_data_formats = ["bas_netcdf", "utig_netcdf"]
-        self.supported_download_methods = ["wget"]
+        self.supported_download_methods = ["nsidc", "wget"]
 
         self.download_window: Optional[DownloadWindow] = None
         # The spatial index needs to be created for each new project
@@ -558,11 +560,39 @@ class QIceRadarPlugin(QtCore.QObject):
     def launch_radar_downloader(
         self, dest_filepath: pathlib.Path, db_granule: db_utils.DatabaseGranule
     ) -> None:
+        """
+        Called once all checks on file existance / support for download
+        have finished and we're ready to actually download.
+        """
         try:
             QgsMessageLog.logMessage(f"Creating directory: {dest_filepath.parents[0]}")
             dest_filepath.parents[0].mkdir(parents=True, exist_ok=True)
         except Exception as ex:
             QgsMessageLog.logMessage(f"Exception encountered in mkdir: {ex}")
+
+        # I really don't like creating headers here, because it exposes
+        # the DownloadWorker's implementation details of using requests.
+        # Consider refactoring if we wind up with more methods that
+        # don't just need additional headers passed to requests.get
+        headers = {}
+        if db_granule.download_method == "nsidc":
+            if self.config.nsidc_token is None:
+                # TODO: I'm experimenting with using the MessageBar
+                #  for user updates rather than a bunch of pop-up dialogs.
+                #  This mix is probably confusing.
+                msg = "A token is required to download data from NSIDC."
+
+                # QgsMessageBar.pushMessage(msg, level=Qgis.Warning)
+                widget = self.message_bar.createMessage("Invalid Config", msg)
+                button = QtWidgets.QPushButton(widget)
+                button.setText("Update Config")
+                button.pressed.connect(self.handle_configure_signal)
+                widget.layout().addWidget(button)
+                self.message_bar.pushWidget(widget, Qgis.Warning)
+                return
+            else:
+                headers = {"Authorization": f"Bearer {self.config.nsidc_token}"}
+
         dcd = DownloadConfirmationDialog(
             dest_filepath,
             db_granule.institution,
@@ -575,8 +605,8 @@ class QIceRadarPlugin(QtCore.QObject):
         dcd.configure.connect(self.handle_configure_signal)
 
         dcd.download_confirmed.connect(
-            lambda gg=db_granule.granule_name, url=db_granule.url, fp=dest_filepath, fs=db_granule.filesize: self.start_download(
-                gg, url, fp, fs
+            lambda gg=db_granule.granule_name, url=db_granule.url, fp=dest_filepath, fs=db_granule.filesize, hh=headers: self.start_download(
+                gg, url, fp, fs, hh
             )
         )
         dcd.run()
@@ -1000,7 +1030,7 @@ class QIceRadarPlugin(QtCore.QObject):
         self.iface.mapCanvas().setMapTool(viewer_selection_tool)
 
     def start_download(
-        self, granule: str, url: str, destination_filepath: pathlib.Path, filesize: int
+        self, granule: str, url: str, destination_filepath: pathlib.Path, filesize: int, headers: Dict[str, str]
     ) -> None:
         """
         After the confirmation dialog has finished, this section
@@ -1016,4 +1046,4 @@ class QIceRadarPlugin(QtCore.QObject):
             # TODO: Figure out how to handle the user closing the dock widget
             self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.dock_widget)
         # TODO: add downloadTransectWidget to the download window!
-        self.download_window.download(granule, url, destination_filepath, filesize)
+        self.download_window.download(granule, url, destination_filepath, filesize, headers)
