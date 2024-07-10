@@ -89,7 +89,7 @@ class QIceRadarPlugin(QtCore.QObject):
         self.transect_name_lookup: Dict[str, Tuple[str, int]] = {}
 
         # Cache this when starting the selection tool in order to reset state
-        # self.prev_map_tool_type: Optional[type] = None
+        self.prev_map_tool: Optional[QgsMapTool] = None
 
         # Try loading config when plugin initialized (before project has been selected)
         self.config = UserConfig()
@@ -161,23 +161,31 @@ class QIceRadarPlugin(QtCore.QObject):
             viewer_icon, "Display Radargrams", self.iface.mainWindow()
         )
         self.viewer_action.setCheckable(True)
-        self.viewer_action.triggered.connect(self.run_viewer)
         self.iface.addPluginToMenu("Radar Viewer", self.viewer_action)
         self.iface.addToolBarIcon(self.viewer_action)
+        self.viewer_action.triggered.connect(self.run_viewer)
 
         self.downloader_action = QtWidgets.QAction(
             downloader_icon, "Download Radargrams", self.iface.mainWindow()
         )
         self.downloader_action.setCheckable(True)
-        self.downloader_action.triggered.connect(self.run_downloader)
         self.iface.addPluginToMenu("Radar Downloader", self.downloader_action)
         self.iface.addToolBarIcon(self.downloader_action)
+        self.downloader_action.triggered.connect(self.run_downloader)
 
     def unload(self) -> None:
         """
         Required method; called when plugin unloaded.
         """
         QgsMessageLog.logMessage("QIceRadarPlugin.unload")
+        # Activate another map tool (can't simply deactivate this one)
+        if self.prev_map_tool is None:
+            self.iface.actionPan()
+        else:
+            self.iface.mapCanvas().setMapTool(
+                self.prev_map_tool
+            )
+
         self.iface.removeToolBarIcon(self.viewer_action)
         self.iface.removeToolBarIcon(self.downloader_action)
         self.iface.removePluginMenu("&Radar Viewer", self.viewer_action)
@@ -803,12 +811,12 @@ class QIceRadarPlugin(QtCore.QObject):
         QgsMessageLog.logMessage(f"Got point! {point.x()}, {point.y()}")
 
         # TODO: Really, if it is None, this should be an error condition.
-        """
-        if self.prev_map_tool_type is not None:
+        if self.prev_map_tool is None:
+            self.iface.actionPan().trigger()
+        else:
             self.iface.mapCanvas().setMapTool(
-                self.prev_map_tool_type(self.iface.mapCanvas())
+                self.prev_map_tool
             )
-        """
 
         if self.spatial_index is None:
             errmsg = "Spatial index not created -- bug!!"
@@ -961,32 +969,23 @@ class QIceRadarPlugin(QtCore.QObject):
             self.build_spatial_index()
         if not self.download_renderer_added:
             self.update_download_renderer()
-        # Don't want to bop back to other qiceradar tool after use;
-        # should go back to e.g. zoom tool
-        """
-        curr_tool_type = type(self.iface.mapCanvas().mapTool())
-        if not issubclass(curr_tool_type, QIceRadarSelectionTool):
-            self.prev_map_tool_type = curr_tool_type
-        if self.prev_map_tool_type is None:
-            # mypy doesn't like this; not sure why QgsMapToolPan isn't accepted as a QgsMapTool, which is its base class
-            self.prev_map_tool_type = QgsMapToolPan
-        """
-        # TODO: this lambda is the only place run_download differs from run_viewer
-        # Should I re-combine them with another "operation" parameter?
+
         download_selection_tool = QIceRadarSelectionTool(self.iface.mapCanvas())
         download_selection_tool.selected_point.connect(
             self.selected_download_point_callback
         )
-        try:
-            download_selection_tool.deactivated.connect(
-                lambda ch=False: self.downloader_action.setChecked(ch)
-            )
-            download_selection_tool.activated.connect(
-                lambda ch=True: self.downloader_action.setChecked(ch)
-            )
-        except AttributeError:
-            # TODO: Figure out why sometimes these actions don't exist at startup
-            pass
+        download_selection_tool.deactivated.connect(
+            lambda ch=False: self.downloader_action.setChecked(ch)
+        )
+        download_selection_tool.activated.connect(
+            lambda ch=True: self.downloader_action.setChecked(ch)
+        )
+
+        # Don't want to bop back to other qiceradar tool after use;
+        # should go back to e.g. zoom tool
+        curr_tool = self.iface.mapCanvas().mapTool()
+        if not isinstance(curr_tool, QIceRadarSelectionTool):
+            self.prev_map_tool = curr_tool
         self.iface.mapCanvas().setMapTool(download_selection_tool)
 
     def run_viewer(self) -> None:
@@ -1007,32 +1006,21 @@ class QIceRadarPlugin(QtCore.QObject):
             self.update_download_renderer()
 
         # Create a MapTool to select point on map. After this point, it is callback driven.
-        # TODO: This feels like something that should be handled in the SelectionTool,
-        #  not in the plugin
-        # mypy doesn't like this: "expression has type "type[QgsMapToolPan]", variable has type "QgsMapTool | None")"
-        """
-        prev_map_tool = self.iface.mapCanvas().mapTool()
-        if prev_map_tool is None:
-            self.prev_map_tool_type = QgsMapToolPan
-        else:
-            self.prev_map_tool_type = type(prev_map_tool)
-        """
         viewer_selection_tool = QIceRadarSelectionTool(self.iface.mapCanvas())
         viewer_selection_tool.selected_point.connect(
             self.selected_viewer_point_callback
         )
-        try:
-            # TODO: why does mypy not like this?
-            viewer_selection_tool.deactivated.connect(
-                lambda ch=False: self.viewer_action.setChecked(ch)
-            )
-            viewer_selection_tool.activated.connect(
-                lambda ch=True: self.viewer_action.setChecked(ch)
-            )
-        except AttributeError:
-            # TODO: Figure out why sometimes these actions don't exist at startup
-            pass
+        # TODO: why does mypy not like this?
+        viewer_selection_tool.deactivated.connect(
+            lambda ch=False: self.viewer_action.setChecked(ch)
+        )
+        viewer_selection_tool.activated.connect(
+            lambda ch=True: self.viewer_action.setChecked(ch)
+        )
 
+        curr_tool = self.iface.mapCanvas().mapTool()
+        if not isinstance(curr_tool, QIceRadarSelectionTool):
+            self.prev_map_tool = curr_tool
         self.iface.mapCanvas().setMapTool(viewer_selection_tool)
 
     def start_download(
