@@ -6,7 +6,10 @@ import qgis.core
 from qgis.core import QgsMessageLog
 from qgis.gui import QgisInterface
 
-from .qiceradar_config import UserConfig, config_is_valid, parse_config
+from .qiceradar_config import (
+    UserConfig,
+    rootdir_is_valid,
+)
 
 
 # I wanted this to be a QDialog, but then a PushButton was ALWAYS welected,
@@ -234,15 +237,22 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
         )
 
         # If configuration isn't valid, we can't do anything useful.
-        if config_is_valid(config):
+        errmsg = None
+        if not rootdir_is_valid(config):
+            errmsg = "Please specify a valid directory for data"
+        # Can't check this here because otherwise it won't let us save config
+        # without an internet connection. So, only check right when we're about
+        # to download.
+        # if not nsidc_token_is_valid(config):
+        #     errmsg = "Please enter a valid NSIDC token (or leave empty)"
+        if errmsg is None:
             self.config_saved.emit(config)
             self.close()
         else:
-            errmsg = "Please specify a valid directory for data"
             error_message_box = QtWidgets.QMessageBox()
             error_message_box.setText(errmsg)
             error_message_box.exec()
-            return
+
 
     def close(self) -> bool:
         self.closed.emit()

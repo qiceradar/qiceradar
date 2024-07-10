@@ -528,21 +528,21 @@ class DownloadWorker(QtCore.QObject):
             else:
                 print(f"Could not find last-modified. Huh. Headers = {req.headers}")
         except Exception as ex:
-            print("DownloadWorker.run got exception!")
-            print(ex)
+            QgsMessageLog.logMessag("DownloadWorker.run got exception!")
+            QgsMessageLog.logMessage(ex)
             self.failed.emit()
             return
 
         print(f"Request status code: {req.status_code}")
         print(f"GET headers: {req.request.headers}")
         if req.status_code == 200:
-            print("Starting download")
+            QgsMessageLog.logMessage(f"Starting download of {self.url}")
             resuming = False
         elif req.status_code == 206:
-            print("Resuming download")
+            QgsMessageLog.logMessage(f"Resuming download of {self.url}")
             resuming = True
         else:
-            print(f"Download failed! Code {req.status_code}")
+            QgsMessageLog.logMessage(f"Download failed! Code {req.status_code}, url: {self.url}")
             self.failed.emit()
             return
 

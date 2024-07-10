@@ -1,6 +1,8 @@
 import pathlib
 from typing import Dict, NamedTuple, Optional
 
+import requests
+
 
 class UserConfig(NamedTuple):
     rootdir: Optional[pathlib.Path] = None
@@ -31,5 +33,16 @@ def parse_config(config_dict: Dict[str, str]) -> UserConfig:
     return config
 
 
-def config_is_valid(config: UserConfig) -> bool:
+def rootdir_is_valid(config: UserConfig) -> bool:
     return config.rootdir is not None and config.rootdir.is_dir()
+
+def nsidc_token_is_valid(config: UserConfig) -> bool:
+    test_url = "https://n5eil01u.ecs.nsidc.org/ICEBRIDGE/IR1HI1B.001/2009.01.02/IR1HI1B_2009002_MCM_JKB1a_DGC02a_000.nc"
+    headers = {"Authorization": f"Bearer {config.nsidc_token}"}
+    try:
+        req = requests.get(test_url, stream=True, headers=headers)
+    except:
+        # We expect this to fail if there's no valid internet connection.
+        return False
+    return req.status_code == 200
+

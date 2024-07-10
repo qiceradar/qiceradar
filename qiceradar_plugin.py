@@ -36,7 +36,12 @@ from qgis.gui import QgisInterface, QgsMapTool, QgsMapToolPan, QgsMessageBar
 
 from .datautils import db_utils
 from .download_widget import DownloadConfirmationDialog, DownloadWindow
-from .qiceradar_config import UserConfig, config_is_valid, parse_config
+from .qiceradar_config import (
+    UserConfig,
+    nsidc_token_is_valid,
+    parse_config,
+    rootdir_is_valid,
+)
 from .qiceradar_config_widget import QIceRadarConfigWidget
 from .qiceradar_selection_widget import (
     QIceRadarSelectionTool,
@@ -490,7 +495,7 @@ class QIceRadarPlugin(QtCore.QObject):
 
         # mypy doesn't recognize the first option as doing the same check, so
         # flags get_granule_filepath as having incompatible arguments.
-        # if not config_is_valid(self.config):
+        # if not rootdir_is_valid(self.config):
         if self.config.rootdir is None:
             QgsMessageLog.logMessage(
                 "Invalid config. Can't download or view radargrams."
@@ -576,11 +581,13 @@ class QIceRadarPlugin(QtCore.QObject):
         # don't just need additional headers passed to requests.get
         headers = {}
         if db_granule.download_method == "nsidc":
-            if self.config.nsidc_token is None:
+            if not nsidc_token_is_valid(self.config):
                 # TODO: I'm experimenting with using the MessageBar
                 #  for user updates rather than a bunch of pop-up dialogs.
                 #  This mix is probably confusing.
-                msg = "A token is required to download data from NSIDC."
+                # TODO: May also want to mention "and an internet connection"
+                #   since this warning message will also pop up if we can't connect
+                msg = "A valid token is required to download data from NSIDC."
 
                 # QgsMessageBar.pushMessage(msg, level=Qgis.Warning)
                 widget = self.message_bar.createMessage("Invalid Config", msg)
@@ -840,19 +847,18 @@ class QIceRadarPlugin(QtCore.QObject):
         # Chosen transect is set via callback, rather than direct return value
         selection_widget.run()
 
-    def ensure_valid_configuration(self) -> bool:
+    def ensure_valid_rootdir(self) -> bool:
         # First, make sure we at least have the root data directory configured
-        if not config_is_valid(self.config):
-            cw = QIceRadarConfigWidget(self.iface, self.config)
-            cw.config_saved.connect(self.set_config)
-            cw.run()
-
-        if not config_is_valid(self.config):
-            QgsMessageLog.logMessage("Invalid configuration; can't start QIceRadar")
+        if not rootdir_is_valid(self.config):
+            msg = "Please enter valid root data directory"
+            widget = self.message_bar.createMessage("Invalid Config", msg)
+            button = QtWidgets.QPushButton(widget)
+            button.setText("Update Config")
+            button.pressed.connect(self.handle_configure_signal)
+            widget.layout().addWidget(button)
+            self.message_bar.pushWidget(widget, Qgis.Warning)
             return False
-        else:
-            QgsMessageLog.logMessage(f"Config = {self.config}; ready for use!")
-            return True
+        return True
 
     def handle_configure_signal(self) -> None:
         cw = QIceRadarConfigWidget(self.iface, self.config)
@@ -949,7 +955,7 @@ class QIceRadarPlugin(QtCore.QObject):
 
     def run_downloader(self) -> None:
         QgsMessageLog.logMessage("run downloader")
-        if not self.ensure_valid_configuration():
+        if not self.ensure_valid_rootdir():
             return
         if self.spatial_index is None:
             self.build_spatial_index()
@@ -989,7 +995,7 @@ class QIceRadarPlugin(QtCore.QObject):
 
         self.create_radar_viewer_group()
 
-        if not self.ensure_valid_configuration():
+        if not self.ensure_valid_rootdir():
             return
 
         # Next, make sure the spatial index has been initialized
