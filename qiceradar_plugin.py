@@ -823,21 +823,24 @@ class QIceRadarPlugin(QtCore.QObject):
             QgsMessageLog.logMessage(errmsg)
             return
 
-        # TODO: We need much better spatial index filtering!
-        #   ideally, I'd like a generator that returns the next
-        #   nearest point until I've amassed 5 valid options.
-        neighbors = self.spatial_index.nearestNeighbor(point, 5)
+        # Requesting 500 features is no slower than requesting 5.
+        # (It always seems to take ~0.5 seconds)
+        # Try to grab enough that we rarely have an empty list.
+        neighbors = self.spatial_index.nearestNeighbor(point, 500)
         neighbor_names: List[str] = []
-        QgsMessageLog.logMessage("Got neighbors!")
         root = QgsProject.instance().layerTreeRoot()
-        print(f"Tried to get project root! {root}")
         for neighbor in neighbors:
             layer_id, feature_id = self.spatial_index_lookup[neighbor]
-            # Again, making mypy happy...
-            layer: QgsMapLayer = root.findLayer(layer_id).layer()
-            assert isinstance(layer, QgsVectorLayer)
+            tree_layer = root.findLayer(layer_id)
+            # Only offer visible layers to the user
+            if not tree_layer.isVisible():
+                continue
 
+            # Again, making mypy happy...
+            layer: QgsMapLayer = tree_layer.layer()
+            assert isinstance(layer, QgsVectorLayer)
             feature = layer.getFeature(feature_id)
+
             feature_name = feature.attributeMap()[
                 "name"
             ]  # This returns Optional[object]
@@ -847,13 +850,20 @@ class QIceRadarPlugin(QtCore.QObject):
                 f"feature_id = {feature_id}, feature name = {feature_name}"
             )
             neighbor_names.append(feature_name)
+            # Only need to present the 5 nearest
+            if len(neighbor_names) >= 5:
+                break
 
-        selection_widget = QIceRadarSelectionWidget(self.iface, neighbor_names)
-        selection_widget.selected_radargram.connect(
-            lambda transect, op=operation: self.selected_transect_callback(op, transect)
-        )
-        # Chosen transect is set via callback, rather than direct return value
-        selection_widget.run()
+        if len(neighbor_names) == 0:
+            msg = "Could not find transect near mouse click."
+            self.message_bar.pushMessage("QIceRadar", msg, level=Qgis.Warning, duration=5)
+        else:
+            selection_widget = QIceRadarSelectionWidget(self.iface, neighbor_names)
+            selection_widget.selected_radargram.connect(
+                lambda transect, op=operation: self.selected_transect_callback(op, transect)
+            )
+            # Chosen transect is set via callback, rather than direct return value
+            selection_widget.run()
 
     def ensure_valid_rootdir(self) -> bool:
         # First, make sure we at least have the root data directory configured
