@@ -1295,21 +1295,30 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         plot_objects.left_click_rs["zoom"] = mpw.RectangleSelector(
             plot_objects.pick_ax,
             self._on_left_rect_click_zoom,
-            drawtype="box",
+            # drawtype="box",  # This was deprecated in 3.5, and was default anyways
             button=[1],
         )
         plot_objects.right_click_rs["zoom"] = mpw.RectangleSelector(
             plot_objects.pick_ax,
             self._on_right_rect_click_zoom,
-            drawtype="box",
+            # drawtype="box",
             button=[3],
         )
         # Pan is the same for both of 'em (it's easier this way)
         plot_objects.left_click_rs["pan"] = mpw.RectangleSelector(
-            plot_objects.pick_ax, self._on_rect_click_pan, drawtype="line", button=[1]
+            plot_objects.pick_ax,
+            self._on_rect_click_pan,
+            # TODO: To replicate the old behavior, consider using
+            # `rectprops={'visible': False}` and then manually
+            # drawing the line
+            # drawtype="line",
+            button=[1]
         )
         plot_objects.right_click_rs["pan"] = mpw.RectangleSelector(
-            plot_objects.pick_ax, self._on_rect_click_pan, drawtype="line", button=[3]
+            plot_objects.pick_ax,
+            self._on_rect_click_pan,
+            # drawtype="line",
+            button=[3]
         )
         for artist in plot_objects.left_click_rs.values():
             artist.set_active(False)
