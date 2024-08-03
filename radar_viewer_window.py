@@ -1297,12 +1297,14 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
             self._on_left_rect_click_zoom,
             # drawtype="box",  # This was deprecated in 3.5, and was default anyways
             button=[1],
+            useblit=True,
         )
         plot_objects.right_click_rs["zoom"] = mpw.RectangleSelector(
             plot_objects.pick_ax,
             self._on_right_rect_click_zoom,
             # drawtype="box",
             button=[3],
+            useblit=True,
         )
         # Pan is the same for both of 'em (it's easier this way)
         plot_objects.left_click_rs["pan"] = mpw.RectangleSelector(
@@ -1312,13 +1314,16 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
             # `rectprops={'visible': False}` and then manually
             # drawing the line
             # drawtype="line",
-            button=[1]
+            button=[1],
+            useblit=True,
+
         )
         plot_objects.right_click_rs["pan"] = mpw.RectangleSelector(
             plot_objects.pick_ax,
             self._on_rect_click_pan,
             # drawtype="line",
-            button=[3]
+            button=[3],
+            useblit=True,
         )
         for artist in plot_objects.left_click_rs.values():
             artist.set_active(False)

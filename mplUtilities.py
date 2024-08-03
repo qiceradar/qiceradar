@@ -93,7 +93,7 @@ class XevasHorizSelector:
         )
 
         self.xevas_horiz_ss = mpw.SpanSelector(
-            self.xevas_horiz_ax, self.horiz_span_cb, "horizontal"
+            self.xevas_horiz_ax, self.horiz_span_cb, "horizontal", useblit=True
         )
 
     def horiz_span_cb(self, xmin, xmax):
@@ -156,7 +156,7 @@ class XevasVertSelector:
         )
 
         self.xevas_vert_ss = mpw.SpanSelector(
-            self.xevas_vert_ax, self.vert_span_cb, "vertical"
+            self.xevas_vert_ax, self.vert_span_cb, "vertical", useblit=True
         )
 
     def vert_span_cb(self, ymin, ymax):
