@@ -2111,8 +2111,6 @@ def patched_release(self, event):
         _api.check_in_list(['data', 'pixels'],
                             spancoords=self.spancoords)
 
-    print(f"X span is: {self._eventpress.xdata} -> {self._eventrelease.xdata}")
-    print(f"Reporting press/release: {press_xdata} -> {release_xdata}")
     # check if drawn distance (if it exists) is not too small in
     # either x or y-direction
 
