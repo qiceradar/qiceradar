@@ -47,8 +47,7 @@ from matplotlib.ticker import FuncFormatter
 from qgis.core import QgsMessageLog
 
 # import radutils.radutils as radutils
-from .datautils import radar_utils
-from .datautils import db_utils
+from .datautils import db_utils, radar_utils
 
 # This breaks it on the command line, but works with QGIS.
 from .mplUtilities import (
@@ -1316,6 +1315,10 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
             # drawtype="line",
             button=[1],
             useblit=True,
+            # Hacky way to allow "selections" where click/release have the same
+            # x or y coordinate, which we do want for panning.
+            minspanx=-1,
+            minspany=-1,
 
         )
         plot_objects.right_click_rs["pan"] = mpw.RectangleSelector(
@@ -1324,6 +1327,10 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
             # drawtype="line",
             button=[3],
             useblit=True,
+            # Hacky way to allow "selections" where click/release have the same
+            # x or y coordinate, which we do want for panning.
+            minspanx=-1,
+            minspany=-1,
         )
         for artist in plot_objects.left_click_rs.values():
             artist.set_active(False)
@@ -2050,3 +2057,88 @@ if __name__ == "__main__":
 
     radar_window.show()
     app.exec_()
+
+
+
+
+# Trying to monkeypatch the RectangleSelector's callback to actually
+# give me click/release coordinates, rather than the extent
+#
+# The code below is from:
+# matplotlib/lib/matplotlib/widgets.py
+#
+# Copyright (c) 2012- Matplotlib Development Team; All Rights Reserved
+#
+# License: https://github.com/matplotlib/matplotlib/blob/c17197cb1397a1b8d3b57739098551080dc2160e/LICENSE/LICENSE
+def patched_release(self, event):
+    """Button release event handler."""
+    if not self._interactive:
+        self._selection_artist.set_visible(False)
+
+    if (self._active_handle is None and self._selection_completed and
+            self.ignore_event_outside):
+        return
+
+    press_xdata = self._eventpress.xdata
+    press_ydata = self._eventpress.ydata
+    release_xdata = self._eventrelease.xdata
+    release_ydata = self._eventrelease.ydata
+    press_x = self._eventpress.x
+    press_y = self._eventpress.y
+    release_x = self._eventrelease.x
+    release_y = self._eventrelease.y
+
+    # update the eventpress and eventrelease with the resulting extents
+    x0, x1, y0, y1 = self.extents
+    self._eventpress.xdata = x0
+    self._eventpress.ydata = y0
+    xy0 = self.ax.transData.transform([x0, y0])
+    self._eventpress.x, self._eventpress.y = xy0
+
+    self._eventrelease.xdata = x1
+    self._eventrelease.ydata = y1
+    xy1 = self.ax.transData.transform([x1, y1])
+    self._eventrelease.x, self._eventrelease.y = xy1
+
+    # calculate dimensions of box or line
+    if self.spancoords == 'data':
+        spanx = abs(self._eventpress.xdata - self._eventrelease.xdata)
+        spany = abs(self._eventpress.ydata - self._eventrelease.ydata)
+    elif self.spancoords == 'pixels':
+        spanx = abs(self._eventpress.x - self._eventrelease.x)
+        spany = abs(self._eventpress.y - self._eventrelease.y)
+    else:
+        _api.check_in_list(['data', 'pixels'],
+                            spancoords=self.spancoords)
+
+    print(f"X span is: {self._eventpress.xdata} -> {self._eventrelease.xdata}")
+    print(f"Reporting press/release: {press_xdata} -> {release_xdata}")
+    # check if drawn distance (if it exists) is not too small in
+    # either x or y-direction
+
+    # Restore ordering of press/release coordinates
+    self._eventpress.xdata = press_xdata
+    self._eventpress.ydata = press_ydata
+    self._eventpress.x = press_x
+    self._eventpress.y = press_y
+    self._eventrelease.xdata = release_xdata
+    self._eventrelease.ydata = release_ydata
+    self._eventrelease.x = release_x
+    self._eventrelease.y = release_y
+
+    if spanx <= self.minspanx or spany <= self.minspany:
+        if self._selection_completed:
+            # Call onselect, only when the selection is already existing
+            self.onselect(self._eventpress, self._eventrelease)
+        self._clear_without_update()
+    else:
+        self.onselect(self._eventpress, self._eventrelease)
+        self._selection_completed = True
+
+    self.update()
+    self._active_handle = None
+    self._extents_on_press = None
+
+    return False
+
+mpw.RectangleSelector._release = patched_release
