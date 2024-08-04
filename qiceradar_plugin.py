@@ -952,8 +952,9 @@ class QIceRadarPlugin(QtCore.QObject):
             # (Can't use path.join within the filter expression)
             # Otherwise, we were getting D:\RadarData/ANTARCTIC, which doesn't work,
             # while a string with only '/' does work on modern Windows.
+            rootdir = str(self.config.rootdir).replace('\\', '/')
             dl_rule.setFilterExpression(
-                f"""length("relative_path") > 0 and file_exists('{str(self.config.rootdir).replace('\\', '/')}/' + "relative_path")"""
+                f"""length("relative_path") > 0 and file_exists('{rootdir}/' + "relative_path")"""
             )
             dl_rule.symbol().setWidth(0.35) # Make them more visible
             dl_rule.symbol().setColor(QtGui.QColor(133, 54, 229, 255))
