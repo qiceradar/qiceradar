@@ -942,10 +942,15 @@ class QIceRadarPlugin(QtCore.QObject):
             region = region.upper()
             institution = f0.attributeMap()["institution"]
             campaign = f0.attributeMap()["campaign"]
-            # TODO: This may not work on windows ...
+
+            # Converting the Path object back to string in order to work on windows
+            # (Can't use path.join within the filter expression)
+            # Otherwise, we were getting D:\RadarData/ANTARCTIC, which doesn't work,
+            # while a string with only '/' does work on modern Windows.
             dl_rule.setFilterExpression(
-                f"""length("relative_path") > 0 and file_exists('{self.config.rootdir}/' + "relative_path")"""
+                f"""length("relative_path") > 0 and file_exists('{str(self.config.rootdir).replace('\\', '/')}/' + "relative_path")"""
             )
+            dl_rule.symbol().setWidth(0.35) # Make them more visible
             dl_rule.symbol().setColor(QtGui.QColor(133, 54, 229, 255))
             root_rule.appendChild(dl_rule)
 
