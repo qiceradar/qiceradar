@@ -5,7 +5,6 @@ import pathlib
 import sqlite3
 
 # from db_utils import DatabaseGranule, DatabaseCampaign
-from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 import PyQt5.QtCore as QtCore
@@ -102,7 +101,6 @@ class QIceRadarPlugin(QtCore.QObject):
             QgsMessageLog.logMessage(f"Tried to load config. config_str = {config_str}")
             config_dict = yaml.safe_load(config_str)
             self.config = parse_config(config_dict)
-            print(f"Loaded config! {self.config}")
         except Exception as ex:
             QgsMessageLog.logMessage(f"Error loading config: {ex}")
 
