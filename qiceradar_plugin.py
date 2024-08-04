@@ -552,6 +552,13 @@ class QIceRadarPlugin(QtCore.QObject):
                 campaign = feature.attributeMap()["campaign"]
                 self.display_unavailable_dialog(institution, campaign)
             else:
+                # TODO: This is a bit confusing -- if db_granule is None,
+                #  we don't have any info about it in the database, so
+                #  I'm not sure splitting it out into download_method /
+                #  data_format is the fundamental thing, since we don't
+                #  even know what the method or format should be!
+                #  There are also cases where I expect to provide a link
+                #  but direct the user to download it manually.
                 if operation == QIceRadarPlugin.Operation.DOWNLOAD:
                     self.display_unsupported_download_method_dialog(granule_name)
                 elif operation == QIceRadarPlugin.Operation.VIEW:
