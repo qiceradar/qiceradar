@@ -1,10 +1,13 @@
 import itertools
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
+import matplotlib
+import numpy as np
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
 import PyQt5.QtWidgets as QtWidgets
-
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
 
 from .plotUtilities import show_error_message_box
 
@@ -44,7 +47,72 @@ class DoubleSlider(QtWidgets.QWidget):
 
         # TODO - have sliders only call update when _released_,
         # otherwise it may try to redraw the image tons.
-        self.min_slider_label1 = QtWidgets.QLabel("MIN")
+        self.slider_set_min_label = QtWidgets.QLabel("MIN")
+        self.slider_set_max_label = QtWidgets.QLabel("MAX")
+
+        # Try putting this before creating the RangeSlider
+        self.min_slider_textbox = QtWidgets.QLineEdit()
+        self.min_slider_textbox.setMinimumWidth(90)
+        self.min_slider_textbox.setMaximumWidth(120)
+        self.min_slider_textbox.setText(f"{self.curr_lim[0]}")
+        self.min_slider_textbox.editingFinished.connect(
+            self._on_min_slider_textbox_edited,
+        )
+
+
+
+
+        self.slider_fig = Figure((1, 1))
+        self.slider_canvas = FigureCanvas(self.slider_fig)
+        self.slider_canvas.setParent(self)
+
+        # Can't use full xlim because the slider handles will go off the sides
+        self.slider_ax = self.slider_fig.add_axes([0.03, 0, 0.94, 1])
+
+        # Want the canvas + figure to blend in with Qt Widget, rather
+        # than standing out with a white background
+        palette = QtGui.QGuiApplication.palette()
+        qt_color = palette.window().color()
+        mpl_color = [qt_color.redF(), qt_color.greenF(), qt_color.blueF(), qt_color.alphaF()]
+        self.slider_ax.patch.set_facecolor(mpl_color)  # not necessary
+        self.slider_fig.patch.set_facecolor(mpl_color)  # This is what did it
+
+        slider_label = None
+        self.range_slider = matplotlib.widgets.RangeSlider(
+            self.slider_ax, slider_label, curr_lim[0], curr_lim[1], valfmt=None
+        )
+        # TODO: Figure out how to get on_changed to only fire on mouse
+        # release event, rather than updating it constantly while dragging.
+        self.range_slider.on_changed(self._on_range_slider_changed)
+        # This works, but then the highlighted region is too tall.
+        # I also don't like reaching into the class to change attributes like this
+        # self.range_slider.track.set_height(0.25)
+        print("line 91")
+
+        self.slider_canvas.setFixedHeight(15)
+        # TODO: Set horizontal policy to be Expanding
+        # The below doesn't work because the canvas isn't a widget.
+        # self.slider_canvas.setHorizontalPolicy(QtWidgets.QSizePolicy.Expanding)
+        # TODO: Set horizontal hint to be smaller
+        self.slider_widget = QtWidgets.QWidget()
+        self.slider_layout = QtWidgets.QHBoxLayout()
+        self.slider_layout.addWidget(self.slider_canvas)
+        self.slider_widget.setLayout(self.slider_layout)
+        self.slider_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
+
+        print("line 103")
+        self.slider_min_label = QtWidgets.QLabel(f"{self.curr_lim[0]:.2f}")
+        self.slider_max_label = QtWidgets.QLabel(f"{self.curr_lim[1]:.2f}")
+        self.slider_hbox = QtWidgets.QHBoxLayout()
+        self.slider_hbox.addWidget(self.slider_min_label)
+        # self.slider_hbox.addWidget(self.slider_canvas)
+        self.slider_hbox.addStretch(1.0)
+        #self.slider_hbox.addWidget(self.slider_widget)
+        self.slider_hbox.addWidget(self.slider_max_label)
+
+        print("line 113")
+
+        """
         self.min_slider_label2 = QtWidgets.QLabel(f"{self.curr_lim[0]:.1f}")
         self.min_slider_label3 = QtWidgets.QLabel(f"{self.curr_lim[1]:.1f}")
         self.min_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
@@ -54,24 +122,21 @@ class DoubleSlider(QtWidgets.QWidget):
         self.min_slider.valueChanged.connect(
             self._on_min_slider_changed,
         )
+        """
 
-        self.min_slider_textbox = QtWidgets.QLineEdit()
-        self.min_slider_textbox.setMinimumWidth(90)
-        self.min_slider_textbox.setMaximumWidth(120)
-        self.min_slider_textbox.setText(f"{self.curr_lim[0]}")
-        self.min_slider_textbox.editingFinished.connect(
-            self._on_min_slider_textbox_edited,
-        )
 
-        min_slider_upper_hbox = QtWidgets.QHBoxLayout()
-        min_slider_upper_hbox.addWidget(self.min_slider_label1)
-        min_slider_upper_hbox.addStretch(1)
-        min_slider_upper_hbox.addWidget(self.min_slider_textbox)
+        set_min_slider_hbox = QtWidgets.QHBoxLayout()
+        set_min_slider_hbox.addWidget(self.slider_set_min_label)
+        set_min_slider_hbox.addStretch(1)
+        set_min_slider_hbox.addWidget(self.min_slider_textbox)
+        """
         min_slider_lower_hbox = QtWidgets.QHBoxLayout()
         min_slider_lower_hbox.addWidget(self.min_slider_label2)
         min_slider_lower_hbox.addWidget(self.min_slider)
         min_slider_lower_hbox.addWidget(self.min_slider_label3)
+        """
 
+        """
         # And now for the max-bounds slider ...
         self.max_slider_label1 = QtWidgets.QLabel("MAX")
         self.max_slider_label2 = QtWidgets.QLabel(f"{self.curr_lim[0]:.1f}")
@@ -84,6 +149,7 @@ class DoubleSlider(QtWidgets.QWidget):
         self.max_slider.valueChanged.connect(
             self._on_max_slider_changed,
         )
+        """
 
         self.max_slider_textbox = QtWidgets.QLineEdit()
         self.max_slider_textbox.setMaximumWidth(90)
@@ -93,19 +159,25 @@ class DoubleSlider(QtWidgets.QWidget):
             self._on_max_slider_textbox_edited,
         )
 
-        max_slider_upper_hbox = QtWidgets.QHBoxLayout()
-        max_slider_upper_hbox.addWidget(self.max_slider_label1)
-        max_slider_upper_hbox.addStretch(1)
-        max_slider_upper_hbox.addWidget(self.max_slider_textbox)
+        set_max_slider_hbox = QtWidgets.QHBoxLayout()
+        set_max_slider_hbox.addWidget(self.slider_set_max_label)
+        set_max_slider_hbox.addStretch(1)
+        set_max_slider_hbox.addWidget(self.max_slider_textbox)
+        """
         max_slider_lower_hbox = QtWidgets.QHBoxLayout()
         max_slider_lower_hbox.addWidget(self.max_slider_label2)
         max_slider_lower_hbox.addWidget(self.max_slider)
         max_slider_lower_hbox.addWidget(self.max_slider_label3)
+        """
 
-        self.layout.addLayout(min_slider_upper_hbox)
-        self.layout.addLayout(min_slider_lower_hbox)
-        self.layout.addLayout(max_slider_upper_hbox)
-        self.layout.addLayout(max_slider_lower_hbox)
+        self.layout.addLayout(set_min_slider_hbox)
+        self.layout.addLayout(set_max_slider_hbox)
+        # self.layout.addLayout(min_slider_lower_hbox)
+        self.layout.addWidget(self.slider_widget)
+        self.layout.addLayout(self.slider_hbox)
+        # self.layout.addLayout(max_slider_lower_hbox)
+
+        print("line 172")
 
     # TODO: It would be nice to have this as a decorator, rather
     # than calling both independently, but that got complicated ...
@@ -117,30 +189,39 @@ class DoubleSlider(QtWidgets.QWidget):
         """
         self.min_slider_textbox.editingFinished.disconnect(
             self._on_min_slider_textbox_edited,
-        )
-        self.min_slider.valueChanged.disconnect(
-            self._on_min_slider_changed,
-        )
+            )
         self.max_slider_textbox.editingFinished.disconnect(
             self._on_max_slider_textbox_edited,
+        )
+        """
+        self.min_slider.valueChanged.disconnect(
+            self._on_min_slider_changed,
         )
         self.max_slider.valueChanged.disconnect(
             self._on_max_slider_changed,
         )
+        """
+        # Hacky way to disconnect this callback
+        # This DOES NOT WORK. It seems to just add callbacks,
+        # rather than reset it
+        #self.range_slider.on_changed(lambda x: None)
 
     def reconnect_callbacks(self) -> None:
         self.min_slider_textbox.editingFinished.connect(
             self._on_min_slider_textbox_edited,
         )
-        self.min_slider.valueChanged.connect(
-            self._on_min_slider_changed,
-        )
         self.max_slider_textbox.editingFinished.connect(
             self._on_max_slider_textbox_edited,
+        )
+        """
+        self.min_slider.valueChanged.connect(
+            self._on_min_slider_changed,
         )
         self.max_slider.valueChanged.connect(
             self._on_max_slider_changed,
         )
+        """
+        # self.range_slider.on_changed(self._on_range_slider_changed)
 
     def set_range(self, lim: Tuple[float, float]) -> None:
         """
@@ -148,15 +229,53 @@ class DoubleSlider(QtWidgets.QWidget):
         be at the full range.
         Does not trigger any callbacks.
         """
+        print(f"Calling set_range: {lim}")
         rmin, rmax = lim
         self.disconnect_callbacks()
+        """
         self.max_slider.setRange(rmin, rmax)
         self.max_slider_label2.setText(f"{rmin:.1f}")
         self.max_slider_label3.setText(f"{rmax:.1f}")
         self.min_slider.setRange(rmin, rmax)
         self.min_slider_label2.setText(f"{rmin:.1f}")
         self.min_slider_label3.setText(f"{rmax:.1f}")
+        """
+        # Need to reconnect before calling range_slider's methods
+        # because those will trigger the same callback that user changes
+        # would, and that disconnects calbacks.
         self.reconnect_callbacks()
+        # THis is a bit hacky; setting max first because the default
+        # max values are smaller than the new min is likely to be
+        # Need to set these in an order that's guaranteed to be valid.
+        # If max greater than current min, we can set it.
+        # Otherwise, need to update the minimum first.
+        print(f"Before setting, range_slider's range = {self.range_slider.valmin}, {self.range_slider.valmax}")
+        print(f"Before setting, range_slider's values = {self.range_slider.val}")
+        # Directly changing valmin/valmax because the widget didn't provide an API call
+        # OH! It would probably be better to just create a new slider
+        # and discard the existing one.
+        """
+        self.range_slider.valmin = rmin
+        self.range_slider.valmax = rmax
+        self.range_slider.set_val(lim)
+        """
+        slider_label = None
+        self.range_slider = matplotlib.widgets.RangeSlider(
+            self.slider_ax, slider_label, lim[0], lim[1], valinit=lim, valfmt=None
+        )
+        self.slider_min_label.setText(f"{rmin:.2f}")
+        self.slider_max_label.setText(f"{rmax:.2f}")
+        self.range_slider.on_changed(self._on_range_slider_changed)
+        print(f"After setting, range_slider's range = {self.range_slider.valmin}, {self.range_slider.valmax}")
+        print(f"After setting, range_slider's values = {self.range_slider.val}")
+        """
+        if rmax > self.curr_lim[0]:
+            self.range_slider.set_max(rmax)
+            self.range_slider.set_min(rmin)
+        else:
+            self.range_slider.set_min(rmin)
+            self.range_slider.set_max(rmax)
+        """
         self.set_value(lim)
 
     def set_value(self, lim: Tuple[float, float]) -> None:
@@ -167,15 +286,15 @@ class DoubleSlider(QtWidgets.QWidget):
         self.curr_lim = lim
         rmin, rmax = lim
         self.disconnect_callbacks()
-        self.max_slider.setValue(rmax)
-        self.max_slider_textbox.setText(f"{rmax:.1f}")
-        self.min_slider.setValue(rmin)
-        self.min_slider_textbox.setText(f"{rmin:.1f}")
+        # self.max_slider.setValue(rmax)
+        self.max_slider_textbox.setText(f"{rmax:.2f}")
+        # self.min_slider.setValue(rmin)
+        self.min_slider_textbox.setText(f"{rmin:.2f}")
         self.reconnect_callbacks()
 
-    def _on_min_slider_changed(self) -> None:
-        input_min = self.min_slider.value()
-        self.update_min_value(input_min)
+    # def _on_min_slider_changed(self) -> None:
+    #     input_min = self.min_slider.value()
+    #     self.update_min_value(input_min)
 
     def _on_min_slider_textbox_edited(self) -> None:
         # TODO(lindzey): would be cleaner to do input validation here
@@ -191,16 +310,29 @@ class DoubleSlider(QtWidgets.QWidget):
         # min can't be bigger than max
         cmin = min(self.curr_lim[1], input_min)
         self.disconnect_callbacks()
-        self.min_slider.setValue(cmin)
-        self.min_slider_textbox.setText(f"{cmin:.1f}")
-        self.reconnect_callbacks()
+        # self.min_slider.setValue(cmin)
+        self.min_slider_textbox.setText(f"{cmin:.2f}")
         self.curr_lim = (cmin, self.curr_lim[1])
+        self.range_slider.set_val(self.curr_lim)
+        self.reconnect_callbacks()
         if self.new_lim_cb is not None:
             self.new_lim_cb(self.curr_lim)
 
-    def _on_max_slider_changed(self) -> None:
-        input_max = self.max_slider.value()
-        self.update_max_value(input_max)
+    # def _on_max_slider_changed(self) -> None:
+    #     input_max = self.max_slider.value()
+    #     self.update_max_value(input_max)
+
+    def _on_range_slider_changed(self, newlim) -> None:
+        # TODO: Somehow, this is called MANY times whenever the
+        #  textbox is changed.
+        print(f"Called _on_range_slider_changed with newlim = {newlim}")
+        self.disconnect_callbacks()
+        self.min_slider_textbox.setText(f"{newlim[0]:.2f}")
+        self.max_slider_textbox.setText(f"{newlim[1]:.2f}")
+        self.reconnect_callbacks()
+        self.curr_lim = newlim
+        if self.new_lim_cb is not None:
+            self.new_lim_cb(newlim)
 
     def _on_max_slider_textbox_edited(self) -> None:
         max_text = self.max_slider_textbox.text()
@@ -215,10 +347,11 @@ class DoubleSlider(QtWidgets.QWidget):
         # max can't be smaller than min
         cmax = max(self.curr_lim[0], input_max)
         self.disconnect_callbacks()
-        self.max_slider.setValue(cmax)
-        self.max_slider_textbox.setText(f"{cmax:.1f}")
-        self.reconnect_callbacks()
+        # self.max_slider.setValue(cmax)
+        self.max_slider_textbox.setText(f"{cmax:.2f}")
         self.curr_lim = (self.curr_lim[0], cmax)
+        self.range_slider.set_val(self.curr_lim)
+        self.reconnect_callbacks()
         if self.new_lim_cb is not None:
             self.new_lim_cb(self.curr_lim)
 
