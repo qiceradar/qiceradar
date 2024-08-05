@@ -9,6 +9,15 @@ import PyQt5.QtWidgets as QtWidgets
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
+# This was added in matplotlib 3.4, but even in 2024 the MacOS QGIS install
+# is shipping with matplotlib 3.3 (Ubuntu debs + Windows install have updated)
+try:
+    from matplotlib.widgets import RangeSlider
+    RANGE_SLIDER_SUPPORTED = True
+except ImportError:
+    from matplotlib.widgets import Slider
+    RANGE_SLIDER_SUPPORTED = False
+
 from .plotUtilities import show_error_message_box
 
 
@@ -50,29 +59,39 @@ class DoubleSlider(QtWidgets.QWidget):
         self.slider_canvas = FigureCanvas(self.slider_fig)
         self.slider_canvas.setParent(self)
 
-        # Can't use full xlim because the slider handles will go off the sides
-        self.slider_ax = self.slider_fig.add_axes([0.03, 0, 0.94, 1])
-
         # Want the canvas + figure to blend in with Qt Widget, rather
         # than standing out with a white background
         palette = QtGui.QGuiApplication.palette()
         qt_color = palette.window().color()
         mpl_color = [qt_color.redF(), qt_color.greenF(), qt_color.blueF(), qt_color.alphaF()]
-        self.slider_ax.patch.set_facecolor(mpl_color)  # not necessary
         self.slider_fig.patch.set_facecolor(mpl_color)  # This is what did it
 
+        # Unfortunately, the on_changed events don't only fire when the mouse
+        # is released, but that seems to cause minimal enough redraw to not
+        # present a huge problem.
         slider_label = None
-        self.range_slider = matplotlib.widgets.RangeSlider(
-            self.slider_ax, slider_label, curr_lim[0], curr_lim[1], valfmt=None
-        )
-        # TODO: Figure out how to get on_changed to only fire on mouse
-        # release event, rather than updating it constantly while dragging.
-        self.range_slider.on_changed(self._on_range_slider_changed)
-        # This works, but then the highlighted region is too tall.
-        # I also don't like reaching into the class to change attributes like this
-        # self.range_slider.track.set_height(0.25)
+        if RANGE_SLIDER_SUPPORTED:
+            # Can't use full xlim because the slider handles will go off the sides
+            self.slider_ax = self.slider_fig.add_axes([0.03, 0, 0.94, 1])
+            self.range_slider = RangeSlider(
+                self.slider_ax, slider_label, curr_lim[0], curr_lim[1], valfmt=None
+            )
+            self.range_slider.on_changed(self._on_range_slider_changed)
+            # This works, but then the highlighted region is too tall.
+            # I also don't like reaching into the class to change attributes like this
+            # self.range_slider.track.set_height(0.25)
+            self.slider_canvas.setFixedHeight(15)
+        else:
+            # Can't use full xlim because the slider handles will go off the sides
+            self.slider_ax1 = self.slider_fig.add_axes([0.03, 0.5, 0.94, 1])
+            self.slider_ax2 = self.slider_fig.add_axes([0.03, 0.0, 0.94, 0.5])
 
-        self.slider_canvas.setFixedHeight(15)
+            self.min_range_slider = Slider(self.slider_ax1, slider_label, curr_lim[0], curr_lim[1], valinit=curr_lim[0], valfmt=None)
+            self.min_range_slider.on_changed(self._on_min_range_slider_changed)
+            self.max_range_slider = Slider(self.slider_ax2, slider_label, curr_lim[0], curr_lim[1], valinit=curr_lim[1], valfmt=None)
+            self.max_range_slider.on_changed(self._on_max_range_slider_changed)
+            self.slider_canvas.setFixedHeight(30)
+
         self.slider_widget = QtWidgets.QWidget()
         self.slider_layout = QtWidgets.QHBoxLayout()
         self.slider_layout.addWidget(self.slider_canvas)
@@ -127,12 +146,22 @@ class DoubleSlider(QtWidgets.QWidget):
         rmin, rmax = lim
         # Create new RangeSlider since valmin/valmax can't be changed via the API
         slider_label = None
-        self.range_slider = matplotlib.widgets.RangeSlider(
-            self.slider_ax, slider_label, lim[0], lim[1], valinit=lim, valfmt=None
-        )
+        if RANGE_SLIDER_SUPPORTED:
+            self.range_slider = matplotlib.widgets.RangeSlider(
+                self.slider_ax, slider_label, lim[0], lim[1], valinit=lim, valfmt=None
+            )
+            self.range_slider.on_changed(self._on_range_slider_changed)
+        else:
+            self.min_range_slider = Slider(
+                self.slider_ax1, slider_label, lim[0], lim[1], valinit=lim[0], valfmt=None
+            )
+            self.min_range_slider.on_changed(self._on_min_range_slider_changed)
+            self.max_range_slider = Slider(
+                self.slider_ax2, slider_label, lim[0], lim[1], valinit=lim[1], valfmt=None
+            )
+            self.max_range_slider.on_changed(self._on_max_range_slider_changed)
         self.slider_min_label.setText(f"{rmin:.2f}")
         self.slider_max_label.setText(f"{rmax:.2f}")
-        self.range_slider.on_changed(self._on_range_slider_changed)
         self.set_value(lim)
 
     def set_value(self, lim: Tuple[float, float]) -> None:
@@ -160,19 +189,36 @@ class DoubleSlider(QtWidgets.QWidget):
         cmin = min(self.curr_lim[1], input_min)
         self.min_slider_textbox.setText(f"{cmin:.2f}")
         self.curr_lim = (cmin, self.curr_lim[1])
-        self.range_slider.set_val(self.curr_lim)
+        if RANGE_SLIDER_SUPPORTED:
+            self.range_slider.set_val(self.curr_lim)
+        else:
+            self.max_range_slider.set_val(cmin)
         if self.new_lim_cb is not None:
             self.new_lim_cb(self.curr_lim)
 
     def _on_range_slider_changed(self, newlim) -> None:
-        # TODO: Somehow, this is called MANY times whenever the
-        #  textbox is changed.
         print(f"Called _on_range_slider_changed with newlim = {newlim}")
         self.min_slider_textbox.setText(f"{newlim[0]:.2f}")
         self.max_slider_textbox.setText(f"{newlim[1]:.2f}")
         self.curr_lim = newlim
         if self.new_lim_cb is not None:
-            self.new_lim_cb(newlim)
+            self.new_lim_cb(self.curr_lim)
+
+    def _on_min_range_slider_changed(self, newmin) -> None:
+        print(f"Called _on_min_range_slider_changed with newlim = {newmin}")
+        self.min_slider_textbox.setText(f"{newmin:.2f}")
+        curr_max = float(self.max_slider_textbox.text())
+        self.curr_lim = [newmin, curr_max]
+        if self.new_lim_cb is not None:
+            self.new_lim_cb(self.curr_lim)
+
+    def _on_max_range_slider_changed(self, newmax) -> None:
+        print(f"Called _on_max_range_slider_changed with newlim = {newmax}")
+        self.max_slider_textbox.setText(f"{newmax:.2f}")
+        curr_min = float(self.min_slider_textbox.text())
+        self.curr_lim = [curr_min, newmax]
+        if self.new_lim_cb is not None:
+            self.new_lim_cb(self.curr_lim)
 
     def _on_max_slider_textbox_edited(self) -> None:
         max_text = self.max_slider_textbox.text()
@@ -188,7 +234,10 @@ class DoubleSlider(QtWidgets.QWidget):
         cmax = max(self.curr_lim[0], input_max)
         self.max_slider_textbox.setText(f"{cmax:.2f}")
         self.curr_lim = (self.curr_lim[0], cmax)
-        self.range_slider.set_val(self.curr_lim)
+        if RANGE_SLIDER_SUPPORTED:
+            self.range_slider.set_val(self.curr_lim)
+        else:
+            self.max_range_slider.set_val(cmax)
         if self.new_lim_cb is not None:
             self.new_lim_cb(self.curr_lim)
 
