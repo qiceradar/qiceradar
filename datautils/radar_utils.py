@@ -5,7 +5,7 @@ from typing import List
 import numpy as np
 import pyproj
 
-from . import bas_utils, db_utils, utig_utils
+from . import bas_utils, cresis_utils, db_utils, utig_utils
 
 
 class Institutions(enum.IntEnum):
@@ -54,8 +54,23 @@ class RadarData:
                 self.utc,
                 self.fast_time_us,
             ) = utig_utils.load_radargram(filepath)
+        elif db_granule.data_format == "cresis_mat":
+            # TODO: This should be the actual product. I think the
+            #  database needs to include that ...
+            self.available_products = "cresis"
+            try:
+                (
+                    self.data,  # TODO: rename this to radargram
+                    self.lat,
+                    self.lon,
+                    self.utc,
+                    self.fast_time_us,
+                ) = cresis_utils.load_radargram(filepath)
+            except Exception as ex:
+                print(f"Couldn't load {filepath}.")
+                raise(ex)
         else:
-            raise Exception("Only BAS & UTIG formats supported for now!")
+            raise Exception("Only BAS, CRESIS & UTIG formats supported for now!")
 
         # elif self.institution == "UTIG":
         #     self.available_products = ["high_gain", "low_gain"]

@@ -66,7 +66,7 @@ class QIceRadarPlugin(QtCore.QObject):
         self.message_bar = self.iface.messageBar()
 
         # TODO: Probably better to get this from the radar_viewer / radar_downloader
-        self.supported_data_formats = ["bas_netcdf", "utig_netcdf"]
+        self.supported_data_formats = ["bas_netcdf", "utig_netcdf", "cresis_mat"]
         self.supported_download_methods = ["nsidc", "wget"]
 
         self.download_window: Optional[DownloadWindow] = None
