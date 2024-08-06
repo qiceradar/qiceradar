@@ -57,7 +57,7 @@ class RadarData:
         elif db_granule.data_format == "cresis_mat":
             # TODO: This should be the actual product. I think the
             #  database needs to include that ...
-            self.available_products = "cresis"
+            self.available_products = ["cresis"]
             try:
                 (
                     self.data,  # TODO: rename this to radargram
