@@ -192,12 +192,12 @@ class DoubleSlider(QtWidgets.QWidget):
         if RANGE_SLIDER_SUPPORTED:
             self.range_slider.set_val(self.curr_lim)
         else:
-            self.max_range_slider.set_val(cmin)
+            self.min_range_slider.set_val(cmin)
         if self.new_lim_cb is not None:
             self.new_lim_cb(self.curr_lim)
 
     def _on_range_slider_changed(self, newlim) -> None:
-        print(f"Called _on_range_slider_changed with newlim = {newlim}")
+        # print(f"Called _on_range_slider_changed with newlim = {newlim}")
         self.min_slider_textbox.setText(f"{newlim[0]:.2f}")
         self.max_slider_textbox.setText(f"{newlim[1]:.2f}")
         self.curr_lim = newlim
@@ -205,7 +205,7 @@ class DoubleSlider(QtWidgets.QWidget):
             self.new_lim_cb(self.curr_lim)
 
     def _on_min_range_slider_changed(self, newmin) -> None:
-        print(f"Called _on_min_range_slider_changed with newlim = {newmin}")
+        # print(f"Called _on_min_range_slider_changed with newlim = {newmin}")
         self.min_slider_textbox.setText(f"{newmin:.2f}")
         curr_max = float(self.max_slider_textbox.text())
         self.curr_lim = [newmin, curr_max]
@@ -213,7 +213,7 @@ class DoubleSlider(QtWidgets.QWidget):
             self.new_lim_cb(self.curr_lim)
 
     def _on_max_range_slider_changed(self, newmax) -> None:
-        print(f"Called _on_max_range_slider_changed with newlim = {newmax}")
+        # print(f"Called _on_max_range_slider_changed with newlim = {newmax}")
         self.max_slider_textbox.setText(f"{newmax:.2f}")
         curr_min = float(self.min_slider_textbox.text())
         self.curr_lim = [curr_min, newmax]
