@@ -330,6 +330,9 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         # This is for the QtGui stuff
         super(BasicRadarWindow, self).__init__()
 
+        self.press_event = None
+        self.release_event = None
+
         self.pst = db_granule.granule_name
         self.db_granule = db_granule
         self.db_campaign = db_campaign
@@ -1044,6 +1047,32 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
             self.plot_params.crosshair_frozen = False  # want it responsive by default.
         self.cursor_blit()
 
+    def _on_button_press_event(self, event: matplotlib.backend_bases.MouseEvent) -> None:
+        # print("_on_button_press_event")
+        self.press_event = event
+
+    def _on_button_release_event(self, event: matplotlib.backend_bases.MouseEvent) -> None:
+        # print("_on_button_release_event")
+        if event.inaxes is not self.plot_objects.pick_ax:
+            # print("... but not in our axes! Skipping ...")
+            pass
+        elif self.plot_params.mouse_mode == "pan":
+            self._on_rect_click_pan(self.press_event, event)
+        else:  # mouse_mode == "zoom":
+            if event.button == matplotlib.backend_bases.MouseButton.LEFT:
+                self._on_left_rect_click_zoom(self.press_event, event)
+            elif event.button == matplotlib.backend_bases.MouseButton.RIGHT:
+                self._on_right_rect_click_zoom(self.press_event, event)
+        self.press_event = None
+
+    def _do_nothing(self, event1, event2):
+        """
+        We're using the RectangleSelector just for the bounds, since
+        the callback was borked in the transition from python2 -> 3.
+        So, give it this callback that does nothing.
+        """
+        pass
+
     def _on_motion_notify_event(
         self, event: matplotlib.backend_bases.MouseEvent
     ) -> None:
@@ -1293,14 +1322,14 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         # zoom in/out, but I didn't immediately see how to do so.
         plot_objects.left_click_rs["zoom"] = mpw.RectangleSelector(
             plot_objects.pick_ax,
-            self._on_left_rect_click_zoom,
+            self._do_nothing,
             # drawtype="box",  # This was deprecated in 3.5, and was default anyways
             button=[1],
             useblit=True,
         )
         plot_objects.right_click_rs["zoom"] = mpw.RectangleSelector(
             plot_objects.pick_ax,
-            self._on_right_rect_click_zoom,
+            self._do_nothing,
             # drawtype="box",
             button=[3],
             useblit=True,
@@ -1308,7 +1337,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         # Pan is the same for both of 'em (it's easier this way)
         plot_objects.left_click_rs["pan"] = mpw.RectangleSelector(
             plot_objects.pick_ax,
-            self._on_rect_click_pan,
+            self._do_nothing,
             # TODO: To replicate the old behavior, consider using
             # `rectprops={'visible': False}` and then manually
             # drawing the line
@@ -1323,7 +1352,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         )
         plot_objects.right_click_rs["pan"] = mpw.RectangleSelector(
             plot_objects.pick_ax,
-            self._on_rect_click_pan,
+            self._do_nothing,
             # drawtype="line",
             button=[3],
             useblit=True,
@@ -1344,6 +1373,13 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         plot_objects.canvas.mpl_connect(
             "motion_notify_event", self._on_motion_notify_event
         )
+
+        # Since the RectangleSelector no longer provides the
+        # correct ordering of click/release events to the callback,
+        # cache the coordinates, then just use the selector for
+        # its drawing/blitting/callback.
+        plot_objects.canvas.mpl_connect('button_press_event', self._on_button_press_event)
+        plot_objects.canvas.mpl_connect('button_release_event', self._on_button_release_event)
 
         # Radio buttons for controlling what mouse clicks mean!
         # (This used to be done w/ their toolbar, but I wanted it to be
@@ -2058,85 +2094,3 @@ if __name__ == "__main__":
     radar_window.show()
     app.exec_()
 
-
-
-
-# Trying to monkeypatch the RectangleSelector's callback to actually
-# give me click/release coordinates, rather than the extent
-#
-# The code below is from:
-# matplotlib/lib/matplotlib/widgets.py
-#
-# Copyright (c) 2012- Matplotlib Development Team; All Rights Reserved
-#
-# License: https://github.com/matplotlib/matplotlib/blob/c17197cb1397a1b8d3b57739098551080dc2160e/LICENSE/LICENSE
-def patched_release(self, event):
-    """Button release event handler."""
-    if not self._interactive:
-        self._selection_artist.set_visible(False)
-
-    if (self._active_handle is None and self._selection_completed and
-            self.ignore_event_outside):
-        return
-
-    press_xdata = self._eventpress.xdata
-    press_ydata = self._eventpress.ydata
-    release_xdata = self._eventrelease.xdata
-    release_ydata = self._eventrelease.ydata
-    press_x = self._eventpress.x
-    press_y = self._eventpress.y
-    release_x = self._eventrelease.x
-    release_y = self._eventrelease.y
-
-    # update the eventpress and eventrelease with the resulting extents
-    x0, x1, y0, y1 = self.extents
-    self._eventpress.xdata = x0
-    self._eventpress.ydata = y0
-    xy0 = self.ax.transData.transform([x0, y0])
-    self._eventpress.x, self._eventpress.y = xy0
-
-    self._eventrelease.xdata = x1
-    self._eventrelease.ydata = y1
-    xy1 = self.ax.transData.transform([x1, y1])
-    self._eventrelease.x, self._eventrelease.y = xy1
-
-    # calculate dimensions of box or line
-    if self.spancoords == 'data':
-        spanx = abs(self._eventpress.xdata - self._eventrelease.xdata)
-        spany = abs(self._eventpress.ydata - self._eventrelease.ydata)
-    elif self.spancoords == 'pixels':
-        spanx = abs(self._eventpress.x - self._eventrelease.x)
-        spany = abs(self._eventpress.y - self._eventrelease.y)
-    else:
-        _api.check_in_list(['data', 'pixels'],
-                            spancoords=self.spancoords)
-
-    # check if drawn distance (if it exists) is not too small in
-    # either x or y-direction
-
-    # Restore ordering of press/release coordinates
-    self._eventpress.xdata = press_xdata
-    self._eventpress.ydata = press_ydata
-    self._eventpress.x = press_x
-    self._eventpress.y = press_y
-    self._eventrelease.xdata = release_xdata
-    self._eventrelease.ydata = release_ydata
-    self._eventrelease.x = release_x
-    self._eventrelease.y = release_y
-
-    if spanx <= self.minspanx or spany <= self.minspany:
-        if self._selection_completed:
-            # Call onselect, only when the selection is already existing
-            self.onselect(self._eventpress, self._eventrelease)
-        self._clear_without_update()
-    else:
-        self.onselect(self._eventpress, self._eventrelease)
-        self._selection_completed = True
-
-    self.update()
-    self._active_handle = None
-    self._extents_on_press = None
-
-    return False
-
-mpw.RectangleSelector._release = patched_release
