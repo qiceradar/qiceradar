@@ -17,7 +17,7 @@ def load_radargram(filepath: pathlib.Path) -> Tuple[Any, Any, Any, Any, Any]:
 
     Additionally, a single season reported complex radargrams; for
     that one, we display the magnitude.
-    """"
+    """
 
     print(f"load_radargram({filepath})")
     try:
