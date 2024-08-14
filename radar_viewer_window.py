@@ -450,7 +450,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         #     self.plot_objects.product_buttons[product].setEnabled(True)
 
         # self.plot_objects.product_buttons[plot_params.product].setChecked(True)
-        self.plot_objects.colormap_buttons[plot_params.cmap].setChecked(True)
+        # self.plot_objects.colormap_buttons[plot_params.cmap].setChecked(True)
         self.plot_objects.mouse_mode_buttons[plot_params.mouse_mode].setChecked(True)
         mouse_mode = self.plot_params.mouse_mode
         self.plot_objects.left_click_rs[mouse_mode].set_active(True)
@@ -475,7 +475,8 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         # from the data itself?
         # offset = radarAnalysis.channel_offsets[self.plot_params.channel]
         offset = 0
-        trace_dB = self.radar_data.data[trace_num, :] / 1000.0 + offset
+        # trace_dB = self.radar_data.data[trace_num, :] / 1000.0 + offset
+        trace_dB = self.radar_data.data[trace_num, :]
         yy = np.arange(0, self.radar_data.num_samples)
 
         self.plot_objects.trace_sparkline.set_data(trace_dB, yy, trace_num + 0.5)
@@ -1336,7 +1337,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         minor_color = self.plot_config.cmap_minor_colors[self.plot_params.cmap]
         plot_objects.trace_sparkline = sparkline.Sparkline(
             plot_objects.radar_ax,
-            units="dB",
+            units="",
             major_color=major_color,
             minor_color=minor_color,
             scalebar_pos=[0.85, 0.95],

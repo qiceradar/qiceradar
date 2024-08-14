@@ -109,14 +109,14 @@ class Sparkline(object):
         Performs initial creation of the plot elements.
         '''
         self.elements['line'], = self.ax.plot(
-            0, 0, '.', color=major_color, markersize=2)
-        self.elements['scale'], = self.ax.plot(
-            0, 0, color=major_color, linestyle='-', linewidth=5)
-        self.elements['scale_text'] = self.ax.text(0, 0, '', color=major_color)
+            0, 0, '.', color=major_color, markersize=0.5)
+        # self.elements['scale'], = self.ax.plot(
+        #     0, 0, color=major_color, linestyle='-', linewidth=5)
+        # self.elements['scale_text'] = self.ax.text(0, 0, '', color=major_color)
         self.elements['min_pt'], = self.ax.plot(
-            0, 0, '.', color=minor_color, markersize=12)
+            0, 0, '.', color=minor_color, markersize=8)
         self.elements['max_pt'], = self.ax.plot(
-            0, 0, '.', color=minor_color, markersize=12)
+            0, 0, '.', color=minor_color, markersize=8)
         self.elements['min_text'] = self.ax.text(0, 0, '', color=major_color)
         self.elements['max_text'] = self.ax.text(0, 0, '', color=major_color)
 
@@ -236,6 +236,7 @@ class Sparkline(object):
                 '%0.1f %s' % (x_in[max_data_idx[0]], self.units))
 
         # The old scale bar that DAY didn't like
+        """
         if self.scalebar_pos is not None:
             scale_x = xmin + self.scalebar_pos[0] * abs(dx)
             scale_y = ymin + self.scalebar_pos[1] * abs(dy)
@@ -254,6 +255,7 @@ class Sparkline(object):
                     [scale_y, scale_y])
                 self.elements['scale_text'].set_position(
                     [scale_x, scale_y + 0.015 * dy])
+        """
 
 
     def set_major_color(self, color):
@@ -262,7 +264,7 @@ class Sparkline(object):
         Changes color used in this sparkline.
         Useful for when the colormap changes interactively.
         '''
-        for key in ['line', 'scale', 'scale_text', 'min_text', 'max_text']:
+        for key in ['line', 'min_text', 'max_text']: #'scale', 'scale_text']:
             self.elements[key].set_color(color)
 
     def set_minor_color(self, color):
