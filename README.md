@@ -34,22 +34,14 @@ select qiceradar, then click "Install Plugin"
 
 ### Option 2: zipped source code
 
-First, install the "Plugin Reloader" plugin; it will come in handy.
-
-* in QGIS, Plugins -> "Manage and Install Plugins..."
-* Select "all" in the left pane, then search for reloader
-* Select "Plugin Reloader", then click "Install Plugin"
-
-Next, figure out where QGIS will look for plugins:
-
-* in QGIS, Settings -> "User Profiles" -> "Open Active Profile Folder"
-* From that directory, open python -> plugins. This is where plugins will be installed.
-
-Finally, go to https://github.com/qiceradar/qiceradar_plugin
+Go to https://github.com/qiceradar/qiceradar_plugin
 * Click "Code" -> "Download Zip"
-* Extract the zipped folder into the directory found above. You should wind up with: [Active Profile Folder]/python/plugins/qiceradar_plugin/[all the plugin's code]
 
-(If you're comfortable with git, you can also `git clone https://github.com/qiceradar/qiceradar_plugin` into the plugins folder.)
+In QGIS:
+* Plugins -> "Manage and Install Plugins..."
+* Click "Install from zip"
+* Select the file downloaded earlier, and click "Install Plugin"
+
 
 ### Python dependencies
 If you get an error like "ModuleNotFoundError: No module named 'netCDF4'", you'll need to install that module.
@@ -91,6 +83,10 @@ TODO: add screenshots/walkthrough, based on what I plan to do for the tutorial?
 
 Install the "Plugin Reloader" plugin; it allows you to reload a plugin after changing the code without having to restart QGIS.
 
+* in QGIS, Plugins -> "Manage and Install Plugins..."
+* Select "all" in the left pane, then search for reloader
+* Select "Plugin Reloader", then click "Install Plugin"
+
 ### code management
 
 Plugins are installed to a folder managed by QGIS; it's not safe to do development there, since uninstalling a plugin deletes its directory.
@@ -98,6 +94,21 @@ Plugins are installed to a folder managed by QGIS; it's not safe to do developme
 Instead, you either need a deploy script that copies your working files
 to the QGIS folder, or create a symlink from the directory that
 QGIS looks for to where you're actually doing development.
+
+In order to figure out where QGIS will look for plugins:
+
+* in QGIS, Settings -> "User Profiles" -> "Open Active Profile Folder"
+* From that directory, open python -> plugins. This is where plugins will be installed, and where you should clone to.
+
+~~~
+cd [Active Profile Folder]/python/plugins
+git clone https://github.com/qiceradar/qiceradar_plugin
+~~~
+
+Then, make sure it is installed in QGIS:
+* Plugins -> "Manage and Install Plugins..."
+* search for "qiceradar"
+* If not already checked, select it. You may need to click "Install Plugin"
 
 
 ## Code structure
