@@ -1526,7 +1526,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         plot_objects.annotations_vbox.addWidget(plot_objects.annotations_label)
         plot_objects.annotations_vbox.addWidget(plot_objects.trace_checkbox)
         plot_objects.annotations_vbox.addWidget(plot_objects.crosshair_checkbox)
-        plot_objects.annotations_vbox.addStretch(1)  # left-justify this rowx
+        plot_objects.annotations_vbox.addStretch(1)  # left-justify this row
 
         ############
 
@@ -1556,11 +1556,16 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         control_vbox.addStretch(1)
         control_vbox.addLayout(quit_hbox)
 
+        control_scroll_widget = QtWidgets.QWidget()
+        control_scroll_widget.setLayout(control_vbox)
+        control_scroll_area = QtWidgets.QScrollArea()
+        control_scroll_area.setWidget(control_scroll_widget)
+
         ####
         # Put it all together.
         hbox = QtWidgets.QHBoxLayout()
         hbox.addLayout(data_vbox, 1)  # I want this one to stretch
-        hbox.addLayout(control_vbox)
+        hbox.addWidget(control_scroll_area)
         plot_objects.main_frame.setLayout(hbox)
 
         self.setCentralWidget(plot_objects.main_frame)
