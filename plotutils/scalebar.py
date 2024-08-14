@@ -1,8 +1,37 @@
+# Copyright 2022-2024 Laura Lindzey, UW-APL
+#           2015-2018 Laura Lindzey, UTIG
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+#
+# 1. Redistributions of source code must retain the above copyright
+#    notice, this list of conditions and the following disclaimer.
+#
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in
+#    the documentation and/or other materials provided with the distribution.
+#
+# 3. Neither the name of the copyright holder nor the names of its
+#    contributors may be used to endorse or promote products derived
+#    from this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# “AS IS” AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+# TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+# PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+# EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+# OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+# WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+# OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+# ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 import matplotlib
 import matplotlib.patches
 import matplotlib.transforms
 import numpy as np
-import pdb
 
 try:
     import typing
@@ -105,7 +134,7 @@ class Scalebar(object):
                                                        zorder=self.zorder-1,
                                                        transform=fig.transFigure)
         self.ax.add_patch(self.background)
-        
+
         # This is super-hacky, since setup seems to change bounds around...
         if self.barstyle == 'simple':
             self._setup_simple()
@@ -143,14 +172,14 @@ class Scalebar(object):
         # NB: matplotlib.lines.Line2D has a required "renderer" argument, while
         # it's optional for matplotlib.text.Text and matplotlib.patches.Polygon
         extents = [elem.get_window_extent(None) for elem in self.elements.values()]
-                
+
         bbox = matplotlib.transforms.Bbox.union(extents)
         bbox_exp =  bbox.expanded(1.0 + pad, 1.0 + pad)
         fig = self.ax.get_figure()
         extent = bbox_exp.transformed(fig.transFigure.inverted())
         return extent
-        
-        
+
+
 
     def set_visible(self, visible):
         # type: (bool) -> None
