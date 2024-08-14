@@ -986,6 +986,19 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
                     self.plot_objects.crosshair_y.set_color(major)
                     self.full_redraw()
 
+    def _on_colormap_changed(self, cmap):
+        if self.plot_params.cmap != cmap:
+            self.plot_params.cmap = cmap
+            major = self.plot_config.cmap_major_colors[cmap]
+            minor = self.plot_config.cmap_minor_colors[cmap]
+            self.plot_objects.trace_sparkline.set_major_color(major)
+            self.plot_objects.trace_sparkline.set_minor_color(minor)
+            self.plot_objects.trace_base.set_color(major)
+            self.plot_objects.crosshair_x.set_color(major)
+            self.plot_objects.crosshair_y.set_color(major)
+            self.full_redraw()
+
+
     def _on_product_group_pressed(self) -> None:
         """
         TODO
@@ -1475,20 +1488,14 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         # switching colormaps
         # TODO: Make this a drop-down to save more space?
 
-        colormap_vbox = QtWidgets.QVBoxLayout()
-        colormap_label = QtWidgets.QLabel("Colormaps:")
-        colormap_vbox.addWidget(colormap_label)
-
+        colormap_hbox = QtWidgets.QHBoxLayout()
+        colormap_label = QtWidgets.QLabel("Colormap:")
+        colormap_hbox.addWidget(colormap_label)
+        colormap_combobox = QtWidgets.QComboBox()
         for colormap in plot_config.all_cmaps:
-            plot_objects.colormap_buttons[colormap] = QtWidgets.QRadioButton(colormap)
-
-        plot_objects.colormap_group = QtWidgets.QButtonGroup()
-        for cmap, button in plot_objects.colormap_buttons.items():
-            plot_objects.colormap_group.addButton(button)
-            colormap_vbox.addWidget(button)
-        plot_objects.colormap_group.buttonPressed.connect(
-            self._on_colormap_group_pressed,
-        )
+            colormap_combobox.addItem(colormap)
+        colormap_combobox.currentTextChanged.connect(self._on_colormap_changed)
+        colormap_hbox.addWidget(colormap_combobox)
 
         # switching which product to display; all options are displayed,
         # but only ones with available data will wind up active.
@@ -1544,7 +1551,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
 
         # Assembling the right vbox ...
         control_vbox = QtWidgets.QVBoxLayout()
-        control_vbox.addLayout(colormap_vbox)
+        control_vbox.addLayout(colormap_hbox)
         # control_vbox.addWidget(HLine())
         # control_vbox.addLayout(products_vbox)
         control_vbox.addWidget(HLine())
@@ -1552,6 +1559,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         control_vbox.addWidget(HLine())
         control_vbox.addWidget(plot_objects.clim_label)
         control_vbox.addWidget(plot_objects.clim_slider)
+        control_vbox.addStretch(1)
         control_vbox.addWidget(HLine())
         control_vbox.addStretch(1)
         control_vbox.addLayout(quit_hbox)
