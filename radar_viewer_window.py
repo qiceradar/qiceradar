@@ -446,10 +446,10 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         """
         # TODO(lindzey): Shouldn't need this input list if we only
         #  create the appropriate buttons given the dataset.
-        for product in plot_config.all_products:
-            self.plot_objects.product_buttons[product].setEnabled(True)
+        # for product in plot_config.all_products:
+        #     self.plot_objects.product_buttons[product].setEnabled(True)
 
-        self.plot_objects.product_buttons[plot_params.product].setChecked(True)
+        # self.plot_objects.product_buttons[plot_params.product].setChecked(True)
         self.plot_objects.colormap_buttons[plot_params.cmap].setChecked(True)
         self.plot_objects.mouse_mode_buttons[plot_params.mouse_mode].setChecked(True)
         mouse_mode = self.plot_params.mouse_mode
@@ -1493,6 +1493,9 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         # switching which product to display; all options are displayed,
         # but only ones with available data will wind up active.
 
+        # Disabling this now until we fill this in with meaningful
+        # data (and possibly support switching high/low gain for UTIG)
+        """
         products_vbox = QtWidgets.QVBoxLayout()
         products_label = QtWidgets.QLabel("Radar Products:")
         products_vbox.addWidget(products_label)
@@ -1507,6 +1510,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         plot_objects.product_group.buttonPressed.connect(
             self._on_product_group_pressed,
         )
+        """
 
         # enable/disable the various annotations plotted on the radargram (traces/crosshairs/scalebars)
         plot_objects.annotations_vbox = QtWidgets.QVBoxLayout()
@@ -1541,8 +1545,8 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         # Assembling the right vbox ...
         control_vbox = QtWidgets.QVBoxLayout()
         control_vbox.addLayout(colormap_vbox)
-        control_vbox.addWidget(HLine())
-        control_vbox.addLayout(products_vbox)
+        # control_vbox.addWidget(HLine())
+        # control_vbox.addLayout(products_vbox)
         control_vbox.addWidget(HLine())
         control_vbox.addLayout(plot_objects.annotations_vbox)
         control_vbox.addWidget(HLine())
