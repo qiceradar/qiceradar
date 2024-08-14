@@ -1,11 +1,29 @@
 [general]
 name=QIceRadar
-qgisMinimumVersion=3.0
-description=This plugin downloads and displays ice penetrating radargrams
-about=
-version=0.1
+description=This QIceRadar plugin downloads and displays polar ice penetrating radargrams.
+about=This plugin works with the index of available polar radargrams,
+    which can be downloaded from: https://zenodo.org/records/12123014
+    After importing the index, the user can activate the "download" tooltip
+    and click a line to download the data. Once data has been downloaded,
+    activate the "view" tooltip and select a line to view the radargram in
+    a new panel. A cursor links the mouse position on the radargram with the
+    corresponding lat/lon location on the map panel.
+    Requires additional python packages: h5py, netCDF4
+
+homepage=
+tracker=https://github.com/qiceradar/qiceradar_plugin/issues
+repository=https://github.com/qiceradar/qiceradar_plugin/
+
 author=Laura Lindzey
 email=lindzey@uw.edu
-repository=https://github.com/qiceradar/qiceradar_plugin/
-tracker=https://github.com/qiceradar/qiceradar_plugin/issues
+
+qgisMinimumVersion=3.0
+version=0.1
+
+category=Plugins
 icon=test_bed_viewer.png
+tags=remote sensing,
+experimental=False
+deprecated=False
+
+changelog=
