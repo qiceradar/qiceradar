@@ -1,8 +1,8 @@
 [general]
 name=QIceRadar
-description=This QIceRadar plugin downloads and displays polar ice penetrating radargrams.
+description=The QIceRadar plugin downloads and displays polar ice penetrating radargrams.
 about=This plugin works with the index of available polar radargrams,
-    which can be downloaded from: https://zenodo.org/records/12123014
+    which can be downloaded from: https://zenodo.org/records/12123014 (Antarctic).
     After importing the index, the user can activate the "download" tooltip
     and click a line to download the data. Once data has been downloaded,
     activate the "view" tooltip and select a line to view the radargram in
