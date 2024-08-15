@@ -81,12 +81,10 @@ from .datautils import db_utils, radar_utils
 # This breaks it on the command line, but works with QGIS.
 from .mplUtilities import (
     SaveToolbar,
-    XevasHorizSelector,
-    XevasVertSelector,
     get_ax_shape,
 )
 from .plotUtilities import HLine, VLine, show_error_message_box
-from .plotutils import scalebar, sparkline
+from .plotutils import scalebar, sparkline, xevas
 from .radarWidgets import DoubleSlider
 
 # TODO: These need to be renamed. it's currently really confusing ...
@@ -242,31 +240,29 @@ class PlotObjects:
         #  like this buys any clarity.
 
         # All of these are initialized by create_layout
-        self.main_frame = None  # type: Optional[QtWidgets.QWidget]
-        self.cursor = None  # type: Optional[QtGui.QCursor]
+        self.main_frame: Optional[QtWidgets.QWidget] = None
+        self.cursor: Optional[QtGui.QCursor] = None
 
-        self.fig = None  # type: Optional[Figure]
-        self.canvas = None  # type: Optional[FigureCanvas]
-        self.mpl_toolbar = None  # type: Optional[SaveToolbar]
-        self.radar_plot = None  # type: Optional[mpl.image.AxesImage]
+        self.fig: Optional[Figure] = None
+        self.canvas: Optional[FigureCanvas] = None
+        self.mpl_toolbar: Optional[SaveToolbar] = None
+        self.radar_plot: Optional[mpl.image.AxesImage] = None
 
-        self.dpi = None  # type: Optional[int]
+        self.dpi: Optional[int] = None
 
         self.full_ax = None  # type: Optional[mpl.axes.Axes]
         self.radar_ax = None  # type: Optional[mpl.axes.Axes]
         self.xevas_horiz_ax = None  # type: Optional[mpl.axes.Axes]
         self.xevas_vert_ax = None  # type: Optional[mpl.axes.Axes]
 
-        self.xevas_horiz: Optional[XevasHorizSelector] = None
-        self.xevas_vert = None  # type: Optional[XevasVertSelector]
+        self.xevas_horiz: Optional[xevas.XevasHorizSelector] = None
+        self.xevas_vert: Optional[xevas.XevasVertSelector] = None
 
         self.crosshair_x = None  # type: Optional[mpl.lines.Line2D]
         self.crosshair_y = None  # type: Optional[mpl.lines.Line2D]
 
         self.trace_sparkline: Optional[sparkline.Sparkline] = None
-        self.trace_base = None  # type: Optional[mpl.lines.Line2D]
-        self.simple_rcoeff_sparkline: Optional[sparkline.Sparkline] = None
-        self.rcoeff_sparkline = None
+        self.trace_base: Optional[mpl.lines.Line2D] = None
 
         self.left_click_rs = {}  # type: Dict[str, mpw.RectangleSelector]
         self.right_click_rs = {}  # type: Dict[str, mpw.RectangleSelector]
@@ -1306,14 +1302,14 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         plot_objects.xevas_vert_ax.format_coord = lambda x, y: ""
 
         # Have to give 0-1 and 1-0 for these to be agnostic to changing x units.
-        plot_objects.xevas_horiz = XevasHorizSelector(
+        plot_objects.xevas_horiz = xevas.XevasHorizSelector(
             plot_objects.xevas_horiz_ax,
             0,
             1.0,
             self._on_xevas_update_x,
             margin_frac=xmargin_frac,
         )
-        plot_objects.xevas_vert = XevasVertSelector(
+        plot_objects.xevas_vert = xevas.XevasVertSelector(
             plot_objects.xevas_vert_ax,
             0,
             1.0,
