@@ -77,14 +77,12 @@ from qgis.core import QgsMessageLog
 
 # import radutils.radutils as radutils
 from .datautils import db_utils, radar_utils
-
-# This breaks it on the command line, but works with QGIS.
-from .mplUtilities import (
+from .plotUtilities import HLine, VLine, show_error_message_box
+from .plotutils import scalebar, sparkline, xevas
+from .plotutils.matplotlib_utils import (
     SaveToolbar,
     get_ax_shape,
 )
-from .plotUtilities import HLine, VLine, show_error_message_box
-from .plotutils import scalebar, sparkline, xevas
 from .radarWidgets import DoubleSlider
 
 # TODO: These need to be renamed. it's currently really confusing ...
