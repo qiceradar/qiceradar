@@ -49,7 +49,7 @@ except ImportError:
     from matplotlib.widgets import Slider
     RANGE_SLIDER_SUPPORTED = False
 
-from .plotUtilities import show_error_message_box
+from .plotutils.pyqt_utils import show_error_message_box
 
 
 class DoubleSlider(QtWidgets.QWidget):
