@@ -91,7 +91,6 @@ class QIceRadarPlugin(QtCore.QObject):
 
         """
         super(QIceRadarPlugin, self).__init__()
-        QgsMessageLog.logMessage("QIceRadarPlugin.__init__")
         self.iface = iface
         self.message_bar = self.iface.messageBar()
 
@@ -128,7 +127,6 @@ class QIceRadarPlugin(QtCore.QObject):
             # plugin loaded (plugins are loaded before user selects the project.)
             qs = QtCore.QSettings()
             config_str = qs.value("qiceradar_config")
-            QgsMessageLog.logMessage(f"Tried to load config. config_str = {config_str}")
             config_dict = yaml.safe_load(config_str)
             self.config = parse_config(config_dict)
         except Exception as ex:
@@ -152,7 +150,6 @@ class QIceRadarPlugin(QtCore.QObject):
         """
         Required method; also called when plugin loaded.
         """
-        QgsMessageLog.logMessage("initGui")
         frame = inspect.currentframe()
         if frame is None:
             errmsg = "Can't find code directory to load icon!"
@@ -205,7 +202,6 @@ class QIceRadarPlugin(QtCore.QObject):
         """
         Required method; called when plugin unloaded.
         """
-        QgsMessageLog.logMessage("QIceRadarPlugin.unload")
         # Activate another map tool (can't simply deactivate this one)
         if self.prev_map_tool is None:
             self.iface.actionPan()
@@ -229,20 +225,12 @@ class QIceRadarPlugin(QtCore.QObject):
         """
         self.config = config
         self.save_config()
-        QgsMessageLog.logMessage(
-            "QIceRadarPlugin.set_config. "
-            f"Input rootdir = {config.rootdir} "
-            f"self.config.rootdir = {self.config.rootdir}"
-        )
 
     def save_config(self) -> None:
         # Can't dump a NamedTuple using yaml, so convert to a dict
         config_dict = {key: getattr(self.config, key) for key in self.config._fields}
         if config_dict["rootdir"] is not None:
             config_dict["rootdir"] = str(config_dict["rootdir"])
-        QgsMessageLog.logMessage(
-            f"Saving updated config! {yaml.safe_dump(config_dict)}"
-        )
         qs = QtCore.QSettings()
         qs.setValue("qiceradar_config", yaml.safe_dump(config_dict))
         # This is how to do it per-project, rather than globally
@@ -274,7 +262,6 @@ class QIceRadarPlugin(QtCore.QObject):
         """
         This is slow on my MacBook Pro, but not impossibly so.
         """
-        QgsMessageLog.logMessage("Trying to build spatial index")
         root = QgsProject.instance().layerTreeRoot()
         qiceradar_group = root.findGroup("ANTARCTIC QIceRadar Index")
         if qiceradar_group is None:
@@ -290,8 +277,6 @@ class QIceRadarPlugin(QtCore.QObject):
             message_box.setText(errmsg)
             message_box.exec()
             return
-        else:
-            QgsMessageLog.logMessage("Found QIceRadar group!")
 
         # We need to store geometries, otherwise nearest neighbor calculations are done
         # based on bounding boxes and the list of closest transects is nonsensical.
@@ -332,7 +317,6 @@ class QIceRadarPlugin(QtCore.QObject):
                                 f"Layer in {campaign} missing expected field {field}; not adding features to index."
                             )
                             break
-                    # QgsMessageLog.logMessage(f"Adding features from {campaign.name()}")
                     for feature in campaign_layer.getFeatures():
                         self.spatial_index_lookup[index_id] = (
                             campaign.layer().id(),
@@ -517,7 +501,6 @@ class QIceRadarPlugin(QtCore.QObject):
         They share a callback because there is a common set of checks before
         either QIceRadar widget can be run.
         """
-        QgsMessageLog.logMessage(f"{transect_name} selected!")
         layer_id, feature_id = self.transect_name_lookup[transect_name]
 
         root: QgsLayerTree = QgsProject.instance().layerTreeRoot()
@@ -613,9 +596,13 @@ class QIceRadarPlugin(QtCore.QObject):
         have finished and we're ready to actually download.
         """
         try:
-            QgsMessageLog.logMessage(f"Creating directory: {dest_filepath.parents[0]}")
             dest_filepath.parents[0].mkdir(parents=True, exist_ok=True)
         except Exception as ex:
+            # This will be raised if the path exists AND isn't a directory.
+            # This is the case for me when I have created a symbolic link
+            # to an external drive, but the drive isn't mounted.
+            # TODO: Rather than just assuming the user will fix it in the
+            #   download step, maybe pop up the config dialog here?
             QgsMessageLog.logMessage(f"Exception encountered in mkdir: {ex}")
 
         # I really don't like creating headers here, because it exposes
@@ -801,7 +788,7 @@ class QIceRadarPlugin(QtCore.QObject):
     def update_radar_xlim_callback(
         self, transect_name: str, points: List[Tuple[float, float]]
     ) -> None:
-        QgsMessageLog.logMessage(f"update_selected_callback with {len(points)} points!")
+        # QgsMessageLog.logMessage(f"update_selected_callback with {len(points)} points!")
         # To change the location of the displayed feature:
         radar_xlim_geometry = QgsGeometry(
             QgsLineString([QgsPoint(lon, lat) for lon, lat in points])
@@ -823,7 +810,7 @@ class QIceRadarPlugin(QtCore.QObject):
         TODO: replace this with using the geometry from the layer that
            was clicked!
         """
-        QgsMessageLog.logMessage(f"update_segment_points with {len(points)} points!")
+        # QgsMessageLog.logMessage(f"update_segment_points with {len(points)} points!")
         segment_geometry = QgsGeometry(
             QgsLineString([QgsPoint(lon, lat) for lon, lat in points])
         )
@@ -843,7 +830,7 @@ class QIceRadarPlugin(QtCore.QObject):
 
     # TODO: This works, but only for one radargram. If we want to support more, should probably keep a list of dock widgets!
     def selected_point_callback(self, operation: Operation, point: QgsPointXY) -> None:
-        QgsMessageLog.logMessage(f"Got point! {point.x()}, {point.y()}")
+        # QgsMessageLog.logMessage(f"Got point! {point.x()}, {point.y()}")
 
         # TODO: Really, if it is None, this should be an error condition.
         if self.prev_map_tool is None:
@@ -880,10 +867,10 @@ class QIceRadarPlugin(QtCore.QObject):
                 "name"
             ]  # This returns Optional[object]
             assert isinstance(feature_name, str)  # Again, making mypy happy
-            QgsMessageLog.logMessage(
-                f"Neighbor: {neighbor}, layer = {layer.id()}, "
-                f"feature_id = {feature_id}, feature name = {feature_name}"
-            )
+            # QgsMessageLog.logMessage(
+            #     f"Neighbor: {neighbor}, layer = {layer.id()}, "
+            #     f"feature_id = {feature_id}, feature name = {feature_name}"
+            #  )
             neighbor_names.append(feature_name)
             # Only need to present the 5 nearest
             if len(neighbor_names) >= 5:
@@ -924,7 +911,6 @@ class QIceRadarPlugin(QtCore.QObject):
         renderer to be rule-based, checking whether the file exists.
         """
         # This is copied from building the spatial index
-        QgsMessageLog.logMessage("Trying to modify layer renderers")
         root = QgsProject.instance().layerTreeRoot()
         qiceradar_group = root.findGroup("ANTARCTIC QIceRadar Index")
         if qiceradar_group is None:
@@ -940,8 +926,6 @@ class QIceRadarPlugin(QtCore.QObject):
             message_box.setText(errmsg)
             message_box.exec()
             return
-        else:
-            QgsMessageLog.logMessage("Found QIceRadar group!")
 
         # Iterate through all layers in the group
         for ll in qiceradar_group.findLayers():
@@ -1013,7 +997,6 @@ class QIceRadarPlugin(QtCore.QObject):
         self.download_renderer_added = True
 
     def run_downloader(self) -> None:
-        QgsMessageLog.logMessage("run downloader")
         if not self.ensure_valid_rootdir():
             return
         if self.spatial_index is None:
@@ -1041,7 +1024,6 @@ class QIceRadarPlugin(QtCore.QObject):
 
     def run_viewer(self) -> None:
         # The QIceRadar tool is a series of widgets, kicked off by clicking on the icon.
-        QgsMessageLog.logMessage("run viewer")
 
         self.create_radar_viewer_group()
 

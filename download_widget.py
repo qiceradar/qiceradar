@@ -124,7 +124,6 @@ class DownloadConfirmationDialog(QtWidgets.QDialog):
 
         The requested granule is _______ (MB/GB)
         """
-        QgsMessageLog.logMessage("Setting up download widget!")
 
         self.intro_text = QtWidgets.QLabel(
             "".join(
@@ -191,7 +190,6 @@ class DownloadConfirmationDialog(QtWidgets.QDialog):
         self.setWindowTitle("Download Data")
 
     def run(self) -> None:
-        QgsMessageLog.logMessage("DownloadConfirmationDialog.run()")
         self.exec()
 
 

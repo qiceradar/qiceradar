@@ -32,7 +32,7 @@ from typing import List
 
 import PyQt5.QtCore as QtCore
 import PyQt5.QtWidgets as QtWidgets
-from qgis.core import QgsMessageLog, QgsPointXY
+from qgis.core import QgsPointXY
 from qgis.gui import QgisInterface, QgsMapCanvas, QgsMapMouseEvent, QgsMapTool
 
 
@@ -53,7 +53,6 @@ class QIceRadarSelectionTool(QgsMapTool):
         super(QIceRadarSelectionTool, self).__init__(canvas)
 
     def canvasReleaseEvent(self, event: QgsMapMouseEvent) -> None:
-        QgsMessageLog.logMessage("canvas release event!")
         pt = event.mapPoint()
         self.selected_point.emit(pt)
         self.deactivate()
@@ -108,7 +107,6 @@ class QIceRadarSelectionWidget(QtWidgets.QDialog):
         self.setWindowTitle("Select Transect")
 
     def run(self) -> None:
-        QgsMessageLog.logMessage("QIceRadarSelectionWidget.run()")
         # NB: using `exec` creates a modal dialogue, that the user must
         #     deal with before continuing to interact with QGIS
         self.exec()
