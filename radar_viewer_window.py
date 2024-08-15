@@ -83,7 +83,7 @@ from .plotutils.matplotlib_utils import (
     get_ax_shape,
 )
 from .plotutils.pyqt_utils import HLine, VLine, show_error_message_box
-from .radarWidgets import DoubleSlider
+from .radar_viewer_widgets import DoubleSlider
 
 # TODO: These need to be renamed. it's currently really confusing ...
 # * mplUtilites - things that depend only on matplotlib
