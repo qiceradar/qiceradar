@@ -46,7 +46,6 @@ class Institutions(enum.IntEnum):
     PRIC = 5
     UTIG = 6
 
-
 class RadarData:
     """
     This is all the radar-specific data, for a given product that has
@@ -75,6 +74,8 @@ class RadarData:
         elif db_granule.data_format == "utig_netcdf":
             # TODO: Add this to the granules database and plumb it through
             #   to radargram
+            # TODO: This is no longer true -- it appears that DAY released
+            #   GIMBLE as foc1
             self.available_products = ["pik1"]
             (
                 self.data,  # TODO: rename this to radargram

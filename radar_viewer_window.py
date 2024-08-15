@@ -440,9 +440,6 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         """
         This just sets the current state of various GUI widgets based on:
         * plot params - initial state of buttons
-        * transect_data - used for pickfile names, available radar products
-        (Yeah, I could just access self.plot_params, but I want the call
-        signature to be explicit what it depends on.)
         """
         # TODO(lindzey): Shouldn't need this input list if we only
         #  create the appropriate buttons given the dataset.
@@ -1463,18 +1460,18 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
             self._on_next_button_clicked,
         )
 
-        controls_hbox = QtWidgets.QHBoxLayout()
+        plot_objects.controls_hbox = QtWidgets.QHBoxLayout()
         # controls_hbox.addWidget(plot_objects.mpl_toolbar)
-        controls_hbox.addWidget(plot_objects.citation_button)
-        controls_hbox.addStretch(1)
-        controls_hbox.addLayout(mouse_mode_hbox)
-        controls_hbox.addWidget(plot_objects.prev_button)
-        controls_hbox.addWidget(plot_objects.full_button)
-        controls_hbox.addWidget(plot_objects.next_button)
+        plot_objects.controls_hbox.addWidget(plot_objects.citation_button)
+        plot_objects.controls_hbox.addStretch(1)
+        plot_objects.controls_hbox.addLayout(mouse_mode_hbox)
+        plot_objects.controls_hbox.addWidget(plot_objects.prev_button)
+        plot_objects.controls_hbox.addWidget(plot_objects.full_button)
+        plot_objects.controls_hbox.addWidget(plot_objects.next_button)
 
         data_vbox = QtWidgets.QVBoxLayout()
         data_vbox.addWidget(plot_objects.canvas)
-        data_vbox.addLayout(controls_hbox)
+        data_vbox.addLayout(plot_objects.controls_hbox)
 
         ####
         # All of the control on the right half of the window
@@ -1551,22 +1548,22 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         quit_hbox.addWidget(plot_objects.quit_button)
 
         # Assembling the right vbox ...
-        control_vbox = QtWidgets.QVBoxLayout()
-        control_vbox.addLayout(colormap_hbox)
+        plot_objects.control_vbox = QtWidgets.QVBoxLayout()
+        plot_objects.control_vbox.addLayout(colormap_hbox)
         # control_vbox.addWidget(HLine())
         # control_vbox.addLayout(products_vbox)
-        control_vbox.addWidget(HLine())
-        control_vbox.addLayout(plot_objects.annotations_vbox)
-        control_vbox.addWidget(HLine())
-        control_vbox.addWidget(plot_objects.clim_label)
-        control_vbox.addWidget(plot_objects.clim_slider)
-        control_vbox.addStretch(1)
-        control_vbox.addWidget(HLine())
-        control_vbox.addStretch(1)
-        control_vbox.addLayout(quit_hbox)
+        plot_objects.control_vbox.addWidget(HLine())
+        plot_objects.control_vbox.addLayout(plot_objects.annotations_vbox)
+        plot_objects.control_vbox.addWidget(HLine())
+        plot_objects.control_vbox.addWidget(plot_objects.clim_label)
+        plot_objects.control_vbox.addWidget(plot_objects.clim_slider)
+        plot_objects.control_vbox.addStretch(1)
+        plot_objects.control_vbox.addWidget(HLine())
+        plot_objects.control_vbox.addStretch(1)
+        plot_objects.control_vbox.addLayout(quit_hbox)
 
         control_scroll_widget = QtWidgets.QWidget()
-        control_scroll_widget.setLayout(control_vbox)
+        control_scroll_widget.setLayout(plot_objects.control_vbox)
         control_scroll_area = QtWidgets.QScrollArea()
         control_scroll_area.setWidget(control_scroll_widget)
 
@@ -1599,7 +1596,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
 
         try:
             # NOTE(lindzey): I think the previous implementation was broken,
-            #   since it gave distance between first poitn in transect and the
+            #   since it gave distance between first point in transect and the
             #   point cooresponding to the x-coordinate, rather than a proper
             #   sum along the entire transect.
             # dist = self.transect_data.rpc.along_track_dist([0, xx], "traces")
@@ -1678,14 +1675,6 @@ class ExperimentalRadarWindow(BasicRadarWindow):
             parent_cursor_cb,
             close_cb,
         )
-        # TODO: do we care about gps_start, gps_end?
-        # They would be used to allow interpolating from traces to linear time,
-        # where the time bounds were from the data in targ/xtra/ALL/deva/psts.
-        # Usage would be transect_data.rtc.set_linear_bounds(gps_start, gps_end),
-        # and then if posix fails, return linear when either of the parent
-        # positioning callbacks is called.
-        # NB - for now, a hack in conversions.py means that it loads
-        # time/positions from deva/psts, so there's no need to pass 'em in here.
 
     def create_layout(
         self, plot_params: PlotParams, plot_config: PlotConfig
@@ -1734,13 +1723,12 @@ class ExperimentalRadarWindow(BasicRadarWindow):
             autoupdate=False,
         )
 
-        plot_objects.annotations_vbox.addWidget(plot_objects.crossover_checkbox)
-
         ######
         ##########
         # Tab for various analysis experiments
 
         # And, all of the inputs for configuring scale bars
+        # TODO: This is crying out for a widget containing these controls
         plot_objects.vert_scale_checkbox = QtWidgets.QCheckBox("Vertical Scale")
         plot_objects.vert_scale_checkbox.clicked.connect(
             self._on_vert_scale_checkbox_changed,
@@ -1846,7 +1834,8 @@ class ExperimentalRadarWindow(BasicRadarWindow):
         scale_widget = QtWidgets.QWidget()
         scale_widget.setLayout(scale_vbox)
 
-        plot_objects.tabs.addTab(scale_widget, "Scale Bars")
+        # plot_objects.tabs.addTab(scale_widget, "Scale Bars")
+        plot_objects.control_vbox.addWidget(scale_widget)
 
         return plot_objects
 
@@ -1865,27 +1854,11 @@ class ExperimentalRadarWindow(BasicRadarWindow):
         """
         self.plot_objects.canvas.restore_region(self.radar_restore)
 
-        # These need to happen before set_visible because they may detect
-        # bad parameters and set the flag accordingly
-        self.maybe_update_rcoeff()
-        self.maybe_update_simple_rcoeff()
-        self.maybe_update_multiple()  # this looks at flag to decide whether to recalc
-
         self.data_set_visible(self.plot_objects, self.plot_params)
         # TODO: If this series starts getting too slow, move the "set_data"
         # logic back to the callbacks that change it. However, there are
         # enough things that change the picks/max values that it's a lot
         # simpler to put all of that right here.
-
-        # All of these set the data and call draw_artist, regardless of whether
-        # it's visible or not.
-        self.plot_curr_picks()
-        self.plot_computed_horizons()
-
-        self.plot_rcoeff()
-        self.plot_simple_rcoeff()
-
-        self.plot_objects.radar_ax.draw_artist(self.plot_objects.multiple_line)
 
         self.plot_scalebars()
 
@@ -1920,13 +1893,20 @@ class ExperimentalRadarWindow(BasicRadarWindow):
         """
         TODO
         """
-        xlim = self.plot_objects.radar_ax.get_xlim()
-        dist0 = self.transect_data.rpc.along_track_dist([0, xlim[0]], "traces")
-        dist1 = self.transect_data.rpc.along_track_dist([0, xlim[1]], "traces")
+        xlim = tuple(map(int, self.plot_objects.radar_ax.get_xlim()))
+        ylim = tuple(map(int, self.plot_objects.radar_ax.get_ylim()))
+
+        print(f"Called plot_scalebars with xlim = {xlim}, ylim = {ylim}")
+
+        all_dists = self.radar_data.along_track_dist()
+        dist0 = all_dists[xlim[0]]
+        dist1 = all_dists[xlim[1]]
         data_width = dist1 - dist0  # in meters
 
-        ylim = self.plot_objects.radar_ax.get_ylim()
-        data_height = np.abs(ylim[1] - ylim[0]) * 1.69  # in meters
+        all_ranges = 169 * self.radar_data.fast_time_us / 2.0  # in meters
+        range0 = all_ranges[ylim[0]]
+        range1 = all_ranges[ylim[1]]
+        data_height = np.abs(range1-range0)
 
         self.plot_objects.vert_scale.set_length(
             self.plot_params.vert_scale_length, data_height
