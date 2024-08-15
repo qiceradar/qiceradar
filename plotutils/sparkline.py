@@ -51,7 +51,8 @@ class Sparkline(object):
                  units='', # type: str
                  plot_width=None, # type: Optional[float]
                  plot_offset=None, # type: Optional[float]
-                 data_axis='x' # type: str
+                 data_axis='x', # type: str
+                 show_extrema=True, # type: bool
                  ):
         # type: (...) -> None
         '''
@@ -71,6 +72,7 @@ class Sparkline(object):
             axis to offset the sparkline.
         * data_axis - which axis matches the data, and which is not
             modified by plot_width.
+        * show_extrema - whether to display larger dots + value of min/max points
         '''
         if plot_width is not None and plot_offset is None:
             msg = "Relative width requires offset parameter!"
@@ -86,6 +88,7 @@ class Sparkline(object):
         self.plot_width = plot_width
         self.plot_offset = plot_offset
         self.data_axis = data_axis
+        self.show_extrema = show_extrema
         # This is ugly - sometimes I want to give an absolute offset (for
         # traces), sometimes I want relative (for unrelated data)
         self.abs_offset = None # type: Optional[float]
@@ -109,10 +112,10 @@ class Sparkline(object):
         Performs initial creation of the plot elements.
         '''
         self.elements['line'], = self.ax.plot(
-            0, 0, '.', color=major_color, markersize=0.5)
-        # self.elements['scale'], = self.ax.plot(
-        #     0, 0, color=major_color, linestyle='-', linewidth=5)
-        # self.elements['scale_text'] = self.ax.text(0, 0, '', color=major_color)
+            0, 0, '.', color=major_color, markersize=0.25)
+        self.elements['scale'], = self.ax.plot(
+            0, 0, color=major_color, linestyle='-', linewidth=5)
+        self.elements['scale_text'] = self.ax.text(0, 0, '', color=major_color)
         self.elements['min_pt'], = self.ax.plot(
             0, 0, '.', color=minor_color, markersize=8)
         self.elements['max_pt'], = self.ax.plot(
@@ -205,38 +208,38 @@ class Sparkline(object):
 
         # Attempt at sparkline-style scale
         # (limiting the available indices to those that are presently displayed)
-        self.elements['min_pt'].set_data(x_plot[min_data_idx[0]],
-                                         y_plot[min_data_idx[0]])
-        self.elements['max_pt'].set_data(x_plot[max_data_idx[0]],
-                                         y_plot[max_data_idx[0]])
+        if self.show_extrema:
+            self.elements['min_pt'].set_data(x_plot[min_data_idx[0]],
+                                            y_plot[min_data_idx[0]])
+            self.elements['max_pt'].set_data(x_plot[max_data_idx[0]],
+                                            y_plot[max_data_idx[0]])
 
-        self.elements['min_text'].set_text('%0.1f %s' % (x_in[min_data_idx[0]],
-                                                         self.units))
-        self.elements['max_text'].set_text('%0.1f %s' % (x_in[max_data_idx[0]],
-                                                         self.units))
+            self.elements['min_text'].set_text('%0.1f %s' % (x_in[min_data_idx[0]],
+                                                            self.units))
+            self.elements['max_text'].set_text('%0.1f %s' % (x_in[max_data_idx[0]],
+                                                            self.units))
 
-        if self.data_axis == 'x':
-            self.elements['min_text'].set_position(
-                [x_plot[min_data_idx[0]], y_plot[min_data_idx[0]]] - 0.03*dy)
-            self.elements['max_text'].set_position(
-                [x_plot[max_data_idx[0]], y_plot[max_data_idx[0]] + 0.01*dy])
-            self.elements['min_text'].set_text(
-                '%0.1f %s' % (y_in[min_data_idx[0]], self.units))
-            self.elements['max_text'].set_text(
-                '%0.1f %s' % (y_in[max_data_idx[0]], self.units))
+            if self.data_axis == 'x':
+                self.elements['min_text'].set_position(
+                    [x_plot[min_data_idx[0]], y_plot[min_data_idx[0]]] - 0.03*dy)
+                self.elements['max_text'].set_position(
+                    [x_plot[max_data_idx[0]], y_plot[max_data_idx[0]] + 0.01*dy])
+                self.elements['min_text'].set_text(
+                    '%0.1f %s' % (y_in[min_data_idx[0]], self.units))
+                self.elements['max_text'].set_text(
+                    '%0.1f %s' % (y_in[max_data_idx[0]], self.units))
 
-        elif self.data_axis == 'y':
-            self.elements['min_text'].set_position(
-                [x_plot[min_data_idx[0]] + 0.01 * dx, y_plot[min_data_idx[0]]])
-            self.elements['max_text'].set_position(
-                [x_plot[max_data_idx[0]] + 0.01 * dx, y_plot[max_data_idx[0]]])
-            self.elements['min_text'].set_text(
-                '%0.1f %s' % (x_in[min_data_idx[0]], self.units))
-            self.elements['max_text'].set_text(
-                '%0.1f %s' % (x_in[max_data_idx[0]], self.units))
+            elif self.data_axis == 'y':
+                self.elements['min_text'].set_position(
+                    [x_plot[min_data_idx[0]] + 0.01 * dx, y_plot[min_data_idx[0]]])
+                self.elements['max_text'].set_position(
+                    [x_plot[max_data_idx[0]] + 0.01 * dx, y_plot[max_data_idx[0]]])
+                self.elements['min_text'].set_text(
+                    '%0.1f %s' % (x_in[min_data_idx[0]], self.units))
+                self.elements['max_text'].set_text(
+                    '%0.1f %s' % (x_in[max_data_idx[0]], self.units))
 
         # The old scale bar that DAY didn't like
-        """
         if self.scalebar_pos is not None:
             scale_x = xmin + self.scalebar_pos[0] * abs(dx)
             scale_y = ymin + self.scalebar_pos[1] * abs(dy)
@@ -255,7 +258,6 @@ class Sparkline(object):
                     [scale_y, scale_y])
                 self.elements['scale_text'].set_position(
                     [scale_x, scale_y + 0.015 * dy])
-        """
 
 
     def set_major_color(self, color):
@@ -264,7 +266,7 @@ class Sparkline(object):
         Changes color used in this sparkline.
         Useful for when the colormap changes interactively.
         '''
-        for key in ['line', 'min_text', 'max_text']: #'scale', 'scale_text']:
+        for key in ['line', 'min_text', 'max_text', 'scale', 'scale_text']:
             self.elements[key].set_color(color)
 
     def set_minor_color(self, color):

@@ -1337,11 +1337,12 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
             units="",
             major_color=major_color,
             minor_color=minor_color,
-            scalebar_pos=[0.85, 0.95],
+            scalebar_pos=None,
             scalebar_len=20,
-            plot_width=0.0625,
+            plot_width=0.1,
             plot_offset=0,
             data_axis="y",
+            show_extrema=False,
         )
         (plot_objects.trace_base,) = plot_objects.radar_ax.plot(
             0, 0, "r", linestyle="--"
