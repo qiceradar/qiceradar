@@ -151,6 +151,7 @@ class QIceRadarPlugin(QtCore.QObject):
         """
         Required method; also called when plugin loaded.
         """
+        QgsMessageLog.logMessage("QIceRadar initGui")
         frame = inspect.currentframe()
         if frame is None:
             errmsg = "Can't find code directory to load icon!"
@@ -1001,6 +1002,7 @@ class QIceRadarPlugin(QtCore.QObject):
         self.download_renderer_added = True
 
     def run_downloader(self) -> None:
+        QgsMessageLog.logMessage("User clicked run_downloader")
         if not self.ensure_valid_rootdir():
             return
         if self.spatial_index is None:
@@ -1027,6 +1029,7 @@ class QIceRadarPlugin(QtCore.QObject):
         self.iface.mapCanvas().setMapTool(download_selection_tool)
 
     def run_viewer(self) -> None:
+        QgsMessageLog.logMessage("User clicked run_viewer")
         # The QIceRadar tool is a series of widgets, kicked off by clicking on the icon.
 
         self.create_radar_viewer_group()
