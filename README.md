@@ -1,127 +1,31 @@
-# QIceRadar radar_viewer QGIS plugin
+# QIceRadar
 
-TODO: quick blurb about QIceRadar, include screencap!
-
-TODO: "See a demo here!"
-
-## Download index of radar depth sounding data
-
-The radargram index is on Zenodo: https://zenodo.org/records/12123014
-
-Download `qiceradar_antarctic_index.gpkg` and `qiceradar_antarctic_index.qlr`
-
-* Save them into the same directory
-* Do not rename the files
-
-Open QGIS, open the project that you want to add the index to, then drag `qiceradar_antarctic_index.qlr` into the map pane.
-
-The QIceRadar plugins depend on the structure of this data:
-* Import all features; selecting individual features to import will not work with the plugins. (If necessary, you can delete layers/institution groups after importing.)
-* Do not rename the top-level group. If you do so, the plugin won't be able to find the data. It should be "ANTARCTIC QIceRadar Index"
+QIceRadar makes polar radar depth sounding data available in QGIS.
 
 
-## Install Plugin
+![](./docs/figures/qgis_tot_jkb2d_y36a.png)
+*Screencap of QGIS, using QIceRadar to view UTIG's TOT/JKB2d/Y36a radargram[1]. The map shows the full extent of this radargram (red line), the portion currently displayed in the viewer (orange line) and the location of currently-selected trace (yellow circle). The basemap includes data from Quantarctica[2]: surface velocity vectors and magnitude from MEaSUREs[3] and MODIS mosaic satellite imagery[4].*
 
-### Option 1: from QGIS's plugins repository
+There are two components to the project:
+1. A GeoPackage index containing the groundtracks of known radargrams, along with metadata about which institution collected the data, whether and where it can be accessed, and relevant citations. (DOI: [10.5281/zenodo.12123014](zenodo.org/records/12123014))
+2. A QGIS plugin that allows the user to select lines from the index in order to download and view them. (this repository)
 
-NOT YET SUPPORTED; waiting to be included in their repo
+QIceRadar is funded by NSF's CSSI program (#2209726).
 
-In QGIS, Plugins -> "Manage and Install Plugins..."
+## Getting Started
 
-Select "all" in the left pane, then search for qiceradar
+1. [Installation Instructions](.docs/installation.md)
+2. [Tutorial](.docs/tutorial.md)
 
-select qiceradar, then click "Install Plugin"
+([Developers Guide](.docs/developers.md))
 
-### Option 2: zipped source code
+#### References
 
-Go to https://github.com/qiceradar/qiceradar_plugin
-* Click "Code" -> "Download Zip"
+[1] Blankenship, D. D. et al.(2017). IceBridge HiCARS 2 L1B Time-Tagged Echo Strength Profiles, Version 1. Boulder, CO USA. NSIDC. https://doi.org/10.5067/0I7PFBVQOGO5.
 
-In QGIS:
-* Plugins -> "Manage and Install Plugins..."
-* Click "Install from zip"
-* Select the file downloaded earlier, and click "Install Plugin"
+[2] Matsuoka, K., Skoglund, A., & Roth, G. (2018). Quantarctica Norwegian Polar Institute. https://doi.org/10.21334/npolar.2018.8516e961
 
+[3] Rignot, E., J. Mouginot, and B. Scheuchl. 2017. MEaSUREs InSAR-Based Antarctica Ice Velocity Map, Version 2. Boulder, Colorado USA. NASA National Snow and Ice Data Center Distributed Active Archive Center. doi: https://doi.org/10.5067/D7GK8F5J8M8R.
 
-### Python dependencies
-If you get an error like "ModuleNotFoundError: No module named 'netCDF4'", you'll need to install that module.
-If you install the plugin without errors, skip this section!
+[4] Haran, T., J. Bohlander, T. Scambos, T. Painter, and M. Fahnestock. 2005, updated 2013. MODIS Mosaic of Antarctica 2003-2004 (MOA2004) Image Map, Version 1. [Indicate subset used]. Boulder, Colorado USA. NSIDC: National Snow and Ice Data Center. doi: http://dx.doi.org/10.7265/N5ZK5DM5.
 
-The QIceRadar radar_viewer plugin has dependencies on several python
-packages that may or may not have been packaged with your install of QGIS.
-
-QGIS uses its own install of Python, so when installing dependencies
-be sure to install into that version, rather than the default system install.
-
-On Windows, follow this guide: https://landscapearchaeology.org/2018/installing-python-packages-in-qgis-3-for-windows/
-
-
-On MacOS,
-Figure out where QGIS's python is installed:
-Plugins -> Python Console
-~~~
-import sys
-print(sys.executable)
-~~~
-On my machine, this prints \
-"/Applications/QGIS-LTR.app/Contents/MacOS/QGIS"
-
-So, I'll use that version of pip: \
-`/Applications/QGIS-LTR.app/Contents/MacOS/bin/pip3 install [module name]`
-
-
-## Usage Tutorial
-
-TODO: add screenshots/walkthrough, based on what I plan to do for the tutorial?
-
-
-
-# Developer Documentation
-
-
-## Development setup
-
-Install the "Plugin Reloader" plugin; it allows you to reload a plugin after changing the code without having to restart QGIS.
-
-* in QGIS, Plugins -> "Manage and Install Plugins..."
-* Select "all" in the left pane, then search for reloader
-* Select "Plugin Reloader", then click "Install Plugin"
-
-### code management
-
-Plugins are installed to a folder managed by QGIS; it's not safe to do development there, since uninstalling a plugin deletes its directory.
-
-Instead, you either need a deploy script that copies your working files
-to the QGIS folder, or create a symlink from the directory that
-QGIS looks for to where you're actually doing development.
-
-In order to figure out where QGIS will look for plugins:
-
-* in QGIS, Settings -> "User Profiles" -> "Open Active Profile Folder"
-* From that directory, open python -> plugins. This is where plugins will be installed, and where you should clone to.
-
-~~~
-cd [Active Profile Folder]/python/plugins
-git clone https://github.com/qiceradar/qiceradar_plugin
-~~~
-
-Then, make sure it is installed in QGIS:
-* Plugins -> "Manage and Install Plugins..."
-* search for "qiceradar"
-* If not already checked, select it. You may need to click "Install Plugin"
-
-
-## Code structure
-
-
-
-## mypy
-
-Eventually, this should be automated in CI + install, but for now, run mypy manually:
-
-pip install PyQt5-stubs
-python3 -m pip install qgis-stubs
-pip install types-PyYAML
-python3 -m pip install mypy
-
-mypy radar*.py
