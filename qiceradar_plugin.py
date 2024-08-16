@@ -1004,29 +1004,34 @@ class QIceRadarPlugin(QtCore.QObject):
     def run_downloader(self) -> None:
         QgsMessageLog.logMessage("User clicked run_downloader")
         if not self.ensure_valid_rootdir():
+            QgsMessageLog.logMessage("...config dir is not valid!")
             return
         if self.spatial_index is None:
             self.build_spatial_index()
         if not self.download_renderer_added:
             self.update_download_renderer()
 
+        QgsMessageLog.logMessage("ln 1014")
         download_selection_tool = QIceRadarSelectionTool(self.iface.mapCanvas())
         download_selection_tool.selected_point.connect(
             self.selected_download_point_callback
         )
+        QgsMessageLog.logMessage("ln 1019")
         download_selection_tool.deactivated.connect(
             lambda ch=False: self.downloader_action.setChecked(ch)
         )
         download_selection_tool.activated.connect(
             lambda ch=True: self.downloader_action.setChecked(ch)
         )
-
+        QgsMessageLog.logMessage("ln 1026")
         # Don't want to bop back to other qiceradar tool after use;
         # should go back to e.g. zoom tool
         curr_tool = self.iface.mapCanvas().mapTool()
         if not isinstance(curr_tool, QIceRadarSelectionTool):
             self.prev_map_tool = curr_tool
         self.iface.mapCanvas().setMapTool(download_selection_tool)
+
+        QgsMessageLog.logMessage("ln 1034")
 
     def run_viewer(self) -> None:
         QgsMessageLog.logMessage("User clicked run_viewer")
