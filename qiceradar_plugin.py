@@ -1017,13 +1017,20 @@ class QIceRadarPlugin(QtCore.QObject):
             self.selected_download_point_callback
         )
         QgsMessageLog.logMessage("ln 1019")
-        download_selection_tool.deactivated.connect(
-            lambda ch=False: self.downloader_action.setChecked(ch)
-        )
-        download_selection_tool.activated.connect(
-            lambda ch=True: self.downloader_action.setChecked(ch)
-        )
-        QgsMessageLog.logMessage("ln 1026")
+        try:
+            download_selection_tool.deactivated.connect(
+                lambda ch=False: self.downloader_action.setChecked(ch)
+            )
+        except AttributeError:
+            QgsMessageLog.logMessage("could not uncheck downloader_action")
+        try:
+            download_selection_tool.activated.connect(
+                lambda ch=True: self.downloader_action.setChecked(ch)
+            )
+        except AttributeError:
+            QgsMessageLog.logMessage("could not check downloader_action")
+
+        QgsMessageLog.logMessage("ln 1033")
         # Don't want to bop back to other qiceradar tool after use;
         # should go back to e.g. zoom tool
         curr_tool = self.iface.mapCanvas().mapTool()
@@ -1031,7 +1038,7 @@ class QIceRadarPlugin(QtCore.QObject):
             self.prev_map_tool = curr_tool
         self.iface.mapCanvas().setMapTool(download_selection_tool)
 
-        QgsMessageLog.logMessage("ln 1034")
+        QgsMessageLog.logMessage("ln 1041")
 
     def run_viewer(self) -> None:
         QgsMessageLog.logMessage("User clicked run_viewer")
