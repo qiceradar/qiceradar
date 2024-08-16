@@ -102,7 +102,7 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
         )
         self.grid.addWidget(self.nsidc_label, nsidc_row, 0)
         self.grid.addWidget(self.nsidc_question_button, nsidc_row, 1)
-        self.grid.addWidget(self.nsidc_token_lineedit, nsidc_row, 2)
+        self.grid.addWidget(self.nsidc_token_lineedit, nsidc_row, 2, 1, 3)
 
         self.aad_label = QtWidgets.QLabel("AAD credentials")
         self.aad_question_button = QtWidgets.QPushButton("?")
@@ -121,12 +121,12 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
         self.aad_secret_key_lineedit.editingFinished.connect(
             self.aad_secret_key_lineedit_editingfinished
         )
-        self.grid.addWidget(self.aad_label, aad_row, 0)
-        self.grid.addWidget(self.aad_question_button, aad_row, 1)
-        self.grid.addWidget(self.aad_access_key_label, aad_row, 2)
-        self.grid.addWidget(self.aad_access_key_lineedit, aad_row, 3)
-        self.grid.addWidget(self.aad_secret_key_label, aad_row, 4)
-        self.grid.addWidget(self.aad_secret_key_lineedit, aad_row, 5)
+        # self.grid.addWidget(self.aad_label, aad_row, 0)
+        # self.grid.addWidget(self.aad_question_button, aad_row, 1)
+        # self.grid.addWidget(self.aad_access_key_label, aad_row, 2)
+        # self.grid.addWidget(self.aad_access_key_lineedit, aad_row, 3)
+        # self.grid.addWidget(self.aad_secret_key_label, aad_row, 4)
+        # self.grid.addWidget(self.aad_secret_key_lineedit, aad_row, 5)
 
         # The Cancel button closes without saving.
         self.cancel_button = QtWidgets.QPushButton("Cancel")
