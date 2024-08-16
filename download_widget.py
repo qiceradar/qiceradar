@@ -633,7 +633,15 @@ class DownloadWorker(QtCore.QObject):
             print(
                 f"DownloadWorker finished! Moving data to {self.destination_filepath}"
             )
-            shutil.move(self.temp_file.name, self.destination_filepath)
+            try:
+                shutil.move(self.temp_file.name, self.destination_filepath)
+            except Exception as ex:
+                QgsMessageLog.logMessage("Unable to move file; trying to copy.")
+                # On one beta user's Windows machine, we got the error:
+                # PermissionError: [WinError 32] The process cannot access the file because it is being used by another process
+                # So, in this case, just try copying
+                shutil.copy(self.temp_file.name, self.destination_filepath)
+
             self.finished.emit()
         self.downloading = False
 
