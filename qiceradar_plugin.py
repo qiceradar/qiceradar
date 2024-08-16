@@ -502,6 +502,9 @@ class QIceRadarPlugin(QtCore.QObject):
         They share a callback because there is a common set of checks before
         either QIceRadar widget can be run.
         """
+        QgsMessageLog.logMessage(f"selected_transect_callback: {transect_name}")
+        QgsMessageLog.logMessage(f"rootdir = {self.config.rootdir}")
+
         layer_id, feature_id = self.transect_name_lookup[transect_name]
 
         root: QgsLayerTree = QgsProject.instance().layerTreeRoot()
@@ -831,7 +834,7 @@ class QIceRadarPlugin(QtCore.QObject):
 
     # TODO: This works, but only for one radargram. If we want to support more, should probably keep a list of dock widgets!
     def selected_point_callback(self, operation: Operation, point: QgsPointXY) -> None:
-        # QgsMessageLog.logMessage(f"Got point! {point.x()}, {point.y()}")
+        QgsMessageLog.logMessage(f"selected_point_callback (op = {operation}): {point.x()}, {point.y()}")
 
         # TODO: Really, if it is None, this should be an error condition.
         if self.prev_map_tool is None:
