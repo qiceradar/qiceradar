@@ -1059,21 +1059,29 @@ class QIceRadarPlugin(QtCore.QObject):
             self.selected_viewer_point_callback
         )
         QgsMessageLog.logMessage("ln 1061")
-        # TODO: why does mypy not like this?
-        viewer_selection_tool.deactivated.connect(
-            lambda ch=False: self.viewer_action.setChecked(ch)
-        )
-        viewer_selection_tool.activated.connect(
-            lambda ch=True: self.viewer_action.setChecked(ch)
-        )
 
-        QgsMessageLog.logMessage("ln 1070")
         curr_tool = self.iface.mapCanvas().mapTool()
         if not isinstance(curr_tool, QIceRadarSelectionTool):
             self.prev_map_tool = curr_tool
-        QgsMessageLog.logMessage("ln 1074")
+        QgsMessageLog.logMessage("ln 1066")
         self.iface.mapCanvas().setMapTool(viewer_selection_tool)
-        QgsMessageLog.logMessage("ln 1076")
+
+        # TODO: why does mypy not like this?
+        # TODO: Isabel got errors here, and the plugin didn't work.
+        # however, it started working again, even without fixing those issues.
+        try:
+            viewer_selection_tool.deactivated.connect(
+                lambda ch=False: self.viewer_action.setChecked(ch)
+            )
+        except AttributeError:
+            QgsMessageLog.logMessage("could not uncheck viewer_action")
+        try:
+            viewer_selection_tool.activated.connect(
+                lambda ch=True: self.viewer_action.setChecked(ch)
+            )
+        except AttributeError:
+            QgsMessageLog.logMessage("could not check viewer_action")
+        QgsMessageLog.logMessage("ln 1084")
 
     def start_download(
         self, granule: str, url: str, destination_filepath: pathlib.Path, filesize: int, headers: Dict[str, str]
