@@ -10,7 +10,7 @@ Download `qiceradar_antarctic_index.gpkg` and `qiceradar_antarctic_index.qlr`:
 
 Open QGIS, open the project that you want to add the index to, then drag `qiceradar_antarctic_index.qlr` into the map pane.
 
-![](.figures/qgis_index.png)
+![](figures/qgis_index.png)
 *Screeshot of QGIS, after importing the index layer. Groundtracks of publicly-available radargrams are in dark grey, and groundtracks for unavailable radargrams are in red.*
 
 This index has been compiled from the BedMAP3 data[1] (red lines) and coordinates extracted from the published radargrams (grey lines). Radar lines are grouped into surveys/campaigns and then into institutions, following the Bedmap3 classifications.
