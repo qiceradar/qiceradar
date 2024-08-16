@@ -14,8 +14,8 @@ QIceRadar is funded by NSF's CSSI program (#2209726).
 
 ## Getting Started
 
-1. [Installation Instructions](.docs/installation.md)
-2. [Tutorial](.docs/tutorial.md)
+1. [Installation Instructions](docs/installation.md)
+2. [Tutorial](docs/tutorial.md)
 
 ([Developers Guide](.docs/developers.md))
 
