@@ -21,7 +21,7 @@ qgisMinimumVersion=3.0
 version=0.1
 
 category=Plugins
-icon=test_bed_viewer.png
+icon=icons/qiceradar_view.png
 tags=remote sensing,
 experimental=False
 deprecated=False
