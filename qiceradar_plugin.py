@@ -1042,6 +1042,8 @@ class QIceRadarPlugin(QtCore.QObject):
         if not self.ensure_valid_rootdir():
             return
 
+        QgsMessageLog.logMessage("ln 1045")
+
         # Next, make sure the spatial index has been initialized
         # TODO: detect when project changes and re-initialize!
         if self.spatial_index is None:
@@ -1050,11 +1052,13 @@ class QIceRadarPlugin(QtCore.QObject):
         if not self.download_renderer_added:
             self.update_download_renderer()
 
+        QgsMessageLog.logMessage("ln 1055")
         # Create a MapTool to select point on map. After this point, it is callback driven.
         viewer_selection_tool = QIceRadarSelectionTool(self.iface.mapCanvas())
         viewer_selection_tool.selected_point.connect(
             self.selected_viewer_point_callback
         )
+        QgsMessageLog.logMessage("ln 1061")
         # TODO: why does mypy not like this?
         viewer_selection_tool.deactivated.connect(
             lambda ch=False: self.viewer_action.setChecked(ch)
@@ -1063,10 +1067,13 @@ class QIceRadarPlugin(QtCore.QObject):
             lambda ch=True: self.viewer_action.setChecked(ch)
         )
 
+        QgsMessageLog.logMessage("ln 1070")
         curr_tool = self.iface.mapCanvas().mapTool()
         if not isinstance(curr_tool, QIceRadarSelectionTool):
             self.prev_map_tool = curr_tool
+        QgsMessageLog.logMessage("ln 1074")
         self.iface.mapCanvas().setMapTool(viewer_selection_tool)
+        QgsMessageLog.logMessage("ln 1076")
 
     def start_download(
         self, granule: str, url: str, destination_filepath: pathlib.Path, filesize: int, headers: Dict[str, str]
