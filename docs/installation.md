@@ -1,7 +1,7 @@
 
 ## Download Index
 
-The index of Antarctic radar depth sounding data is on Zenodo: https://zenodo.org/records/12123014
+The index of Antarctic radar depth sounding data is on Zenodo: https://zenodo.org/records/12123013
 
 Download `qiceradar_antarctic_index.gpkg` and `qiceradar_antarctic_index.qlr`:
 
@@ -22,19 +22,7 @@ The QIceRadar plugins depend on the structure of this data:
 
 ## Install Plugin
 
-### Option 1: from QGIS's plugins repository
-
-NOT YET SUPPORTED; waiting to be included in their repo
-
-In QGIS, Plugins -> "Manage and Install Plugins..."
-
-Select "all" in the left pane, then search for qiceradar
-
-select qiceradar, then click "Install Plugin"
-
-### Option 2: zipped source code
-
-Go to https://github.com/qiceradar/qiceradar_plugin
+Go to https://github.com/qiceradar/qiceradar
 * Click "Code" -> "Download Zip"
 
 In QGIS:
@@ -42,22 +30,40 @@ In QGIS:
 * Click "Install from zip"
 * Select the file downloaded earlier, and click "Install Plugin"
 
+If the install worked, you should now see two icons:
+![](figures/qgis_icons.png)
+Continue on to the [tutorial](tutorial.md) for how to use the plugin.
+
 
 ### Python dependencies
 The QIceRadar radar_viewer plugin has dependencies on several python packages that may or may not have been packaged with your install of QGIS.
 
-If you get an error like `ModuleNotFoundError: No module named 'netCDF4'`, you'll need to install that module.
+If you got an error like `ModuleNotFoundError: No module named 'netCDF4'`, you'll need to install that module.
 If you installed the plugin without errors, skip this section!
-
 
 QGIS uses its own install of Python, so when installing dependencies
 be sure to install into that version, rather than the default system install.
 
-On Windows, follow this guide: https://landscapearchaeology.org/2018/installing-python-packages-in-qgis-3-for-windows/
+After installing dependencies, restart QGIS.
+
+#### Windows
+
+If you used the default installer:
+* Open OSGeo4W Shell
+* type `python3 -m pip install netCDF4`
+* restart QGIS
+
+More details are available in this guide: https://landscapearchaeology.org/2018/installing-python-packages-in-qgis-3-for-windows/
+
+If you used the networked installer, follow this guide: https://fvwiki.tuflow.com/QGIS_3.14_Setup-NetCDF4
 
 
-On MacOS,
-Figure out where QGIS's python is installed:
+#### Mac OS
+
+On MacOS, the QGIS-LTR 3.34 installer seems to include netCDF4, so most users won't need to install it manually.
+
+If you installed QGIS some other, way, first figure out where QGIS's python is installed:
+
 Plugins -> Python Console
 ~~~
 import sys
@@ -66,8 +72,14 @@ print(sys.executable)
 On my machine, this prints \
 "/Applications/QGIS-LTR.app/Contents/MacOS/QGIS"
 
-So, I'll use that version of pip: \
+So, I'll use that version of pip. In a terminal, type: \
 `/Applications/QGIS-LTR.app/Contents/MacOS/bin/pip3 install [module name]`
+
+
+#### Ubuntu
+
+If you installed QGIS using apt, it uses the system install of python. So, to install netCDF4, open a terminal and run:
+`sudo apt install python3-netcdf4`
 
 
 #### References

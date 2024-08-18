@@ -14,9 +14,7 @@ Install the "Plugin Reloader" plugin; it allows you to reload a plugin after cha
 
 Plugins are installed to a folder managed by QGIS; it's not safe to do development there, since uninstalling a plugin deletes its directory.
 
-Instead, you either need a deploy script that copies your working files
-to the QGIS folder, or create a symlink from the directory that
-QGIS looks for to where you're actually doing development.
+Instead, you either need a deploy script that copies your working files to the QGIS folder, or create a symlink from the directory that QGIS looks for to where you're actually doing development.
 
 In order to figure out where QGIS will look for plugins:
 
@@ -25,7 +23,7 @@ In order to figure out where QGIS will look for plugins:
 
 ~~~
 cd [Active Profile Folder]/python/plugins
-git clone https://github.com/qiceradar/qiceradar_plugin
+git clone https://github.com/qiceradar/qiceradar
 ~~~
 
 Then, make sure it is installed in QGIS:

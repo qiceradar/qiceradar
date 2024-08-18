@@ -17,7 +17,7 @@ repository=https://github.com/qiceradar/qiceradar_plugin/
 author=Laura Lindzey
 email=lindzey@uw.edu
 
-qgisMinimumVersion=3.0
+qgisMinimumVersion=3.34
 version=0.1
 
 category=Plugins
