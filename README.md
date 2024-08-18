@@ -7,7 +7,7 @@ QIceRadar makes polar radar depth sounding data available in QGIS.
 *Screencap of QGIS, using QIceRadar to view UTIG's TOT/JKB2d/Y36a radargram[1]. The map shows the full extent of this radargram (red line), the portion currently displayed in the viewer (orange line) and the location of currently-selected trace (yellow circle). The basemap includes data from Quantarctica[2]: surface velocity vectors and magnitude from MEaSUREs[3] and MODIS mosaic satellite imagery[4].*
 
 There are two components to the project:
-1. A GeoPackage index containing the groundtracks of known radargrams, along with metadata about which institution collected the data, whether and where it can be accessed, and relevant citations. (DOI: [10.5281/zenodo.12123014](zenodo.org/records/12123014))
+1. A GeoPackage index containing the groundtracks of known radargrams, along with metadata about which institution collected the data, whether and where it can be accessed, and relevant citations. (DOI: [10.5281/zenodo.12123013](zenodo.org/records/12123013))
 2. A QGIS plugin that allows the user to select radargrams from the index in order to download and view them. (this repository)
 
 QIceRadar is funded by NSF's CSSI program (#2209726).
