@@ -32,17 +32,17 @@ In QGIS:
 
 If the install worked, you should now see two icons:
 ![](figures/qgis_icons.png)
-Continue on to the [tutorial](tutorial.md) for how to use the plugin.
+In this case, continue on to the [tutorial](tutorial.md) for how to use the plugin.
+
+If instead you got an error, see below for installing required dependencies, then try again.
 
 
 ### Python dependencies
 The QIceRadar radar_viewer plugin has dependencies on several python packages that may or may not have been packaged with your install of QGIS.
 
 If you got an error like `ModuleNotFoundError: No module named 'netCDF4'`, you'll need to install that module.
-If you installed the plugin without errors, skip this section!
 
-QGIS uses its own install of Python, so when installing dependencies
-be sure to install into that version, rather than the default system install.
+QGIS uses its own install of Python, so we have to be careful to install into that version, rather than into the default system install.
 
 After installing dependencies, restart QGIS.
 
@@ -57,6 +57,10 @@ More details are available in this guide: https://landscapearchaeology.org/2018/
 
 If you used the networked installer, follow this guide: https://fvwiki.tuflow.com/QGIS_3.14_Setup-NetCDF4
 
+#### Ubuntu
+
+If you installed QGIS using apt, it uses the system install of python. So, to install netCDF4, open a terminal and run:
+`sudo apt install python3-netcdf4`
 
 #### Mac OS
 
@@ -72,14 +76,10 @@ print(sys.executable)
 On my machine, this prints \
 "/Applications/QGIS-LTR.app/Contents/MacOS/QGIS"
 
-So, I'll use that version of pip. In a terminal, type: \
+So, I would use that version of pip. In a terminal, type: \
 `/Applications/QGIS-LTR.app/Contents/MacOS/bin/pip3 install [module name]`
 
 
-#### Ubuntu
-
-If you installed QGIS using apt, it uses the system install of python. So, to install netCDF4, open a terminal and run:
-`sudo apt install python3-netcdf4`
 
 
 #### References

@@ -8,7 +8,7 @@ QIceRadar makes polar radar depth sounding data available in QGIS.
 
 There are two components to the project:
 1. A GeoPackage index containing the groundtracks of known radargrams, along with metadata about which institution collected the data, whether and where it can be accessed, and relevant citations. (DOI: [10.5281/zenodo.12123014](zenodo.org/records/12123014))
-2. A QGIS plugin that allows the user to select lines from the index in order to download and view them. (this repository)
+2. A QGIS plugin that allows the user to select radargrams from the index in order to download and view them. (this repository)
 
 QIceRadar is funded by NSF's CSSI program (#2209726).
 
