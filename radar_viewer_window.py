@@ -83,7 +83,7 @@ from .plotutils.matplotlib_utils import (
     get_ax_shape,
 )
 from .plotutils.pyqt_utils import HLine, VLine, show_error_message_box
-from .radar_viewer_widgets import DoubleSlider
+from .radar_viewer_widgets import DoubleSlider, ScalebarControls
 
 # TODO: These need to be renamed. it's currently really confusing ...
 # * mplUtilites - things that depend only on matplotlib
@@ -169,12 +169,12 @@ class PlotParams:
         self.trace_visible = False
 
         self.vert_scale_visible = False
-        self.vert_scale_length: float = 500.0  # Units of m
+        self.vert_scale_length_m: float = 500.0  # Units of m
         # Units of axis-fraction
         self.vert_scale_x0 = 0.05
         self.vert_scale_y0 = 0.1
         self.horiz_scale_visible = False
-        self.horiz_scale_length: float = 10.0  # Units of km
+        self.horiz_scale_length_km: float = 10.0  # Units of km
         # units of axis-fraction
         self.horiz_scale_x0 = 0.1
         self.horiz_scale_y0 = 0.05
@@ -324,7 +324,7 @@ def calc_radar_skip(fig: Figure, ax: mpl.axes.Axes, xlim: Tuple[int, int]) -> in
     return radar_skip
 
 
-class BasicRadarWindow(QtWidgets.QMainWindow):
+class RadarWindow(QtWidgets.QMainWindow):
     def __init__(
         self,
         filepath: pathlib.Path,  # Fully-specified path
@@ -351,7 +351,7 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
           the main QGIS plugin can clear the related layers.
         """
         # This is for the QtGui stuff
-        super(BasicRadarWindow, self).__init__()
+        super(RadarWindow, self).__init__()
 
         self.press_event = None
         self.release_event = None
@@ -615,6 +615,8 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         # enough things that change the picks/max values that it's a lot
         # simpler to put all of that right here.
 
+        self.plot_scalebars()
+
         self.plot_objects.canvas.update()
 
         self.data_restore = self.plot_objects.canvas.copy_from_bbox(
@@ -661,17 +663,23 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         self.plot_objects.canvas.update()
         # print("time for cursor blit:", time.time() - t0)
 
-    # These were used for the various picking plot objects.
-    # leaving around in case we need to add something that behaves
-    # like those for blitting.
     def data_set_invisible(self, plot_objects: PlotObjects) -> None:
-        return
+        """
+        Set ALL overlays invisible.
+        """
+        plot_objects.vert_scale.set_visible(False)
+        plot_objects.horiz_scale.set_visible(False)
 
     # TODO(lindzey): It's weird that we need params to set visible, but not for invisible.
     def data_set_visible(
         self, plot_objects: PlotObjects, plot_params: PlotParams
     ) -> None:
-        return
+        """
+        Replot various data overlays based on configuration in plot_params.
+        Does NOT turn everything on; only those that are enabled.
+        """
+        plot_objects.vert_scale.set_visible(plot_params.vert_scale_visible)
+        plot_objects.horiz_scale.set_visible(plot_params.horiz_scale_visible)
 
     def cursor_set_invisible(self, plot_objects: PlotObjects) -> None:
         plot_objects.crosshair_x.set_visible(False)
@@ -1342,6 +1350,57 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
             0, 0, "r", linestyle="--"
         )
 
+        # Bars for adding horizontal/vertical scalebars to the radargram itself
+        plot_objects.vert_scale = scalebar.Scalebar(
+            plot_objects.radar_ax,
+            0,
+            0,
+            0,
+            0.01,
+            fontsize=24,
+            majorcolor="r",
+            barstyle="simple",
+            coords="frac",
+            orientation="vert",
+            linewidth=4,
+            unit_label="m",
+            autoupdate=False,
+        )
+
+        plot_objects.horiz_scale = scalebar.Scalebar(
+            plot_objects.radar_ax,
+            0,
+            0,
+            0,
+            0.01,
+            fontsize=24,
+            majorcolor="r",
+            barstyle="simple",
+            coords="frac",
+            orientation="horiz",
+            linewidth=4,
+            unit_label="km",
+            autoupdate=False,
+        )
+
+        plot_objects.scalebar_label = QtWidgets.QLabel("Scalebars:")
+
+        plot_objects.vert_scale_controls = ScalebarControls(
+            self.plot_params.vert_scale_length_m, "Vertical", "m",
+            self.plot_params.vert_scale_x0, self.plot_params.vert_scale_y0
+        )
+        plot_objects.vert_scale_controls.checked.connect(self._on_vert_scale_checkbox_changed)
+        plot_objects.vert_scale_controls.new_length.connect(self._on_vert_scale_new_length)
+        plot_objects.vert_scale_controls.new_origin.connect(self._on_vert_scale_new_origin)
+
+        plot_objects.horiz_scale_controls = ScalebarControls(
+            self.plot_params.horiz_scale_length_km, "Horizontal", "km",
+            self.plot_params.horiz_scale_x0, self.plot_params.horiz_scale_y0
+        )
+        plot_objects.horiz_scale_controls.checked.connect(self._on_horiz_scale_checkbox_changed)
+        plot_objects.horiz_scale_controls.new_length.connect(self._on_horiz_scale_new_length)
+        plot_objects.horiz_scale_controls.new_origin.connect(self._on_horiz_scale_new_origin)
+
         # TODO: These wil have to be connected to pick_ax, which will
         #  be on top of the various pcor axes.
         # (they only select if it's the top axis ... and the radar one
@@ -1552,6 +1611,10 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         plot_objects.control_vbox.addWidget(HLine())
         plot_objects.control_vbox.addWidget(plot_objects.clim_label)
         plot_objects.control_vbox.addWidget(plot_objects.clim_slider)
+        plot_objects.control_vbox.addWidget(HLine())
+        plot_objects.control_vbox.addWidget(plot_objects.scalebar_label)
+        plot_objects.control_vbox.addWidget(plot_objects.vert_scale_controls)
+        plot_objects.control_vbox.addWidget(plot_objects.horiz_scale_controls)
         plot_objects.control_vbox.addStretch(1)
         plot_objects.control_vbox.addWidget(HLine())
         plot_objects.control_vbox.addStretch(1)
@@ -1647,242 +1710,83 @@ class BasicRadarWindow(QtWidgets.QMainWindow):
         counts = self.radar_data.data[trace, sample]
         return "trace=%d sample=%d (%d counts)" % (trace, sample, counts)
 
-
-class ExperimentalRadarWindow(BasicRadarWindow):
-    def __init__(
-        self,
-        transect: str,
-        filename: Optional[str] = None,
-        parent=None,  # type: Optional[Any]
-        parent_xlim_changed_cb=None,  # type: Optional[Callable[List[float]]]
-        parent_cursor_cb=None,  # type: Optional[Callable[float]]
-        close_cb=None,  # type: Optional[Callable[None]]
-    ):
-        # type: (...) -> None
+    def _on_vert_scale_checkbox_changed(self, checked: bool) -> None:
         """
         TODO
         """
-        super(ExperimentalRadarWindow, self).__init__(
-            transect,
-            filename,
-            parent,
-            parent_xlim_changed_cb,
-            parent_cursor_cb,
-            close_cb,
-        )
+        self.plot_params.vert_scale_visible = checked
+        # TODO: This may call setChecked(False), which seems to disable the
+        # callback the next time around ... but it works again on the 2nd click.
+        self.data_blit()
 
-    def create_layout(
-        self, plot_params: PlotParams, plot_config: PlotConfig
-    ) -> PlotObjects:
+    def _on_horiz_scale_checkbox_changed(self, checked: bool) -> None:
         """
         TODO
         """
-        plot_objects = super(ExperimentalRadarWindow, self).create_layout(
-            plot_params, plot_config
-        )
+        self.plot_params.horiz_scale_visible = checked
+        # TODO: This may call setChecked(False), which seems to disable the
+        # callback the next time around ... but it works again on the 2nd click.
+        self.data_blit()
 
-        print("called add_experimental_layout")
-
-        major_color = self.plot_config.cmap_major_colors[self.plot_params.cmap]
-        minor_color = self.plot_config.cmap_minor_colors[self.plot_params.cmap]
-
-        plot_objects.vert_scale = scalebar.Scalebar(
-            plot_objects.radar_ax,
-            0,
-            0,
-            0,
-            0.01,
-            fontsize=24,
-            majorcolor="r",
-            barstyle="simple",
-            coords="frac",
-            orientation="vert",
-            linewidth=4,
-            unit_label="m",
-            autoupdate=False,
-        )
-
-        plot_objects.horiz_scale = scalebar.Scalebar(
-            plot_objects.radar_ax,
-            0,
-            0,
-            0,
-            0.01,
-            fontsize=24,
-            majorcolor="r",
-            barstyle="simple",
-            coords="frac",
-            orientation="horiz",
-            linewidth=4,
-            unit_label="km",
-            autoupdate=False,
-        )
-
-        ######
-        ##########
-        # Tab for various analysis experiments
-
-        # And, all of the inputs for configuring scale bars
-        # TODO: This is crying out for a widget containing these controls
-        plot_objects.vert_scale_checkbox = QtWidgets.QCheckBox("Vertical Scale")
-        plot_objects.vert_scale_checkbox.clicked.connect(
-            self._on_vert_scale_checkbox_changed,
-        )
-        plot_objects.vert_scale_length_label = QtWidgets.QLabel("Length: (m)")
-        plot_objects.vert_scale_length_textbox = QtWidgets.QLineEdit()
-        plot_objects.vert_scale_length_textbox.editingFinished.connect(
-            self._on_vert_scale_length_textbox_edited,
-        )
-        plot_objects.vert_scale_length_textbox.setText(
-            "%0.2f" % plot_params.vert_scale_length
-        )
-        plot_objects.vert_scale_length_textbox.setMinimumWidth(100)
-        plot_objects.vert_scale_length_textbox.setMaximumWidth(120)
-        plot_objects.vert_scale_origin_label = QtWidgets.QLabel(
-            "origin (x, y) (fraction):"
-        )
-        plot_objects.vert_scale_x0_textbox = QtWidgets.QLineEdit()
-        plot_objects.vert_scale_x0_textbox.editingFinished.connect(
-            self._on_vert_scale_x0_textbox_edited,
-        )
-        plot_objects.vert_scale_x0_textbox.setText("%0.2f" % plot_params.vert_scale_x0)
-        plot_objects.vert_scale_x0_textbox.setMinimumWidth(60)
-        plot_objects.vert_scale_x0_textbox.setMaximumWidth(80)
-        plot_objects.vert_scale_y0_textbox = QtWidgets.QLineEdit()
-        plot_objects.vert_scale_y0_textbox.editingFinished.connect(
-            self._on_vert_scale_y0_textbox_edited,
-        )
-        plot_objects.vert_scale_y0_textbox.setText("%0.2f" % plot_params.vert_scale_y0)
-        plot_objects.vert_scale_y0_textbox.setMinimumWidth(60)
-        plot_objects.vert_scale_y0_textbox.setMaximumWidth(80)
-
-        plot_objects.horiz_scale_checkbox = QtWidgets.QCheckBox("Horizontal Scale")
-        plot_objects.horiz_scale_checkbox.clicked.connect(
-            self._on_horiz_scale_checkbox_changed,
-        )
-        plot_objects.horiz_scale_length_label = QtWidgets.QLabel("Length: (km)")
-        plot_objects.horiz_scale_length_textbox = QtWidgets.QLineEdit()
-        plot_objects.horiz_scale_length_textbox.editingFinished.connect(
-            self._on_horiz_scale_length_textbox_edited,
-        )
-        plot_objects.horiz_scale_length_textbox.setText(
-            "%0.2f" % plot_params.horiz_scale_length
-        )
-        plot_objects.horiz_scale_length_textbox.setMinimumWidth(100)
-        plot_objects.horiz_scale_length_textbox.setMaximumWidth(120)
-
-        plot_objects.horiz_scale_origin_label = QtWidgets.QLabel(
-            "origin (x, y) (fraction):"
-        )
-        plot_objects.horiz_scale_x0_textbox = QtWidgets.QLineEdit()
-        plot_objects.horiz_scale_x0_textbox.editingFinished.connect(
-            self._on_horiz_scale_x0_textbox_edited,
-        )
-        plot_objects.horiz_scale_x0_textbox.setText(
-            "%0.2f" % plot_params.horiz_scale_x0
-        )
-        plot_objects.horiz_scale_x0_textbox.setMinimumWidth(60)
-        plot_objects.horiz_scale_x0_textbox.setMaximumWidth(80)
-        plot_objects.horiz_scale_y0_textbox = QtWidgets.QLineEdit()
-        plot_objects.horiz_scale_y0_textbox.editingFinished.connect(
-            self._on_horiz_scale_y0_textbox_edited,
-        )
-        plot_objects.horiz_scale_y0_textbox.setText(
-            "%0.2f" % plot_params.horiz_scale_y0
-        )
-        plot_objects.horiz_scale_y0_textbox.setMinimumWidth(60)
-        plot_objects.horiz_scale_y0_textbox.setMaximumWidth(80)
-
-        vert_scale_length_hbox = QtWidgets.QHBoxLayout()
-        vert_scale_pos_hbox = QtWidgets.QHBoxLayout()
-        vert_scale_length_hbox.addWidget(plot_objects.vert_scale_checkbox)
-        vert_scale_length_hbox.addStretch(1)
-        vert_scale_length_hbox.addWidget(plot_objects.vert_scale_length_label)
-        vert_scale_length_hbox.addWidget(plot_objects.vert_scale_length_textbox)
-        vert_scale_pos_hbox.addStretch(1)
-        vert_scale_pos_hbox.addWidget(plot_objects.vert_scale_origin_label)
-        vert_scale_pos_hbox.addWidget(plot_objects.vert_scale_x0_textbox)
-        vert_scale_pos_hbox.addWidget(plot_objects.vert_scale_y0_textbox)
-        vert_scale_vbox = QtWidgets.QVBoxLayout()
-        vert_scale_vbox.addLayout(vert_scale_length_hbox)
-        vert_scale_vbox.addLayout(vert_scale_pos_hbox)
-
-        horiz_scale_length_hbox = QtWidgets.QHBoxLayout()
-        horiz_scale_pos_hbox = QtWidgets.QHBoxLayout()
-        horiz_scale_length_hbox.addWidget(plot_objects.horiz_scale_checkbox)
-        horiz_scale_length_hbox.addStretch(1)
-        horiz_scale_length_hbox.addWidget(plot_objects.horiz_scale_length_label)
-        horiz_scale_length_hbox.addWidget(plot_objects.horiz_scale_length_textbox)
-        horiz_scale_pos_hbox.addStretch(1)
-        horiz_scale_pos_hbox.addWidget(plot_objects.horiz_scale_origin_label)
-        horiz_scale_pos_hbox.addWidget(plot_objects.horiz_scale_x0_textbox)
-        horiz_scale_pos_hbox.addWidget(plot_objects.horiz_scale_y0_textbox)
-        horiz_scale_vbox = QtWidgets.QVBoxLayout()
-        horiz_scale_vbox.addLayout(horiz_scale_length_hbox)
-        horiz_scale_vbox.addLayout(horiz_scale_pos_hbox)
-
-        scale_vbox = QtWidgets.QVBoxLayout()
-        scale_vbox.addLayout(vert_scale_vbox)
-        scale_vbox.addLayout(horiz_scale_vbox)
-        scale_vbox.addStretch(1)
-
-        scale_widget = QtWidgets.QWidget()
-        scale_widget.setLayout(scale_vbox)
-
-        # plot_objects.tabs.addTab(scale_widget, "Scale Bars")
-        plot_objects.control_vbox.addWidget(scale_widget)
-
-        return plot_objects
-
-    def data_blit(self) -> None:
+    def _on_vert_scale_new_length(self, length: float) -> None:
         """
-        TODO
+        Update plot_objects with new length and redraw, after sanity checking.
         """
-        # NOTE: This purposely does NOT extend BasicRadarWindow.data_blit,
-        # because there's an ordering issue.
+        if length <= 0:
+            msg = "Please enter positive length"
+            raise Exception(msg)
+
+        if length != self.plot_params.vert_scale_length_m:
+            self.plot_params.vert_scale_length_m = length
+            self.data_blit()
+
+    def _on_horiz_scale_new_length(self, length: float) -> None:
         """
-        This redraws all the various rcoeff/pick/etc plots, but not the
-        radar background.
-        # TODO: I haven't tested  whether it would be faster to do it like
-        # this or do a per-artist blit when it changes. However, this seems
-        # easier/cleaner.
+        Update plot_objects with new length and redraw
         """
-        self.plot_objects.canvas.restore_region(self.radar_restore)
+        if length != self.plot_params.horiz_scale_length_km:
+            self.plot_params.horiz_scale_length_km = length
+            self.data_blit()
 
-        self.data_set_visible(self.plot_objects, self.plot_params)
-        # TODO: If this series starts getting too slow, move the "set_data"
-        # logic back to the callbacks that change it. However, there are
-        # enough things that change the picks/max values that it's a lot
-        # simpler to put all of that right here.
 
-        self.plot_scalebars()
-
-        self.plot_objects.canvas.update()
-
-        self.data_restore = self.plot_objects.canvas.copy_from_bbox(
-            self.plot_objects.full_ax.bbox
-        )
-
-        self.cursor_blit()
-
-    def data_set_invisible(self, plot_objects: PlotObjects) -> None:
+    def _on_vert_scale_new_origin(self, x0: float, y0: float) -> None:
         """
-        Set ALL overlays invisible.
+        Update vertical scalebar with new x0, y0 and redraw
         """
-        super(ExperimentalRadarWindow, self).data_set_invisible(plot_objects)
-        plot_objects.vert_scale.set_visible(False)
-        plot_objects.horiz_scale.set_visible(False)
+        if x0 < 0.0 or x0 > 1.0:
+            msg = "Please enter x0 in range [0, 1]"
+            raise Exception(msg)
 
-    def data_set_visible(
-        self, plot_objects: PlotObjects, plot_params: PlotParams
-    ) -> None:
+        if y0 < 0.0 or y0 > 1.0:
+            msg = "Please enter y0 in range [0, 1]"
+            raise Exception(msg)
+
+        needs_blit = False
+        if x0 != self.plot_params.vert_scale_x0:
+            self.plot_params.vert_scale_x0 = x0
+            needs_blit = True
+        if y0 != self.plot_params.vert_scale_y0:
+            self.plot_params.vert_scale_y0 = y0
+            needs_blit = True
+        if needs_blit:
+            self.data_blit()
+
+    # This is crying out for a lambda taking the textbox object and the var it
+    # goes into ...
+    def _on_horiz_scale_new_origin(self, x0: float, y0: float) -> None:
         """
-        Replot various data overlays based on configuration in plot_params.
-        Does NOT turn everything on; only those that are enabled.
+        Update plot_objects with new x0 and redraw
         """
-        super(ExperimentalRadarWindow, self).data_set_visible(plot_objects, plot_params)
-        plot_objects.vert_scale.set_visible(plot_params.vert_scale_visible)
-        plot_objects.horiz_scale.set_visible(plot_params.horiz_scale_visible)
+        needs_blit = False
+        if x0 != self.plot_params.horiz_scale_x0:
+            self.plot_params.horiz_scale_x0 = x0
+            needs_blit = True
+        if y0 != self.plot_params.horiz_scale_y0:
+            self.plot_params.horiz_scale_y0 = y0
+            needs_blit = True
+        if needs_blit:
+            self.data_blit()
+
 
     def plot_scalebars(self) -> None:
         """
@@ -1904,7 +1808,7 @@ class ExperimentalRadarWindow(BasicRadarWindow):
         data_height = np.abs(range1-range0)
 
         self.plot_objects.vert_scale.set_length(
-            self.plot_params.vert_scale_length, data_height
+            self.plot_params.vert_scale_length_m, data_height
         )
         self.plot_objects.vert_scale.set_origin(
             self.plot_params.vert_scale_x0, self.plot_params.vert_scale_y0
@@ -1912,7 +1816,7 @@ class ExperimentalRadarWindow(BasicRadarWindow):
         self.plot_objects.vert_scale.update()
 
         self.plot_objects.horiz_scale.set_length(
-            self.plot_params.horiz_scale_length, (data_width / 1000.0)
+            self.plot_params.horiz_scale_length_km, (data_width / 1000.0)
         )
         self.plot_objects.horiz_scale.set_origin(
             self.plot_params.horiz_scale_x0, self.plot_params.horiz_scale_y0
@@ -1924,195 +1828,4 @@ class ExperimentalRadarWindow(BasicRadarWindow):
         for element in self.plot_objects.horiz_scale.elements.values():
             self.plot_objects.radar_ax.draw_artist(element)
 
-    def _on_vert_scale_checkbox_changed(self) -> None:
-        """
-        TODO
-        """
-        checked = self.plot_objects.vert_scale_checkbox.isChecked()
-        self.plot_params.vert_scale_visible = checked
-        # TODO: This may call setChecked(False), which seems to disable the
-        # callback the next time around ... but it works again on the 2nd click.
-        self.data_blit()
-
-    def _on_vert_scale_length_textbox_edited(self) -> None:
-        """
-        Update plot_objects with new length and redraw, after sanity checking.
-        """
-        curr_length_str = "%r" % self.plot_params.vert_scale_length
-        try:
-            length = float(self.plot_objects.vert_scale_length_textbox.text())
-        except ValueError:
-            msg = "Please enter numerical value for length"
-            show_error_message_box(msg)
-            self.plot_objects.vert_scale_length_textbox.setText(curr_length_str)
-            return
-
-        if length <= 0:
-            msg = "Please enter positive length"
-            show_error_message_box(msg)
-            self.plot_objects.vert_scale_length_textbox.setText(curr_length_str)
-            return
-
-        if length != self.plot_params.vert_scale_length:
-            self.plot_params.vert_scale_length = length
-            self.data_blit()
-
-    def _on_vert_scale_x0_textbox_edited(self) -> None:
-        """
-        Update plot_objects with new x0 and redraw
-        """
-        curr_x0_str = "%r" % self.plot_params.vert_scale_x0
-        try:
-            x0 = float(self.plot_objects.vert_scale_x0_textbox.text())
-        except ValueError:
-            msg = "Please enter numerical value for x0"
-            show_error_message_box(msg)
-            self.plot_objects.vert_scale_x0_textbox.setText(curr_x0_str)
-            return
-
-        if x0 < 0.0 or x0 > 1.0:
-            msg = "Please enter x0 in range [0, 1]"
-            show_error_message_box(msg)
-            self.plot_objects.vert_scale_x0_textbox.setText(curr_x0_str)
-            return
-
-        if x0 != self.plot_params.vert_scale_x0:
-            self.plot_params.vert_scale_x0 = x0
-            self.data_blit()
-
-    def _on_vert_scale_y0_textbox_edited(self) -> None:
-        """
-        Update plot_objects with new y0 and redraw
-        """
-        curr_y0_str = "%r" % self.plot_params.vert_scale_y0
-        try:
-            y0 = float(self.plot_objects.vert_scale_y0_textbox.text())
-        except ValueError:
-            msg = "Please enter numerical value for y0"
-            show_error_message_box(msg)
-            self.plot_objects.vert_scale_y0_textbox.setText(curr_y0_str)
-            return
-
-        if y0 < 0.0 or y0 > 1.0:
-            msg = "Please enter y0 in range [0, 1]"
-            show_error_message_box(msg)
-            self.plot_objects.vert_scale_y0_textbox.setText(curr_y0_str)
-            return
-
-        if y0 != self.plot_params.vert_scale_y0:
-            self.plot_params.vert_scale_y0 = y0
-            self.data_blit()
-
-    def _on_horiz_scale_checkbox_changed(self) -> None:
-        """
-        TODO
-        """
-        checked = self.plot_objects.horiz_scale_checkbox.isChecked()
-        self.plot_params.horiz_scale_visible = checked
-        # TODO: This may call setChecked(False), which seems to disable the
-        # callback the next time around ... but it works again on the 2nd click.
-        self.data_blit()
-
-    def _on_horiz_scale_length_textbox_edited(self) -> None:
-        """
-        Update plot_objects with new length and redraw, after sanity checking.
-        """
-        curr_length_str = "%r" % self.plot_params.horiz_scale_length
-        try:
-            length = float(self.plot_objects.horiz_scale_length_textbox.text())
-        except ValueError:
-            msg = "Please enter numerical value for length"
-            show_error_message_box(msg)
-            self.plot_objects.horiz_scale_length_textbox.setText(curr_length_str)
-            return
-
-        if length <= 0:
-            msg = "Please enter positive length"
-            show_error_message_box(msg)
-            self.plot_objects.horiz_scale_length_textbox.setText(curr_length_str)
-            return
-
-        if length != self.plot_params.horiz_scale_length:
-            self.plot_params.horiz_scale_length = length
-            self.data_blit()
-
-    # This is crying out for a lambda taking the textbox object and the var it
-    # goes into ...
-    def _on_horiz_scale_x0_textbox_edited(self) -> None:
-        """
-        Update plot_objects with new x0 and redraw
-        """
-        curr_x0_str = "%r" % self.plot_params.horiz_scale_x0
-        try:
-            x0 = float(self.plot_objects.horiz_scale_x0_textbox.text())
-        except ValueError:
-            msg = "Please enter numerical value for x0"
-            show_error_message_box(msg)
-            self.plot_objects.horiz_scale_x0_textbox.setText(curr_x0_str)
-            return
-
-        if x0 < 0.0 or x0 > 1.0:
-            msg = "Please enter x0 in range [0, 1]"
-            show_error_message_box(msg)
-            self.plot_objects.horiz_scale_x0_textbox.setText(curr_x0_str)
-            return
-
-        if x0 != self.plot_params.horiz_scale_x0:
-            self.plot_params.horiz_scale_x0 = x0
-            self.data_blit()
-
-    def _on_horiz_scale_y0_textbox_edited(self) -> None:
-        """
-        Update plot_objects with new y0 and redraw
-        """
-        curr_y0_str = "%r" % self.plot_params.horiz_scale_y0
-        try:
-            y0 = float(self.plot_objects.horiz_scale_y0_textbox.text())
-        except ValueError:
-            msg = "Please enter numerical value for y0"
-            show_error_message_box(msg)
-            self.plot_objects.horiz_scale_y0_textbox.setText(curr_y0_str)
-            return
-
-        if y0 < 0.0 or y0 > 1.0:
-            msg = "Please enter y0 in range [0, 1]"
-            show_error_message_box(msg)
-            self.plot_objects.horiz_scale_y0_textbox.setText(curr_y0_str)
-            return
-
-        if y0 != self.plot_params.horiz_scale_y0:
-            self.plot_params.horiz_scale_y0 = y0
-            self.data_blit()
-
-
-if __name__ == "__main__":
-    app = QtWidgets.QApplication(sys.argv)
-
-    parser = argparse.ArgumentParser(
-        description="RadarFigure - interface for viewing radar data"
-    )
-    # Both provider and campaign are required to determine file type.
-    # TODO: Consider switching this to an enum of supported formats.
-    parser.add_argument("provider", help="Institution that collected the data")
-    parser.add_argument("campaign", help="Campaign")
-    parser.add_argument("filepath", help="Full path to the datafile")
-    parser.add_argument("transect", help="Name of transect")
-    parser.add_argument(
-        "--experimental",
-        action="store_true",
-        help="Whether to use experimental version of GUI",
-    )
-    args = parser.parse_args()
-
-    if args.experimental:
-        radar_window = ExperimentalRadarWindow(
-            args.provider, args.campaign, args.filepath, args.transect
-        )
-    else:
-        radar_window = BasicRadarWindow(
-            args.provider, args.campaign, args.filepath, args.transect
-        )
-
-    radar_window.show()
-    app.exec_()
 

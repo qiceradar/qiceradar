@@ -76,9 +76,7 @@ from .qiceradar_selection_widget import (
     QIceRadarSelectionTool,
     QIceRadarSelectionWidget,
 )
-
-# from .radar_viewer_window import ExperimentalRadarWindow as RadarWindow
-from .radar_viewer_window import BasicRadarWindow as RadarWindow
+from .radar_viewer_window import RadarWindow
 
 
 class QIceRadarPlugin(QtCore.QObject):

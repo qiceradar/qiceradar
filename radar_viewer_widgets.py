@@ -52,6 +52,119 @@ except ImportError:
 from .plotutils.pyqt_utils import show_error_message_box
 
 
+class ScalebarControls(QtWidgets.QWidget):
+    """
+    Widget that provides checkbox to enable/disable scalebar,
+    along with controls setting its length and position.
+    """
+    # Emitted when the checkbox changes; argument is enabled / not
+    checked = QtCore.pyqtSignal(bool)
+    # Emitted when user updates length; argument is length in meters
+    new_length = QtCore.pyqtSignal(float)
+    # Emitted when user updates origin; argument is x_fraction, y_fraction
+    new_origin = QtCore.pyqtSignal(float, float)
+
+    def __init__(
+        self,
+        initial_value: float, # Initial value for the scalebar length
+        label: str, # Label for the checkbox. Usually "Horizontal" or "Vertical"
+        unit_label: str, # Label for length units
+        x0: float, # Initial X position for scalebar (in fraction of axis)
+        y0: float, # Initial Y position for scalebar (in fraction of axis)
+    ) -> None:
+        # ConfigWidget doesnt' ahve parent, but DoubleSlider does.
+        # Do we need to?
+        super().__init__()
+        self.initial_value = initial_value
+        self.label = label
+        self.unit_label = unit_label
+        self.x0 = x0
+        self.y0 = y0
+
+        self.setup_ui()
+
+    def setup_ui(self) -> None:
+
+        self.checkbox = QtWidgets.QCheckBox(f"{self.label}")
+        self.checkbox.clicked.connect(
+            lambda val: self.checked.emit(val)
+        )
+
+        self.length_label = QtWidgets.QLabel(f"Length: ({self.unit_label})")
+
+        self.length_lineedit = QtWidgets.QLineEdit()
+        self.length_validator = QtGui.QDoubleValidator()
+        self.length_validator.setBottom(0.0)
+        self.length_validator.setDecimals(2)
+        self.length_lineedit.setValidator(self.length_validator)
+        # TODO: Originally, this was editingFinished, but I wanted a
+        #  signal that has an argument with the current text. Confirm
+        #  that this works as intended (only fires for valid input)
+        self.length_lineedit.editingFinished.connect(
+            self.send_new_length
+        )
+        self.length_lineedit.setText(f"{self.initial_value:.2f}")
+        self.length_lineedit.setMinimumWidth(50)
+        self.length_lineedit.setMaximumWidth(60)
+
+        self.origin_label = QtWidgets.QLabel(
+            "origin (x, y):"
+        )
+
+        self.x0_lineedit = QtWidgets.QLineEdit()
+        self.origin_validator = QtGui.QDoubleValidator()
+        self.origin_validator.setBottom(0.0)
+        self.origin_validator.setTop(1.0)
+        self.origin_validator.setDecimals(2)
+
+        self.x0_lineedit.setValidator(self.origin_validator)
+        self.x0_lineedit.setText(f"{self.x0:0.2f}")
+        self.x0_lineedit.setMinimumWidth(30)
+        self.x0_lineedit.setMaximumWidth(40)
+
+        self.y0_lineedit = QtWidgets.QLineEdit()
+        self.y0_lineedit.setValidator(self.origin_validator)
+        self.y0_lineedit.setText(f"{self.y0:0.2f}")
+        self.y0_lineedit.setMinimumWidth(30)
+        self.y0_lineedit.setMaximumWidth(40)
+
+        # Must happen after setting the text ...
+        self.x0_lineedit.editingFinished.connect(
+            self.send_new_origin
+        )
+        self.y0_lineedit.editingFinished.connect(
+            self.send_new_origin
+        )
+
+        self.length_hbox = QtWidgets.QHBoxLayout()
+        self.length_hbox.addWidget(self.length_label)
+        self.length_hbox.addWidget(self.length_lineedit)
+        self.length_hbox.addStretch(1)
+
+        self.origin_hbox = QtWidgets.QHBoxLayout()
+        self.origin_hbox.addStretch(1)
+        self.origin_hbox.addWidget(self.origin_label)
+        self.origin_hbox.addWidget(self.x0_lineedit)
+        self.origin_hbox.addWidget(self.y0_lineedit)
+
+        self.vbox = QtWidgets.QVBoxLayout()
+        self.vbox.addWidget(self.checkbox)
+        self.vbox.addLayout(self.length_hbox)
+        self.vbox.addLayout(self.origin_hbox)
+
+        self.setLayout(self.vbox)
+
+    def send_new_origin(self):
+        x0 = float(self.x0_lineedit.text())
+        y0 = float(self.y0_lineedit.text())
+        self.new_origin.emit(x0, y0)
+
+    def send_new_length(self):
+        length = float(self.length_lineedit.text())
+        self.new_length.emit(length)
+
+
+
 class DoubleSlider(QtWidgets.QWidget):
     """
     Widget that provides textboxes and sliders to update the min/max
