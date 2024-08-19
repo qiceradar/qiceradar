@@ -1692,17 +1692,16 @@ class RadarWindow(QtWidgets.QMainWindow):
 
     def format_ylabel(self, yy: float, _pos: float) -> str:
         """
-        We sample at 50MHz, so each sample is 20ns, or 0.02us
-        In ice, this translates to a one-way distance of 0.02*169/2
         """
         nearest_sample = min(max(0, int(np.round(yy))), self.radar_data.num_samples - 1)
         sample_time_us = self.radar_data.fast_time_us[nearest_sample]
-        dz = sample_time_us * 169 * 0.5
+        # dz = sample_time_us * 169 * 0.5
         # print(
         #     f"For {yy}, nearest_sample = {nearest_sample}, "
         #     f"sample_time = {sample_time_us} and depth = {dz}"
         # )
-        return "%0.2f us\n%d m" % (sample_time_us, dz)
+        # Hacky way to get a newline inside a raw string
+        return "\n".join([f"{sample_time_us:.2f}", r"$\mu$s"])
 
     def format_coord(self, xx: float, yy: float) -> None:
         coord = self.plot_objects.pick_ax.transData.transform([xx, yy])
@@ -1794,8 +1793,6 @@ class RadarWindow(QtWidgets.QMainWindow):
         """
         xlim = tuple(map(int, self.plot_objects.radar_ax.get_xlim()))
         ylim = tuple(map(int, self.plot_objects.radar_ax.get_ylim()))
-
-        print(f"Called plot_scalebars with xlim = {xlim}, ylim = {ylim}")
 
         all_dists = self.radar_data.along_track_dist()
         dist0 = all_dists[xlim[0]]
