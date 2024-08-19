@@ -400,20 +400,24 @@ class Scalebar(object):
             self.elements['line'].set_data([xleft, xright], [ycen, ycen])
             self.elements['tick1'].set_data([xleft, xleft], [ybottom, ytop])
             self.elements['tick2'].set_data([xright, xright], [ybottom, ytop])
-            label = '%d %s' % (int(np.round(np.abs((xright-xleft) / self.unit_factor))),
-                               self.unit_label)
-            self.elements['label'].set_text(label)
+            length = np.abs((xright-xleft) / self.unit_factor)
             self.elements['label'].set_position([xcen, ytop])
         elif self.orientation == 'vert':
             self.elements['line'].set_data([xcen, xcen], [ybottom, ytop])
             self.elements['tick1'].set_data([xleft, xright], [ybottom, ybottom])
             self.elements['tick2'].set_data([xleft, xright], [ytop, ytop])
-            label = '%d %s' % (int(np.round(np.abs((ytop-ybottom) / self.unit_factor))),
-                               self.unit_label)
-            self.elements['label'].set_text(label)
+            length = np.abs((ytop-ybottom) / self.unit_factor)
             self.elements['label'].set_position([xright, ycen])
         else:
             raise Exception("Invalid orientation")
+        # Hacky way to provide up to 2 decimal points, where needed
+        if np.abs(10*np.round(10*length) - int(np.round(100*length))) > 0.5:
+            label = f"{length:.2f} {self.unit_label}"
+        elif np.abs(10*np.round(length) - int(np.round(10*length))) > 0.5:
+            label = f"{length:.1f} {self.unit_label}"
+        else:
+            label = f"{int(np.round(length))} {self.unit_label}"
+        self.elements['label'].set_text(label)
 
     def _update_fancy(self):
         # type: () -> None
