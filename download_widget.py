@@ -28,6 +28,7 @@
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import copy
+import os
 import pathlib
 import shutil
 import tempfile
@@ -286,6 +287,14 @@ class DownloadWidget(QtWidgets.QWidget):
         self.canceled = False
         self.failed = False
         self.finished = False
+
+        self.help_msg = (
+            "You can manually download this radargram (e.g. using Chrome) from: \n\n"
+            f"{self.url}\n\n"
+            "and save it to: \n\n"
+            f"{self.destination_filepath}"
+        )
+
         self.setup_ui()
 
     def setup_ui(self) -> None:
@@ -401,7 +410,7 @@ class DownloadWidget(QtWidgets.QWidget):
         self.setPalette(pp)
         self.download_finished.emit()
 
-    def handle_failed(self) -> None:
+    def handle_failed(self, err_msg: str) -> None:
         self.failed = True
         # TODO: this should become an icon
         self.status_label.setText("Failed")
@@ -411,6 +420,11 @@ class DownloadWidget(QtWidgets.QWidget):
         pp = self.palette()
         pp.setColor(self.backgroundRole(), QtGui.QColor(0, 0, 0, 25))
         self.setPalette(pp)
+        # TODO: Update help button text with the information? Will probably need a scroll bar...
+        self.help_msg = "".join([self.help_msg,
+                                 "\n\n\n ------------- DOWNLOAD FAILED -----------\n\n\n",
+                                 err_msg])
+
 
     def handle_canceled(self) -> None:
         self.canceled = True
@@ -479,14 +493,8 @@ class DownloadWidget(QtWidgets.QWidget):
         self.request_cancel.emit()
 
     def handle_help_button_clicked(self) -> None:
-        msg = (
-            "You can manually download this radargram (e.g. using Chrome) from: \n"
-            f"{self.url}\n"
-            "and save it to: \n"
-            f"{self.destination_filepath}"
-        )
         message_box = QtWidgets.QMessageBox()
-        message_box.setText(msg)
+        message_box.setText(self.help_msg)
         message_box.exec()
 
 
@@ -498,7 +506,7 @@ class DownloadWorker(QtCore.QObject):
     paused = QtCore.pyqtSignal()
     resumed = QtCore.pyqtSignal()  # Also emitted on "running"
     finished = QtCore.pyqtSignal()
-    failed = QtCore.pyqtSignal()
+    failed = QtCore.pyqtSignal(str)  # Contains traceback of exception, as str
     canceled = QtCore.pyqtSignal()
     # Qt's signals use an int32 if I specify "int" here, so use "object"
     progress = QtCore.pyqtSignal(object)
@@ -555,9 +563,9 @@ class DownloadWorker(QtCore.QObject):
             else:
                 print(f"Could not find last-modified. Huh. Headers = {req.headers}")
         except Exception as ex:
-            QgsMessageLog.logMessag("DownloadWorker.run got exception!")
+            QgsMessageLog.logMessage("DownloadWorker.run got exception!")
             QgsMessageLog.logMessage(ex)
-            self.failed.emit()
+            self.failed.emit(str(ex))
             return
 
         print(f"Request status code: {req.status_code}")
@@ -569,8 +577,9 @@ class DownloadWorker(QtCore.QObject):
             QgsMessageLog.logMessage(f"Resuming download of {self.url}")
             resuming = True
         else:
-            QgsMessageLog.logMessage(f"Download failed! Code {req.status_code}, url: {self.url}")
-            self.failed.emit()
+            msg = f"Download failed! Code {req.status_code}, url: {self.url}"
+            QgsMessageLog.logMessage(msg)
+            self.failed.emit(msg)
             return
 
         self.downloading = True
@@ -623,7 +632,7 @@ class DownloadWorker(QtCore.QObject):
             except Exception as ex:
                 print("DownloadWorker.download")
                 print(ex)
-                self.failed.emit()
+                self.failed.emit(str(ex))
 
         if self.cancel_requested:
             self.canceled.emit()
@@ -635,12 +644,20 @@ class DownloadWorker(QtCore.QObject):
             )
             try:
                 shutil.move(self.temp_file.name, self.destination_filepath)
-            except Exception as ex:
+            except Exception as move_ex:
                 QgsMessageLog.logMessage("Unable to move file; trying to copy.")
-                # On one beta user's Windows machine, we got the error:
+                # On one beta tester's Windows machine, we got the error:
                 # PermissionError: [WinError 32] The process cannot access the file because it is being used by another process
                 # So, in this case, just try copying
-                shutil.copy(self.temp_file.name, self.destination_filepath)
+                try:
+                    # On another beta tester's machine, this failed partway through copying a 3G file.
+                    # In that case, I want to remove the half-copied file, and give them a warning.
+                    shutil.copy(self.temp_file.name, self.destination_filepath)
+                except Exception as copy_ex:
+                    if os.path.isfile(self.destination_filepath):
+                        os.remove(self.destination_filepath)
+                    error_msg = str(move_ex) + "\n\n\n" + str(copy_ex)
+                    self.failed.emit(error_msg)
 
             self.finished.emit()
         self.downloading = False
