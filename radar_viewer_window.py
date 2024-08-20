@@ -1665,19 +1665,22 @@ class RadarWindow(QtWidgets.QMainWindow):
             # It appears that the BAS data's utc data isn't what I expected,
             # so I can't convert to minutes or date.
             # At least for polargap, the time on a transect only covers < 1 sec.
-            if self.radar_data.utc is not None:
-                t0 = self.radar_data.utc[0]
-                t1 = self.radar_data.utc[int_trace]
-                minutes, seconds = divmod(t1 - t0, 60)
-                time_str = datetime.datetime.fromtimestamp(t1).strftime(
-                    # BAS's timestamps aren't posix. I think they're since midnight?
-                    # So, for now, just commenting this out so we can see time elapsed.
-                    # "%Y-%m-%d\n%H:%M:%S"
-                    "%H:%M:%S"
-                )
-                # label = "\n".join([label, time_str])
+            # (Julien says that he has fixed that issue, but the data probably hasn't
+            # been pushed yet)
 
-            # label = "\n".join([label, f"{int_trace}"])
+            # if self.radar_data.utc is not None:
+            #     t0 = self.radar_data.utc[0]
+            #     t1 = self.radar_data.utc[int_trace]
+            #     minutes, seconds = divmod(t1 - t0, 60)
+            #     # Must first convert to float; otherwise get error:
+            #     # TypeError: 'numpy.float32' object cannot be interpreted as an integer
+            #     time_str = datetime.datetime.fromtimestamp(float(t1)).strftime(
+            #         # BAS's timestamps aren't posix. I think they're since midnight?
+            #         # So, for now, just commenting this out so we can see time elapsed.
+            #         # "%Y-%m-%d\n%H:%M:%S"
+            #         "%H:%M:%S"
+            #     )
+            #     # label = "\n".join([label, time_str])
 
             return label
 
