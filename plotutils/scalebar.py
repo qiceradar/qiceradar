@@ -104,6 +104,7 @@ class Scalebar(object):
         * autoupdate - whether to hook update() in to the xlim_changed signals
         * alpha - alpha for the background
         '''
+        print(f"Initializing Scalebar. x0,y0 = {x0}, {y0}. length,width = {length}, {width}. unit_factor={unit_factor}")
         self.ax = ax
         self.x0 = x0
         self.y0 = y0
@@ -411,13 +412,22 @@ class Scalebar(object):
         else:
             raise Exception("Invalid orientation")
         # Hacky way to provide up to 2 decimal points, where needed
-        if np.abs(10*np.round(10*length) - int(np.round(100*length))) > 0.5:
-            label = f"{length:.2f} {self.unit_label}"
-        elif np.abs(10*np.round(length) - int(np.round(10*length))) > 0.5:
-            label = f"{length:.1f} {self.unit_label}"
-        else:
-            label = f"{int(np.round(length))} {self.unit_label}"
+        # For some of the ICECAP lines (e.g. TOT/JKB2d/X15a), this raises
+        # ValueError: cannot convert float NaN to integer
+        # For JKB2e lines, it doesn't.
+        try:
+            if np.abs(10*np.round(10*length) - int(np.round(100*length))) > 0.5:
+                label = f"{length:.2f} {self.unit_label}"
+            elif np.abs(10*np.round(length) - int(np.round(10*length))) > 0.5:
+                label = f"{length:.1f} {self.unit_label}"
+            else:
+                label = f"{int(np.round(length))} {self.unit_label}"
+        except ValueError as ex:
+            print(ex)
+            print(f"xright = {xright}, xleft = {xleft}, factor = {self.unit_factor}")
+            label = ""
         self.elements['label'].set_text(label)
+
 
     def _update_fancy(self):
         # type: () -> None
