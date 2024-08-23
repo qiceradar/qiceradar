@@ -857,6 +857,21 @@ class QIceRadarPlugin(QtCore.QObject):
         for neighbor in neighbors:
             layer_id, feature_id = self.spatial_index_lookup[neighbor]
             tree_layer = root.findLayer(layer_id)
+
+            # This will happen if the user has deleted and re-imported the
+            # index database. In that case, we need to regenerate the
+            # spatial index.
+            if tree_layer is None:
+                # I tried to have this display before, but repaint() didn't work
+                # So, it's written in past tense to explain what happened.
+                msg = "Spatial index was invalid, and has now been re-computed. Please re-try your selection."
+                self.message_bar.pushMessage(msg, level=Qgis.Warning, duration=10)
+                # self.iface.mainWindow().repaint()
+                self.build_spatial_index()
+                self.update_download_renderer()
+                return
+
+
             # Only offer visible layers to the user
             if not tree_layer.isVisible():
                 continue
