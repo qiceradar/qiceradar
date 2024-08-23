@@ -17,7 +17,7 @@ Click the icon with the down arrow to activate the downloader tooltip:
 
 
 To download a line, click on the line in the map.
-A dialog box will pop up, giving five options ordered by distance from the clicked point.
+A dialog box will pop up, giving five options ordered by distance from the clicked point. QIceRadar will only display segments that are currently visible in the layers menu.
 ![](figures/download_selection.png)
 Select the segment of interest and click OK.
 Info about the selected radargram will appear:
@@ -50,10 +50,10 @@ Use the colormap dropdown and the color limits text entry boxes and/or sliders t
 Activate the "Traces" checkbox to see a plot of intensities from a single trace of the radargram:
 ![](figures/viewer_traces.png)
 
-Finally, activate the "Crosshairs" checkbox for a cursor to follow your mouse in the radargram and plot the lat/lon of that trace as a yellow point in the map view. Additionally, the map will always show the full extent of the radargram as a red line, and the currently-viewed extent as a thicker orange line.
+Activate the "Crosshairs" checkbox to associate features between the radargram and the map. A cursor will follow your mouse in the radargram, while the lat/lon of that trace will appear as a yellow point in the map view. Additionally, the map will always show the full extent of the radargram as a red line, and the currently-viewed extent as a thicker orange line.
 ![](figures/viewer_cursor.png)
 
-
+Citation information is available by clicking the "Citation" button in the viewer.
 
 ## QGIS tips:
 
