@@ -34,7 +34,7 @@ from typing import List
 import numpy as np
 import pyproj
 
-from . import bas_utils, cresis_utils, db_utils, utig_utils
+from . import awi_utils, bas_utils, cresis_utils, db_utils, utig_utils
 
 
 class Institutions(enum.IntEnum):
@@ -58,7 +58,16 @@ class RadarData:
     ) -> None:
         # TODO: look this up from institution+campaign?
         self.institution = db_granule.institution
-        if db_granule.data_format == "bas_netcdf":
+        if db_granule.data_format == "awi_netcdf":
+            self.available_products = ["csarp"]
+            (
+                self.data,  # TODO: rename this to radargram
+                self.lat,
+                self.lon,
+                self.utc,
+                self.fast_time_us,
+            ) = awi_utils.load_netcdf(filepath)
+        elif db_granule.data_format == "bas_netcdf":
             # TODO: consider supporting pulse
             # TODO: Note that the BAS data has campaign embedded, so no need to pass it in.
             self.available_products = ["chirp"]

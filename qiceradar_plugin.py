@@ -94,7 +94,7 @@ class QIceRadarPlugin(QtCore.QObject):
         self.message_bar = self.iface.messageBar()
 
         # TODO: Probably better to get this from the radar_viewer / radar_downloader
-        self.supported_data_formats = ["bas_netcdf", "utig_netcdf", "cresis_mat"]
+        self.supported_data_formats = ["awi_netcdf", "bas_netcdf", "utig_netcdf", "cresis_mat"]
         self.supported_download_methods = ["nsidc", "wget"]
 
         self.download_window: Optional[DownloadWindow] = None
@@ -463,9 +463,7 @@ class QIceRadarPlugin(QtCore.QObject):
                 )
             else:
                 self.display_unsupported_data_format_dialog(
-                    db_granule.data_format,
-                    db_granule.institution,
-                    db_granule.db_campaign,
+                    db_granule.granule_name
                 )
         else:
             self.display_must_download_dialog(transect_filepath, db_granule)
