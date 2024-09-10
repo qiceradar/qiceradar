@@ -353,7 +353,7 @@ class QIceRadarPlugin(QtCore.QObject):
             "<br><br>"
             "If these are now available, please let us know so we can update the database!"
             "<br><br>"
-            'Submit an issue: <a href="https://github.com/qiceradar/qiceradar_plugin/issues/new">https://github.com/qiceradar/qiceradar_plugin/issues/new</a>'
+            'Submit an issue: <a href="https://github.com/qiceradar/qiceradar/issues/new">https://github.com/qiceradar/qiceradar/issues/new</a>'
             "<br>"
             'Or send us email: <a href="mailto:qiceradar@gmail.com">qiceradar@gmail.com</a>'
             "<br><br>"
@@ -374,7 +374,7 @@ class QIceRadarPlugin(QtCore.QObject):
             "If this campaign is particularly important to your work, let us know! "
             "This feedback will help prioritize future development efforts. "
             "<br><br>"
-            'Submit an issue: <a href="https://github.com/qiceradar/radar_viewer/issues/new">https://github.com/qiceradar/radar_viewer/issues/new</a>'
+            'Submit an issue: <a href="https://github.com/qiceradar/qiceradar/issues/new">https://github.com/qiceradar/qiceradar/issues/new</a>'
             "<br>"
         )
         message_box = QtWidgets.QMessageBox()
@@ -395,7 +395,7 @@ class QIceRadarPlugin(QtCore.QObject):
             "If this campaign is particularly important to your work, let us know! "
             "This feedback will help prioritize future development efforts. "
             "<br><br>"
-            'Submit an issue: <a href="https://github.com/qiceradar/radar_viewer/issues/new">https://github.com/qiceradar/radar_viewer/issues/new</a>'
+            'Submit an issue: <a href="https://github.com/qiceradar/qiceradar/issues/new">https://github.com/qiceradar/qiceradar/issues/new</a>'
             "<br>"
             'Or send us an email: <a href="mailto:qiceradar@gmail.com">qiceradar@gmail.com</a>'
         )
