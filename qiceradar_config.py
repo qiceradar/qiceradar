@@ -31,34 +31,35 @@
 import pathlib
 from typing import Dict, NamedTuple, Optional
 
+import boto3
 import requests
 
 
 class UserConfig(NamedTuple):
     rootdir: Optional[pathlib.Path] = None
     nsidc_token: Optional[str] = None
-    aad_access_key: Optional[str] = None
-    aad_secret_key: Optional[str] = None
+    aad_oia_access_key: Optional[str] = None
+    aad_oia_secret_key: Optional[str] = None
 
 
 def parse_config(config_dict: Dict[str, str]) -> UserConfig:
     rootdir = None
     nsidc_token = None
-    aad_access_key = None
-    aad_secret_key = None
+    aad_oia_access_key = None
+    aad_oia_secret_key = None
     if "rootdir" in config_dict:
         pp = pathlib.Path(config_dict["rootdir"])
         if pp.is_dir():
             rootdir = pp
     if "nsidc_token" in config_dict:
         nsidc_token = config_dict["nsidc_token"]
-    if "aad_access_key" in config_dict:
-        aad_access_key = config_dict["aad_access_key"]
-    if "aad_secret_key" in config_dict:
-        aad_secret_key = config_dict["aad_secret_key"]
+    if "aad_oia_access_key" in config_dict:
+        aad_oia_access_key = config_dict["aad_oia_access_key"]
+    if "aad_oia_secret_key" in config_dict:
+        aad_oia_secret_key = config_dict["aad_oia_secret_key"]
 
     config = UserConfig(
-        rootdir, nsidc_token, aad_access_key, aad_secret_key
+        rootdir, nsidc_token, aad_oia_access_key, aad_oia_secret_key
     )
     return config
 
@@ -75,4 +76,18 @@ def nsidc_token_is_valid(config: UserConfig) -> bool:
         # We expect this to fail if there's no valid internet connection.
         return False
     return req.status_code == 200
+
+def aad_oia_token_is_valid(config: UserConfig) -> bool:
+    print("checking aad_oia_token_is_valid")
+    s3 = boto3.client('s3',
+                      aws_access_key_id=config.aad_oia_access_key,
+                      aws_secret_access_key=config.aad_oia_secret_key,
+                      endpoint_url="https://transfer.data.aad.gov.au")
+
+    try:
+        result = s3.list_objects(Bucket="aadc-datasets", Prefix="AAS_4346_ICECAP_OIA_RADARGRAMS/")
+        return len(result) > 0
+    except Exception:
+        # We expect this to fail if there's no valid internet connection.
+        return False
 

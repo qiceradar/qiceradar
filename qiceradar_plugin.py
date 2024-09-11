@@ -64,9 +64,10 @@ from qgis.core import (
 from qgis.gui import QgisInterface, QgsMapTool, QgsMapToolPan, QgsMessageBar
 
 from .datautils import db_utils
-from .download_widget import DownloadConfirmationDialog, DownloadWindow
+from .download_widget import DownloadConfirmationDialog, DownloadMethod, DownloadWindow
 from .qiceradar_config import (
     UserConfig,
+    aad_oia_token_is_valid,
     nsidc_token_is_valid,
     parse_config,
     rootdir_is_valid,
@@ -94,8 +95,13 @@ class QIceRadarPlugin(QtCore.QObject):
         self.message_bar = self.iface.messageBar()
 
         # TODO: Probably better to get this from the radar_viewer / radar_downloader
-        self.supported_data_formats = ["awi_netcdf", "bas_netcdf", "utig_netcdf", "cresis_mat"]
-        self.supported_download_methods = ["nsidc", "wget"]
+        self.supported_data_formats = [
+            "awi_netcdf",
+            "bas_netcdf",
+            "utig_netcdf",
+            "cresis_mat",
+        ]
+        self.supported_download_methods = ["nsidc", "wget", "aad_oia"]
 
         self.download_window: Optional[DownloadWindow] = None
         # The spatial index needs to be created for each new project
@@ -206,9 +212,7 @@ class QIceRadarPlugin(QtCore.QObject):
         if self.prev_map_tool is None:
             self.iface.actionPan()
         else:
-            self.iface.mapCanvas().setMapTool(
-                self.prev_map_tool
-            )
+            self.iface.mapCanvas().setMapTool(self.prev_map_tool)
 
         self.iface.removeToolBarIcon(self.viewer_action)
         self.iface.removeToolBarIcon(self.downloader_action)
@@ -462,9 +466,7 @@ class QIceRadarPlugin(QtCore.QObject):
                     db_campaign,
                 )
             else:
-                self.display_unsupported_data_format_dialog(
-                    db_granule.granule_name
-                )
+                self.display_unsupported_data_format_dialog(db_granule.granule_name)
         else:
             self.display_must_download_dialog(transect_filepath, db_granule)
 
@@ -606,11 +608,8 @@ class QIceRadarPlugin(QtCore.QObject):
             #   download step, maybe pop up the config dialog here?
             QgsMessageLog.logMessage(f"Exception encountered in mkdir: {ex}")
 
-        # I really don't like creating headers here, because it exposes
-        # the DownloadWorker's implementation details of using requests.
-        # Consider refactoring if we wind up with more methods that
-        # don't just need additional headers passed to requests.get
-        headers = {}
+        # Make sure that required configuration info is valid
+        config_valid = True
         if db_granule.download_method == "nsidc":
             if not nsidc_token_is_valid(self.config):
                 # TODO: I'm experimenting with using the MessageBar
@@ -618,18 +617,22 @@ class QIceRadarPlugin(QtCore.QObject):
                 #  This mix is probably confusing.
                 # TODO: May also want to mention "and an internet connection"
                 #   since this warning message will also pop up if we can't connect
-                msg = "A valid token is required to download data from NSIDC."
+                msg = "A valid token is required to download data from NSIDC; check your configuration."
+                config_valid = False
+        elif db_granule.download_method == "aad_oia":
+            if not aad_oia_token_is_valid(self.config):
+                msg = "Invalid credentials for AADC; check your configuration."
+                config_valid = False
 
-                # QgsMessageBar.pushMessage(msg, level=Qgis.Warning)
-                widget = self.message_bar.createMessage("Invalid Config", msg)
-                button = QtWidgets.QPushButton(widget)
-                button.setText("Update Config")
-                button.pressed.connect(self.handle_configure_signal)
-                widget.layout().addWidget(button)
-                self.message_bar.pushWidget(widget, Qgis.Warning)
-                return
-            else:
-                headers = {"Authorization": f"Bearer {self.config.nsidc_token}"}
+        if not config_valid:
+            # QgsMessageBar.pushMessage(msg, level=Qgis.Warning)
+            widget = self.message_bar.createMessage("Invalid Config", msg)
+            button = QtWidgets.QPushButton(widget)
+            button.setText("Update Config")
+            button.pressed.connect(self.handle_configure_signal)
+            widget.layout().addWidget(button)
+            self.message_bar.pushWidget(widget, Qgis.Warning)
+            return
 
         dcd = DownloadConfirmationDialog(
             dest_filepath,
@@ -642,11 +645,41 @@ class QIceRadarPlugin(QtCore.QObject):
         )
         dcd.configure.connect(self.handle_configure_signal)
 
-        dcd.download_confirmed.connect(
-            lambda gg=db_granule.granule_name, url=db_granule.url, fp=dest_filepath, fs=db_granule.filesize, hh=headers: self.start_download(
-                gg, url, fp, fs, hh
+        # I really don't like creating headers here, because it exposes
+        # the DownloadWorker's implementation details of using requests.
+        # Consider refactoring if we wind up with more methods that
+        # don't just need additional headers passed to requests.get
+
+        if db_granule.download_method in ["nsidc", "wget"]:
+            if db_granule.download_method == "wget":
+                headers = {}
+            elif db_granule.download_method == "nsidc":
+                headers = {"Authorization": f"Bearer {self.config.nsidc_token}"}
+
+            dcd.download_confirmed.connect(
+                lambda gg=db_granule.granule_name, url=db_granule.url, fp=dest_filepath, fs=db_granule.filesize, hh=headers: self.start_download(
+                    gg, fp, fs, DownloadMethod.WGET, url=url, headers=hh
+                )
             )
-        )
+        elif db_granule.download_method == "aad_oia":
+            dcd.download_confirmed.connect(
+                lambda gg=db_granule.granule_name, dest=dest_filepath, fs=db_granule.filesize, ak=self.config.aad_oia_access_key, sk=self.config.aad_oia_secret_key, s3_file=db_granule.url: self.start_download(
+                    gg,
+                    dest,
+                    fs,
+                    DownloadMethod.S3,
+                    endpoint_url="https://transfer.data.aad.gov.au",
+                    bucket="aadc-datasets",
+                    s3_filepath=s3_file,
+                    access_key=ak,
+                    secret_key=sk,
+                )
+            )
+        else:
+            # Shouldn't ever reach this point!
+            print(f"Download method {db_granule.download_method} NYI. Bug?")
+            return
+
         dcd.run()
 
     def launch_radar_viewer(
@@ -831,15 +864,15 @@ class QIceRadarPlugin(QtCore.QObject):
 
     # TODO: This works, but only for one radargram. If we want to support more, should probably keep a list of dock widgets!
     def selected_point_callback(self, operation: Operation, point: QgsPointXY) -> None:
-        QgsMessageLog.logMessage(f"selected_point_callback (op = {operation}): {point.x()}, {point.y()}")
+        QgsMessageLog.logMessage(
+            f"selected_point_callback (op = {operation}): {point.x()}, {point.y()}"
+        )
 
         # TODO: Really, if it is None, this should be an error condition.
         if self.prev_map_tool is None:
             self.iface.actionPan().trigger()
         else:
-            self.iface.mapCanvas().setMapTool(
-                self.prev_map_tool
-            )
+            self.iface.mapCanvas().setMapTool(self.prev_map_tool)
 
         if self.spatial_index is None:
             errmsg = "Spatial index not created -- bug!!"
@@ -869,7 +902,6 @@ class QIceRadarPlugin(QtCore.QObject):
                 self.update_download_renderer()
                 return
 
-
             # Only offer visible layers to the user
             if not tree_layer.isVisible():
                 continue
@@ -894,11 +926,15 @@ class QIceRadarPlugin(QtCore.QObject):
 
         if len(neighbor_names) == 0:
             msg = "Could not find transect near mouse click."
-            self.message_bar.pushMessage("QIceRadar", msg, level=Qgis.Warning, duration=5)
+            self.message_bar.pushMessage(
+                "QIceRadar", msg, level=Qgis.Warning, duration=5
+            )
         else:
             selection_widget = QIceRadarSelectionWidget(self.iface, neighbor_names)
             selection_widget.selected_radargram.connect(
-                lambda transect, op=operation: self.selected_transect_callback(op, transect)
+                lambda transect, op=operation: self.selected_transect_callback(
+                    op, transect
+                )
             )
             # Chosen transect is set via callback, rather than direct return value
             selection_widget.run()
@@ -982,11 +1018,11 @@ class QIceRadarPlugin(QtCore.QObject):
             # (Can't use path.join within the filter expression)
             # Otherwise, we were getting D:\RadarData/ANTARCTIC, which doesn't work,
             # while a string with only '/' does work on modern Windows.
-            rootdir = str(self.config.rootdir).replace('\\', '/')
+            rootdir = str(self.config.rootdir).replace("\\", "/")
             dl_rule.setFilterExpression(
                 f"""length("relative_path") > 0 and file_exists('{rootdir}/' + "relative_path")"""
             )
-            dl_rule.symbol().setWidth(0.35) # Make them more visible
+            dl_rule.symbol().setWidth(0.35)  # Make them more visible
             dl_rule.symbol().setColor(QtGui.QColor(133, 54, 229, 255))
             root_rule.appendChild(dl_rule)
 
@@ -994,7 +1030,9 @@ class QIceRadarPlugin(QtCore.QObject):
             #  distinction between "a" and "s" in the geopackage database
             supported_rule = root_rule.children()[0].clone()
             supported_rule.setLabel("Supported")
-            supported_rule.setFilterExpression(f"""length("relative_path") > 0 and not file_exists('{self.config.rootdir}/' + "relative_path")""")
+            supported_rule.setFilterExpression(
+                f"""length("relative_path") > 0 and not file_exists('{self.config.rootdir}/' + "relative_path")"""
+            )
             supported_rule.symbol().setColor(QtGui.QColor(31, 120, 180, 255))
             root_rule.appendChild(supported_rule)
 
@@ -1102,7 +1140,12 @@ class QIceRadarPlugin(QtCore.QObject):
         QgsMessageLog.logMessage("ln 1084")
 
     def start_download(
-        self, granule: str, url: str, destination_filepath: pathlib.Path, filesize: int, headers: Dict[str, str]
+        self,
+        granule: str,
+        destination_filepath: pathlib.Path,
+        filesize: int,
+        method: DownloadMethod,
+        **kwargs,
     ) -> None:
         """
         After the confirmation dialog has finished, this section
@@ -1118,4 +1161,6 @@ class QIceRadarPlugin(QtCore.QObject):
             # TODO: Figure out how to handle the user closing the dock widget
             self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.dock_widget)
         # TODO: add downloadTransectWidget to the download window!
-        self.download_window.download(granule, url, destination_filepath, filesize, headers)
+        self.download_window.download(
+            granule, destination_filepath, filesize, method, **kwargs
+        )

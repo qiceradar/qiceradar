@@ -104,29 +104,29 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
         self.grid.addWidget(self.nsidc_question_button, nsidc_row, 1)
         self.grid.addWidget(self.nsidc_token_lineedit, nsidc_row, 2, 1, 3)
 
-        self.aad_label = QtWidgets.QLabel("AAD credentials")
+        self.aad_label = QtWidgets.QLabel("AAD OIA credentials")
         self.aad_question_button = QtWidgets.QPushButton("?")
         self.aad_question_button.clicked.connect(self.aad_question_button_clicked)
         self.aad_access_key_label = QtWidgets.QLabel("Access Key")
         self.aad_access_key_lineedit = QtWidgets.QLineEdit()
-        if user_config.aad_access_key is not None:
-            self.aad_access_key_lineedit.setText(user_config.aad_access_key)
+        if user_config.aad_oia_access_key is not None:
+            self.aad_access_key_lineedit.setText(user_config.aad_oia_access_key)
         self.aad_access_key_lineedit.editingFinished.connect(
             self.aad_access_key_lineedit_editingfinished
         )
         self.aad_secret_key_label = QtWidgets.QLabel("Secret Key")
         self.aad_secret_key_lineedit = QtWidgets.QLineEdit()
-        if user_config.aad_secret_key is not None:
-            self.aad_secret_key_lineedit.setText(user_config.aad_secret_key)
+        if user_config.aad_oia_secret_key is not None:
+            self.aad_secret_key_lineedit.setText(user_config.aad_oia_secret_key)
         self.aad_secret_key_lineedit.editingFinished.connect(
             self.aad_secret_key_lineedit_editingfinished
         )
-        # self.grid.addWidget(self.aad_label, aad_row, 0)
-        # self.grid.addWidget(self.aad_question_button, aad_row, 1)
-        # self.grid.addWidget(self.aad_access_key_label, aad_row, 2)
-        # self.grid.addWidget(self.aad_access_key_lineedit, aad_row, 3)
-        # self.grid.addWidget(self.aad_secret_key_label, aad_row, 4)
-        # self.grid.addWidget(self.aad_secret_key_lineedit, aad_row, 5)
+        self.grid.addWidget(self.aad_label, aad_row, 0)
+        self.grid.addWidget(self.aad_question_button, aad_row, 1)
+        self.grid.addWidget(self.aad_access_key_label, aad_row, 2)
+        self.grid.addWidget(self.aad_access_key_lineedit, aad_row, 3)
+        self.grid.addWidget(self.aad_secret_key_label, aad_row, 4)
+        self.grid.addWidget(self.aad_secret_key_lineedit, aad_row, 5)
 
         # The Cancel button closes without saving.
         self.cancel_button = QtWidgets.QPushButton("Cancel")
@@ -192,6 +192,8 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
             "If you don't already have an account or don't want to configure this now, "
             "you will be prompted again when you attempt to download data hosted there."
             "<br><br>"
+            "(These credentials are only valid for 2 months, after which you'll"
+            "need to regenerate a token.)"
         )
         nsidc_message_box = QtWidgets.QMessageBox()
         # NB: won't display on OSX
@@ -214,8 +216,11 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
             "If you don't already have an account or don't want to configure this now, "
             "you will be prompted again when you attempt to download data hosted there."
             "<br><br>"
-            "To obtain your credentials, follow the instructions at: "
+            "To obtain credentials for the OIA dataset, follow the instructions at: "
             '<a href="https://data.aad.gov.au/dataset/5256/download">https://data.aad.gov.au/dataset/5256/download</a>'
+            "<br><br>"
+            "(These credentials are only valid for 14 days, after which you'll"
+            "need to request access again.)"
         )
         aad_message_box = QtWidgets.QMessageBox()
         # NB: won't display on OSX

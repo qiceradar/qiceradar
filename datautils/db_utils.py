@@ -41,7 +41,7 @@ class DatabaseGranule:
     This maps a row from the granules table into a class that can be passed around.
 
     This does largely duplicate a class in download_utig_tdr, but,
-    at least for now, I'm intentionall not sharing dependencies between
+    at least for now, I'm intentionally not sharing dependencies between
     the radar_wrangler and plugin repositories.
     """
 

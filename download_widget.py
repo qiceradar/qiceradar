@@ -28,6 +28,7 @@
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import copy
+import enum
 import os
 import pathlib
 import shutil
@@ -41,8 +42,6 @@ import requests  # for downloading files
 from PyQt5.QtCore import Qt
 from qgis.core import QgsMessageLog
 from qgis.gui import QgisInterface
-
-from .qiceradar_config import UserConfig
 
 
 def format_bytes(filesize: int) -> str:
@@ -58,6 +57,11 @@ def format_bytes(filesize: int) -> str:
     else:
         filesize_str = f"{filesize} Bytes"
     return filesize_str
+
+
+class DownloadMethod(enum.Enum):
+    WGET = 0
+    S3 = 1
 
 
 class DownloadConfirmationDialog(QtWidgets.QDialog):
@@ -237,7 +241,12 @@ class DownloadWindow(QtWidgets.QMainWindow):
         self.setCentralWidget(central_widget)
 
     def download(
-        self, granule: str, url: str, destination_filepath: pathlib.Path, filesize: int, headers: Dict[str, str]
+        self,
+        granule: str,
+        destination_filepath: pathlib.Path,
+        filesize: int,
+        method: DownloadMethod,
+        **kwargs,
     ) -> None:
         # TODO: This means that once a download has been canceled, you won't
         #   be able to retry it until the plugin is reloaded.
@@ -257,7 +266,9 @@ class DownloadWindow(QtWidgets.QMainWindow):
                 return
 
         print(f"Downloading {granule}")
-        widget = DownloadWidget(granule, url, filesize, destination_filepath, headers)
+        widget = DownloadWidget(
+            granule, filesize, destination_filepath, method, **kwargs
+        )
         self.download_widgets[granule] = widget
         self.download_widgets[granule].download_finished.connect(
             self.download_finished.emit
@@ -276,24 +287,44 @@ class DownloadWidget(QtWidgets.QWidget):
     request_cancel = QtCore.pyqtSignal()
 
     def __init__(
-        self, granule: str, url: str, filesize: int, destination_filepath: pathlib.Path, headers: Dict[str, str]
+        self,
+        granule: str,
+        filesize: int,
+        destination_filepath: pathlib.Path,
+        method: DownloadMethod,
+        **kwargs,
     ) -> None:
         super().__init__()
         self.granule = granule
-        self.url = url
         self.filesize = filesize
-        self.headers = headers
         self.destination_filepath = destination_filepath
         self.canceled = False
         self.failed = False
         self.finished = False
+        self.method = method
+        if method == DownloadMethod.WGET:
+            self.url = kwargs["url"]
+            self.headers = kwargs["headers"]
 
-        self.help_msg = (
-            "You can manually download this radargram (e.g. using Chrome) from: \n\n"
-            f"{self.url}\n\n"
-            "and save it to: \n\n"
-            f"{self.destination_filepath}"
-        )
+            self.help_msg = (
+                "You can manually download this radargram (e.g. using Chrome) from: \n\n"
+                f"{self.url}\n\n"
+                "and save it to: \n\n"
+                f"{self.destination_filepath}"
+            )
+        elif method == DownloadMethod.S3:
+            self.access_key = kwargs["access_key"]
+            self.secret_key = kwargs["secret_key"]
+            self.endpoint_url = kwargs["endpoint_url"]
+            self.bucket = kwargs["bucket"]
+            self.s3_filepath = kwargs["s3_filepath"]
+
+            self.help_msg = (
+                f"Downloading file {self.s3_filepath} \n\n"
+                f"from S3 bucket: {self.bucket} \n\n"
+                f"at endpoint: {self.endpoint_url} \n\n"
+                f"and saving to: {self.destination_filepath}"
+            )
 
         self.setup_ui()
 
@@ -421,10 +452,13 @@ class DownloadWidget(QtWidgets.QWidget):
         pp.setColor(self.backgroundRole(), QtGui.QColor(0, 0, 0, 25))
         self.setPalette(pp)
         # TODO: Update help button text with the information? Will probably need a scroll bar...
-        self.help_msg = "".join([self.help_msg,
-                                 "\n\n\n ------------- DOWNLOAD FAILED -----------\n\n\n",
-                                 err_msg])
-
+        self.help_msg = "".join(
+            [
+                self.help_msg,
+                "\n\n\n ------------- DOWNLOAD FAILED -----------\n\n\n",
+                err_msg,
+            ]
+        )
 
     def handle_canceled(self) -> None:
         self.canceled = True
@@ -447,7 +481,21 @@ class DownloadWidget(QtWidgets.QWidget):
 
     def run(self) -> None:
         self.download_worker_thread = QtCore.QThread()
-        self.worker = DownloadWorker(self.url, self.headers, self.destination_filepath)
+        if self.method == DownloadMethod.WGET:
+            self.worker = DownloadWorkerWget(
+                self.destination_filepath, self.url, self.headers
+            )
+        elif self.method == DownloadMethod.S3:
+            self.worker = DownloadWorkerS3(
+                self.destination_filepath,
+                self.endpoint_url,
+                self.bucket,
+                self.s3_filepath,
+                self.access_key,
+                self.secret_key,
+            )
+        else:
+            raise (Exception(f"Download method {self.method} not supported"))
         self.worker.moveToThread(self.download_worker_thread)
 
         self.download_worker_thread.started.connect(self.worker.run)
@@ -511,24 +559,132 @@ class DownloadWorker(QtCore.QObject):
     # Qt's signals use an int32 if I specify "int" here, so use "object"
     progress = QtCore.pyqtSignal(object)
 
-    def __init__(self, url: str, headers: Dict[str, str], destination_filepath: pathlib.Path) -> None:
+    def __init__(self, destination_filepath: pathlib.Path) -> None:
         super().__init__()
-        self.url = url
-        self.headers = headers
         self.destination_filepath = destination_filepath
         self.pause_requested = False
         self.resume_requested = False
         self.cancel_requested = False
         self.downloading = False
         self.bytes_received = 0
-        self.if_range: Optional[str] = None
-        self.timeout = 10  # TODO: Up this for production
         self.temp_file = tempfile.NamedTemporaryFile(delete=False)
         print(f"DownloadWorker saving to {self.temp_file.name}")
 
     def resume_download(self) -> None:
         self.resumed.emit()
         self.run()
+
+    def pause_download(self) -> None:
+        print("DownloadWorker: pause_download")
+        self.pause_requested = True
+
+    def cancel_download(self) -> None:
+        print("DownloadWorker: cancel_download")
+        self.cancel_requested = True
+
+    def move_or_copy_downloaded_file(
+        self, temp_filename: str, dest_filename: str
+    ) -> None:
+        """
+        move or copy fully-downloaded file from the temporary file to the destination.
+        This has been extracted into a function because `move` sometimes fails,
+        in which case we prefer to try copying.
+        """
+        try:
+            shutil.move(temp_filename, dest_filename)
+        except Exception as move_ex:
+            QgsMessageLog.logMessage("Unable to move file; trying to copy.")
+            # On one beta tester's Windows machine, we got the error:
+            # PermissionError: [WinError 32] The process cannot access the file because it is being used by another process
+            # So, in this case, just try copying
+            try:
+                # On another beta tester's machine, this failed partway through copying a 3G file.
+                # In that case, I want to remove the half-copied file, and give them a warning.
+                shutil.copy(temp_filename, dest_filename)
+            except Exception as copy_ex:
+                if os.path.isfile(dest_filename):
+                    os.remove(dest_filename)
+                error_msg = str(move_ex) + "\n\n\n" + str(copy_ex)
+                self.failed.emit(error_msg)
+
+
+class DownloadWorkerS3(DownloadWorker):
+    def __init__(
+        self,
+        destination_filepath: pathlib.Path,
+        endpoint_url: str,
+        bucket: str,
+        s3_filepath: str,
+        access_key: str,
+        secret_key: str,
+    ) -> None:
+        super().__init__(destination_filepath)
+        self.endpoint_url = endpoint_url
+        self.bucket = bucket
+        self.s3_filepath = s3_filepath
+        self.access_key = access_key
+        self.secret_key = secret_key
+
+    def run(self) -> None:
+        """ """
+        if self.downloading:
+            print("Error! called run() when worker is already running.")
+            return
+        self.pause_requested = False
+        print("DownloadWorker.run()")
+        # TODO: add error handling for this that prompts user to install
+        # boto3 before retrying download.
+        import boto3
+
+        s3_client = boto3.client(
+            "s3",
+            aws_access_key_id=self.access_key,
+            aws_secret_access_key=self.secret_key,
+            endpoint_url=self.endpoint_url,
+        )
+
+        self.downloading = True
+        try:
+            s3_client.download_file(self.bucket, self.s3_filepath, self.temp_file.name)
+        except Exception as ex:
+            print("DownloadWorker.download")
+            print(ex)
+            self.failed.emit(str(ex))
+
+        # TODO: need to figure out how to interrupt the download_file!
+        # https://stackoverflow.com/questions/58469915/how-can-i-cancel-an-active-boto3-s3-file-download
+
+        # TODO: need to figure out progress updates!
+        # self.bytes_received += len(chunk)
+        # fp.write(chunk)
+        # self.progress.emit(self.bytes_received)
+
+        # May have broken out of above loop if cancel or pause was requested
+        if self.cancel_requested:
+            self.canceled.emit()
+        elif self.pause_requested:
+            self.paused.emit()
+        else:
+            print(
+                f"DownloadWorkerS3 finished! Moving data to {self.destination_filepath}"
+            )
+            self.move_or_copy_downloaded_file(
+                self.temp_file.name, self.destination_filepath
+            )
+            self.finished.emit()
+        self.downloading = False
+
+
+class DownloadWorkerWget(DownloadWorker):
+    def __init__(
+        self, destination_filepath: pathlib.Path, url: str, headers: Dict[str, str]
+    ) -> None:
+        super().__init__(destination_filepath)
+        self.url = url
+        self.headers = headers
+
+        self.if_range: Optional[str] = None
+        self.timeout = 10  # TODO: Up this for production
 
     def run(self) -> None:
         """
@@ -634,6 +790,7 @@ class DownloadWorker(QtCore.QObject):
                 print(ex)
                 self.failed.emit(str(ex))
 
+        # May have broken out of above loop if cancel or pause was requested
         if self.cancel_requested:
             self.canceled.emit()
         elif self.pause_requested:
@@ -642,30 +799,9 @@ class DownloadWorker(QtCore.QObject):
             print(
                 f"DownloadWorker finished! Moving data to {self.destination_filepath}"
             )
-            try:
-                shutil.move(self.temp_file.name, self.destination_filepath)
-            except Exception as move_ex:
-                QgsMessageLog.logMessage("Unable to move file; trying to copy.")
-                # On one beta tester's Windows machine, we got the error:
-                # PermissionError: [WinError 32] The process cannot access the file because it is being used by another process
-                # So, in this case, just try copying
-                try:
-                    # On another beta tester's machine, this failed partway through copying a 3G file.
-                    # In that case, I want to remove the half-copied file, and give them a warning.
-                    shutil.copy(self.temp_file.name, self.destination_filepath)
-                except Exception as copy_ex:
-                    if os.path.isfile(self.destination_filepath):
-                        os.remove(self.destination_filepath)
-                    error_msg = str(move_ex) + "\n\n\n" + str(copy_ex)
-                    self.failed.emit(error_msg)
+            self.move_or_copy_downloaded_file(
+                self.temp_file.name, self.destination_filepath
+            )
 
             self.finished.emit()
         self.downloading = False
-
-    def pause_download(self) -> None:
-        print("DownloadWorker: pause_download")
-        self.pause_requested = True
-
-    def cancel_download(self) -> None:
-        print("DownloadWorker: cancel_download")
-        self.cancel_requested = True
