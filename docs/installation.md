@@ -37,7 +37,11 @@ If the install worked, you should now see two icons:
 ![](figures/qgis_icons.png)
 In this case, continue on to the [tutorial](tutorial.md) for how to use the plugin.
 
-If instead you got an error, see below for installing required dependencies, then try again.
+**Troubleshooting**:
+
+* Some web browsers may be set to auto-extract the zip file. In this case, disable that setting and try downloading it again
+  * Safari: go to Safari -> "Settings..."; select the "General" tab, and at the bottom, uncheck "Open safe files after downloading"
+* If you got an error about "ModuleNotFoundError: No module named ___", see [section below](#python-dependencies) about installing required python dependencies, then try again.
 
 ## Update Plugin
 
