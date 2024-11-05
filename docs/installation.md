@@ -69,7 +69,7 @@ To update to a new index file:
 
 
 ### Python dependencies
-The QIceRadar radar_viewer plugin has dependencies on several python packages that may or may not have been packaged with your install of QGIS. These packages are: `numpy`, `matplotlib`, `h5py`, `netCDF4`.
+The QIceRadar radar_viewer plugin has dependencies on several python packages that may or may not have been packaged with your install of QGIS. These packages are: `numpy`, `matplotlib`, `h5py`, `netCDF4`, `boto3`.
 
 If you got an error like `ModuleNotFoundError: No module named 'netCDF4'`, you'll need to install that module.
 
