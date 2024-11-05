@@ -634,7 +634,17 @@ class DownloadWorkerS3(DownloadWorker):
         print("DownloadWorker.run()")
         # TODO: add error handling for this that prompts user to install
         # boto3 before retrying download.
-        import boto3
+        try:
+            import boto3
+        except ModuleNotFoundError:
+            message_box = QtWidgets.QMessageBox()
+            message_box.setText(
+                (
+                    "boto3 python module not found; cannot download OIA. ",
+                    "See 'Python Dependencies' section of installation documentation.",
+                )
+            )
+            return
 
         s3_client = boto3.client(
             "s3",
