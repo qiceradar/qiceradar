@@ -418,16 +418,6 @@ class RadarWindow(QtWidgets.QMainWindow):
         else:
             event.ignore()
 
-    def maybe_update_trace(self, trace_num: int) -> bool:
-        """
-        Called if we want to check for frozen before moving the trace.
-        """
-        if self.plot_params.trace_visible and not self.plot_params.trace_frozen:
-            self.update_trace(trace_num)
-            return True
-        else:
-            return False
-
     def initialize_gui_from_params_data(
         self, plot_params: PlotParams, plot_config: PlotConfig
     ) -> None:
@@ -452,6 +442,28 @@ class RadarWindow(QtWidgets.QMainWindow):
 
         self.plot_objects.clim_slider.set_range((plot_params.cmin, plot_params.cmax))
         self.plot_objects.clim_slider.set_value(plot_params.clim)
+
+    def update_cursor(self, trace_num: int, sample_num: int) -> None:
+        """
+        Called whenever the mouse moves in the radar viewer's canvas;
+        updates info below radargram regarding trace/sample/amplitude/twtt
+        corresponding to mouse's current location.
+        """
+        db = self.radar_data.data[trace_num, sample_num]
+        twtt = self.radar_data.fast_time_us[sample_num]
+        self.plot_objects.cursor_label.setText(
+            self.plot_objects.cursor_format.format(trace_num, sample_num, db, twtt)
+        )
+
+    def maybe_update_trace(self, trace_num: int) -> bool:
+        """
+        Called if we want to check for frozen before moving the trace.
+        """
+        if self.plot_params.trace_visible and not self.plot_params.trace_frozen:
+            self.update_trace(trace_num)
+            return True
+        else:
+            return False
 
     def update_trace(self, trace_num: int) -> None:
         """
@@ -998,7 +1010,6 @@ class RadarWindow(QtWidgets.QMainWindow):
             self.plot_objects.crosshair_y.set_color(major)
             self.full_redraw()
 
-
     def _on_product_group_pressed(self) -> None:
         """
         TODO
@@ -1079,7 +1090,12 @@ class RadarWindow(QtWidgets.QMainWindow):
 
     def _on_crosshair_checkbox_changed(self, val: int) -> None:
         """
-        TODO
+        Registers / unregisters the crosshair callback, which:
+        * is linked with a moving dot on the map view, allowing radar traces
+          to be linked with their lat/lon coordinates
+        * draws vertical + horizontal lines through the radargram that
+          intersect at the mouse's location and make it easier to see
+          along-track distance + TWTT.
         """
         self.plot_params.crosshair_visible = (
             self.plot_objects.crosshair_checkbox.isChecked()
@@ -1089,11 +1105,15 @@ class RadarWindow(QtWidgets.QMainWindow):
             self.plot_params.crosshair_frozen = False  # want it responsive by default.
         self.cursor_blit()
 
-    def _on_button_press_event(self, event: matplotlib.backend_bases.MouseEvent) -> None:
+    def _on_button_press_event(
+        self, event: matplotlib.backend_bases.MouseEvent
+    ) -> None:
         # print("_on_button_press_event")
         self.press_event = event
 
-    def _on_button_release_event(self, event: matplotlib.backend_bases.MouseEvent) -> None:
+    def _on_button_release_event(
+        self, event: matplotlib.backend_bases.MouseEvent
+    ) -> None:
         # print("_on_button_release_event")
         if event.inaxes is not self.plot_objects.pick_ax:
             # print("... but not in our axes! Skipping ...")
@@ -1119,7 +1139,7 @@ class RadarWindow(QtWidgets.QMainWindow):
         self, event: matplotlib.backend_bases.MouseEvent
     ) -> None:
         """
-        When mouse moved on radargram, update trace and crosshair.
+        When mouse moved on radargram, update cursor, trace, and crosshair.
         """
         # if event.inaxes is not self.plot_objects.pick_ax:
         if event.inaxes is not self.plot_objects.pick_ax:
@@ -1140,6 +1160,8 @@ class RadarWindow(QtWidgets.QMainWindow):
         crosshair_changed = self.maybe_update_crosshair(trace, sample)
         if trace_changed or crosshair_changed:
             self.cursor_blit()
+
+        self.update_cursor(trace, sample)
 
     def _on_clim_slider_changed(self, clim: Tuple[int, int]) -> None:
         """
@@ -1386,20 +1408,38 @@ class RadarWindow(QtWidgets.QMainWindow):
         plot_objects.scalebar_label = QtWidgets.QLabel("Scalebars:")
 
         plot_objects.vert_scale_controls = ScalebarControls(
-            self.plot_params.vert_scale_length_m, "Vertical", "m",
-            self.plot_params.vert_scale_x0, self.plot_params.vert_scale_y0
+            self.plot_params.vert_scale_length_m,
+            "Vertical",
+            "m",
+            self.plot_params.vert_scale_x0,
+            self.plot_params.vert_scale_y0,
         )
-        plot_objects.vert_scale_controls.checked.connect(self._on_vert_scale_checkbox_changed)
-        plot_objects.vert_scale_controls.new_length.connect(self._on_vert_scale_new_length)
-        plot_objects.vert_scale_controls.new_origin.connect(self._on_vert_scale_new_origin)
+        plot_objects.vert_scale_controls.checked.connect(
+            self._on_vert_scale_checkbox_changed
+        )
+        plot_objects.vert_scale_controls.new_length.connect(
+            self._on_vert_scale_new_length
+        )
+        plot_objects.vert_scale_controls.new_origin.connect(
+            self._on_vert_scale_new_origin
+        )
 
         plot_objects.horiz_scale_controls = ScalebarControls(
-            self.plot_params.horiz_scale_length_km, "Horizontal", "km",
-            self.plot_params.horiz_scale_x0, self.plot_params.horiz_scale_y0
+            self.plot_params.horiz_scale_length_km,
+            "Horizontal",
+            "km",
+            self.plot_params.horiz_scale_x0,
+            self.plot_params.horiz_scale_y0,
         )
-        plot_objects.horiz_scale_controls.checked.connect(self._on_horiz_scale_checkbox_changed)
-        plot_objects.horiz_scale_controls.new_length.connect(self._on_horiz_scale_new_length)
-        plot_objects.horiz_scale_controls.new_origin.connect(self._on_horiz_scale_new_origin)
+        plot_objects.horiz_scale_controls.checked.connect(
+            self._on_horiz_scale_checkbox_changed
+        )
+        plot_objects.horiz_scale_controls.new_length.connect(
+            self._on_horiz_scale_new_length
+        )
+        plot_objects.horiz_scale_controls.new_origin.connect(
+            self._on_horiz_scale_new_origin
+        )
 
         # TODO: These wil have to be connected to pick_ax, which will
         #  be on top of the various pcor axes.
@@ -1442,7 +1482,6 @@ class RadarWindow(QtWidgets.QMainWindow):
             # x or y coordinate, which we do want for panning.
             minspanx=-1,
             minspany=-1,
-
         )
         plot_objects.right_click_rs["pan"] = mpw.RectangleSelector(
             plot_objects.pick_ax,
@@ -1472,8 +1511,12 @@ class RadarWindow(QtWidgets.QMainWindow):
         # correct ordering of click/release events to the callback,
         # cache the coordinates, then just use the selector for
         # its drawing/blitting/callback.
-        plot_objects.canvas.mpl_connect('button_press_event', self._on_button_press_event)
-        plot_objects.canvas.mpl_connect('button_release_event', self._on_button_release_event)
+        plot_objects.canvas.mpl_connect(
+            "button_press_event", self._on_button_press_event
+        )
+        plot_objects.canvas.mpl_connect(
+            "button_release_event", self._on_button_release_event
+        )
 
         # Radio buttons for controlling what mouse clicks mean!
         # (This used to be done w/ their toolbar, but I wanted it to be
@@ -1492,6 +1535,23 @@ class RadarWindow(QtWidgets.QMainWindow):
         plot_objects.mouse_mode_group.buttonPressed.connect(
             self._on_mouse_mode_group_pressed
         )
+
+        # Create text display for cursor
+        # TODO: I'm a little nervous including amplitude information,
+        # since the different providers seem to use it inconsistently.
+        plot_objects.cursor_format = (
+            "tr: {:5d}, sa: {:4d}, a: {:0.2f}, twtt: {:5.2f}μs  "
+        )
+        plot_objects.cursor_label = QtWidgets.QLabel(
+            # Can't format {:0.2f} with None
+            plot_objects.cursor_format.format(0, 0, 0, 0)
+        )
+        # This needs to be a fixed-width font so its size doesn't change
+        # when the cursor moves. (Changing to a scrollbox for controls rather than a fixed
+        # box helped this, but otherwise, updating the text could require redrawing
+        # the entire radargram, which is slow.)
+        font = QtGui.QFont("Courier New", 12)  # You can use any fixed-width font here
+        plot_objects.cursor_label.setFont(font)
 
         # Create buttons!
         plot_objects.citation_button = QtWidgets.QPushButton("Citation Info")
@@ -1518,14 +1578,28 @@ class RadarWindow(QtWidgets.QMainWindow):
         # controls_hbox.addWidget(plot_objects.mpl_toolbar)
         plot_objects.controls_hbox.addWidget(plot_objects.citation_button)
         plot_objects.controls_hbox.addStretch(1)
+        plot_objects.controls_hbox.addWidget(plot_objects.cursor_label)
+        plot_objects.controls_hbox.addStretch(1)
         plot_objects.controls_hbox.addLayout(mouse_mode_hbox)
         plot_objects.controls_hbox.addWidget(plot_objects.prev_button)
         plot_objects.controls_hbox.addWidget(plot_objects.full_button)
         plot_objects.controls_hbox.addWidget(plot_objects.next_button)
 
+        plot_objects.lower_controls_widget = QtWidgets.QWidget()
+        plot_objects.lower_controls_widget.setLayout(plot_objects.controls_hbox)
+        plot_objects.lower_controls_scroll_area = QtWidgets.QScrollArea()
+        plot_objects.lower_controls_scroll_area.verticalScrollBar().setEnabled(False)
+        # The call to setWidgetResizable ensures that addStretch() is
+        # respected when the scroll area is larger than necessary for
+        # the included widgets.
+        plot_objects.lower_controls_scroll_area.setWidgetResizable(True)
+        plot_objects.lower_controls_scroll_area.setWidget(
+            plot_objects.lower_controls_widget
+        )
+
         data_vbox = QtWidgets.QVBoxLayout()
         data_vbox.addWidget(plot_objects.canvas)
-        data_vbox.addLayout(plot_objects.controls_hbox)
+        data_vbox.addWidget(plot_objects.lower_controls_scroll_area)
 
         ####
         # All of the control on the right half of the window
@@ -1695,6 +1769,7 @@ class RadarWindow(QtWidgets.QMainWindow):
 
     def format_ylabel(self, yy: float, _pos: float) -> str:
         """
+        Convert samples to microseconds and display as the Y axis label
         """
         nearest_sample = min(max(0, int(np.round(yy))), self.radar_data.num_samples - 1)
         sample_time_us = self.radar_data.fast_time_us[nearest_sample]
@@ -1750,7 +1825,6 @@ class RadarWindow(QtWidgets.QMainWindow):
             self.plot_params.horiz_scale_length_km = length
             self.data_blit()
 
-
     def _on_vert_scale_new_origin(self, x0: float, y0: float) -> None:
         """
         Update vertical scalebar with new x0, y0 and redraw
@@ -1789,7 +1863,6 @@ class RadarWindow(QtWidgets.QMainWindow):
         if needs_blit:
             self.data_blit()
 
-
     def plot_scalebars(self) -> None:
         """
         TODO
@@ -1805,7 +1878,7 @@ class RadarWindow(QtWidgets.QMainWindow):
         all_ranges = 169 * self.radar_data.fast_time_us / 2.0  # in meters
         range0 = all_ranges[ylim[0]]
         range1 = all_ranges[ylim[1]]
-        data_height = np.abs(range1-range0)
+        data_height = np.abs(range1 - range0)
 
         self.plot_objects.vert_scale.set_length(
             self.plot_params.vert_scale_length_m, data_height
@@ -1827,5 +1900,3 @@ class RadarWindow(QtWidgets.QMainWindow):
             self.plot_objects.radar_ax.draw_artist(element)
         for element in self.plot_objects.horiz_scale.elements.values():
             self.plot_objects.radar_ax.draw_artist(element)
-
-
