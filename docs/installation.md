@@ -26,7 +26,7 @@ The QIceRadar plugins depend on the structure of this data:
 ## Install Plugin
 
 Go to https://github.com/qiceradar/qiceradar
-* Click "Code" -> "Download Zip"
+* Click "Code" (green button) -> "Download Zip"
 
 In QGIS:
 * Plugins -> "Manage and Install Plugins..."
