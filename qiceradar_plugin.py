@@ -99,10 +99,12 @@ class QIceRadarPlugin(QtCore.QObject):
         self.supported_download_methods = ["nsidc", "wget"]
 
         self.download_window: Optional[DownloadWindow] = None
+
         # The spatial index needs to be created for each new project
         # TODO: Consider whether to support user switching projects and
         #  thus needing to regenerate the spatial index. (e.g. Arctic / Antarctic switch?)
         self.spatial_index: Optional[QgsSpatialIndex] = None
+
         # The spatial index only returns the IDs of features.
         # So, if we insert features from multiple layers, it's up to us to do the
         # bookkeeping between spatial index ID and layer ID.
@@ -112,12 +114,10 @@ class QIceRadarPlugin(QtCore.QObject):
         # * "feature_id" is the int returned by feature.id(), and can be used
         #    to access the feature via layer.getFeature(feature_id)
         self.spatial_index_lookup: Dict[int, Tuple[str, int]] = {}
+
         # After presenting the transect names to the user to select among,
         # need to map back to a feature in the database that we can query.
         self.transect_name_lookup: Dict[str, Tuple[str, int]] = {}
-
-        # Cache this when starting the selection tool in order to reset state
-        self.prev_map_tool: Optional[QgsMapTool] = None
 
         # Try loading config when plugin initialized (before project has been selected)
         self.config = UserConfig()
