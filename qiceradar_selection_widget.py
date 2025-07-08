@@ -51,11 +51,18 @@ class QIceRadarSelectionTool(QgsMapTool):
 
     def __init__(self, canvas: QgsMapCanvas) -> None:
         super(QIceRadarSelectionTool, self).__init__(canvas)
+        self.canvas = canvas
 
     def canvasReleaseEvent(self, event: QgsMapMouseEvent) -> None:
         pt = event.mapPoint()
         self.selected_point.emit(pt)
-        self.deactivate()
+        # According to the docs, I thought that deactivate() was supposed to
+        # call unsetMapTool(), but the selection tooltip is still active
+        # afterwards. So, go ahead and call it explicitly since we only expect
+        # the user to select one thing in a row.
+        # (unsetMapTool does cause the deactivate signal to be emitted)
+        # self.deactivate()
+        self.canvas.unsetMapTool(self)
 
 
 class QIceRadarSelectionWidget(QtWidgets.QDialog):
