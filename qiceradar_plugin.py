@@ -202,13 +202,11 @@ class QIceRadarPlugin(QtCore.QObject):
         """
         Required method; called when plugin unloaded.
         """
-        # Activate another map tool (can't simply deactivate this one)
-        if self.prev_map_tool is None:
-            self.iface.actionPan()
-        else:
-            self.iface.mapCanvas().setMapTool(
-                self.prev_map_tool
-            )
+        # If we don't deactivate the map tool explicitly, it will remain
+        # active and cause an error if the user tries to click
+        curr_tool = self.iface.mapCanvas().mapTool()
+        if isinstance(curr_tool, QIceRadarSelectionTool):
+            self.iface.mapCanvas().unsetMapTool(curr_tool)
 
         self.iface.removeToolBarIcon(self.viewer_action)
         self.iface.removeToolBarIcon(self.downloader_action)
@@ -500,6 +498,7 @@ class QIceRadarPlugin(QtCore.QObject):
         either QIceRadar widget can be run.
         """
         QgsMessageLog.logMessage(f"selected_transect_callback: {transect_name}")
+        QgsMessageLog.logMessage(f"op = {operation} (download = {QIceRadarPlugin.Operation.DOWNLOAD}, view = {QIceRadarPlugin.Operation.VIEW})")
         QgsMessageLog.logMessage(f"rootdir = {self.config.rootdir}")
 
         layer_id, feature_id = self.transect_name_lookup[transect_name]
@@ -831,15 +830,8 @@ class QIceRadarPlugin(QtCore.QObject):
 
     # TODO: This works, but only for one radargram. If we want to support more, should probably keep a list of dock widgets!
     def selected_point_callback(self, operation: Operation, point: QgsPointXY) -> None:
-        QgsMessageLog.logMessage(f"selected_point_callback (op = {operation}): {point.x()}, {point.y()}")
-
-        # TODO: Really, if it is None, this should be an error condition.
-        if self.prev_map_tool is None:
-            self.iface.actionPan().trigger()
-        else:
-            self.iface.mapCanvas().setMapTool(
-                self.prev_map_tool
-            )
+        QgsMessageLog.logMessage(f"selected_point_callback: {point.x()}, {point.y()}")
+        QgsMessageLog.logMessage(f"op = {operation} (download = {QIceRadarPlugin.Operation.DOWNLOAD}, view = {QIceRadarPlugin.Operation.VIEW})")
 
         if self.spatial_index is None:
             errmsg = "Spatial index not created -- bug!!"
@@ -1022,45 +1014,34 @@ class QIceRadarPlugin(QtCore.QObject):
         if not self.download_renderer_added:
             self.update_download_renderer()
 
-        QgsMessageLog.logMessage("ln 1014")
         download_selection_tool = QIceRadarSelectionTool(self.iface.mapCanvas())
         download_selection_tool.selected_point.connect(
             self.selected_download_point_callback
         )
-        QgsMessageLog.logMessage("ln 1019")
-        try:
-            download_selection_tool.deactivated.connect(
-                lambda ch=False: self.downloader_action.setChecked(ch)
-            )
-        except AttributeError:
-            QgsMessageLog.logMessage("could not uncheck downloader_action")
-        try:
-            download_selection_tool.activated.connect(
-                lambda ch=True: self.downloader_action.setChecked(ch)
-            )
-        except AttributeError:
-            QgsMessageLog.logMessage("could not check downloader_action")
 
-        QgsMessageLog.logMessage("ln 1033")
-        # Don't want to bop back to other qiceradar tool after use;
-        # should go back to e.g. zoom tool
-        curr_tool = self.iface.mapCanvas().mapTool()
-        if not isinstance(curr_tool, QIceRadarSelectionTool):
-            self.prev_map_tool = curr_tool
+        # The toolbar icon isn't automatically unchecked when the
+        # corresponding action is deactivated.
+        download_selection_tool.deactivated.connect(
+            lambda ac=self.downloader_action, ch=False: self.maybe_set_action_checked(ac, ch)
+        )
+        # Repeatedly clicking the toolbar icon will toggle its checked
+        # state without deactivating the tooltip. for consistency with
+        # the built-in QGIS tools, repeated clicking should have no effect
+        # and the tool will remain active.
+        download_selection_tool.activated.connect(
+            lambda ac=self.downloader_action, ch=True: self.maybe_set_action_checked(ac, ch)
+        )
+
         self.iface.mapCanvas().setMapTool(download_selection_tool)
 
-        QgsMessageLog.logMessage("ln 1041")
 
     def run_viewer(self) -> None:
         QgsMessageLog.logMessage("User clicked run_viewer")
-        # The QIceRadar tool is a series of widgets, kicked off by clicking on the icon.
 
         self.create_radar_viewer_group()
 
         if not self.ensure_valid_rootdir():
             return
-
-        QgsMessageLog.logMessage("ln 1045")
 
         # Next, make sure the spatial index has been initialized
         # TODO: detect when project changes and re-initialize!
@@ -1070,36 +1051,35 @@ class QIceRadarPlugin(QtCore.QObject):
         if not self.download_renderer_added:
             self.update_download_renderer()
 
-        QgsMessageLog.logMessage("ln 1055")
         # Create a MapTool to select point on map. After this point, it is callback driven.
         viewer_selection_tool = QIceRadarSelectionTool(self.iface.mapCanvas())
         viewer_selection_tool.selected_point.connect(
             self.selected_viewer_point_callback
         )
-        QgsMessageLog.logMessage("ln 1061")
 
-        curr_tool = self.iface.mapCanvas().mapTool()
-        if not isinstance(curr_tool, QIceRadarSelectionTool):
-            self.prev_map_tool = curr_tool
-        QgsMessageLog.logMessage("ln 1066")
         self.iface.mapCanvas().setMapTool(viewer_selection_tool)
 
-        # TODO: why does mypy not like this?
-        # TODO: Isabel got errors here, and the plugin didn't work.
-        # however, it started working again, even without fixing those issues.
+        viewer_selection_tool.deactivated.connect(
+            lambda ac=self.viewer_action, ch=False: self.maybe_set_action_checked(ac, ch)
+        )
+        viewer_selection_tool.activated.connect(
+            lambda ac=self.viewer_action, ch=True: self.maybe_set_action_checked(ac, ch)
+        )
+
+    def maybe_set_action_checked(self, action: QtWidgets.QAction, checked: bool) -> None:
+        """
+        This is only wrapped in a function so we can catch exceptions
+        when it is called in response to a signal.
+        Some users have gotten this error when first starting the plugin; so
+        far as I can tell, it does not correspond to an actual issue.
+        (possibly due to some initialization order/timing?)
+        """
         try:
-            viewer_selection_tool.deactivated.connect(
-                lambda ch=False: self.viewer_action.setChecked(ch)
-            )
+            action.setChecked(checked)
         except AttributeError:
-            QgsMessageLog.logMessage("could not uncheck viewer_action")
-        try:
-            viewer_selection_tool.activated.connect(
-                lambda ch=True: self.viewer_action.setChecked(ch)
-            )
-        except AttributeError:
-            QgsMessageLog.logMessage("could not check viewer_action")
-        QgsMessageLog.logMessage("ln 1084")
+            QgsMessageLog.logMessage("could not uncheck action")
+
+
 
     def start_download(
         self, granule: str, url: str, destination_filepath: pathlib.Path, filesize: int, headers: Dict[str, str]
