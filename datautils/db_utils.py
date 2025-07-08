@@ -1,4 +1,4 @@
-# Copyright 2022-2024 Laura Lindzey, UW-APL
+# Copyright 2022-2025 Laura Lindzey, UW-APL
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
