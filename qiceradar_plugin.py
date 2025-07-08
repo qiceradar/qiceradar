@@ -1025,7 +1025,7 @@ class QIceRadarPlugin(QtCore.QObject):
             lambda ac=self.downloader_action, ch=False: self.maybe_set_action_checked(ac, ch)
         )
         # Repeatedly clicking the toolbar icon will toggle its checked
-        # state without deactivating the tooltip. for consistency with
+        # state without deactivating the tooltip. For consistency with
         # the built-in QGIS tools, repeated clicking should have no effect
         # and the tool will remain active.
         download_selection_tool.activated.connect(

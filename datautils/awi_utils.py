@@ -57,14 +57,6 @@ class AwiRadargram:
 def load_netcdf(filepath: pathlib.Path) -> Tuple[Any, Any, Any, Any, Any]:
     dd = nc.Dataset(filepath, "r")
 
-    # NOTE: I'm torn on whether to use campaign vs. data fields to make this decision.
-    #    I wound up choosing campaign since the presence of PriNumber isn't a good signal
-    #    as to which direction interpolation needs to go: FISS2016 uses them for segy, but
-    #    in netCDF pulse/chirp are same length with the traces aligned; AGAP has picks
-    #    indexed to traces_pulse, and POLARGAP has picks indexed to traces_chirp.
-    #    (I guess I could check based on length...)
-    #    However, this means that adding new campaigns may require editing code, even if
-    #    they're consistent with a previous campaign's format.
     data = np.flipud(dd.variables["WAVEFORM"][:]).transpose()
     utc = dd.variables["TIME"][:]
     lon = dd.variables["LONGITUDE"][:]
