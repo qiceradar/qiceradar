@@ -42,6 +42,7 @@ import PyQt5.QtGui as QtGui
 import PyQt5.QtWidgets as QtWidgets
 import yaml
 from qgis.core import (
+    edit,
     Qgis,  # Used for warning levels in the message bar
     QgsFeature,
     QgsGeometry,
@@ -260,6 +261,7 @@ class QIceRadarPlugin(QtCore.QObject):
         """
         This is slow on my MacBook Pro, but not impossibly so.
         """
+        QgsMessageLog.logMessage("Building spatial index.")
         root = QgsProject.instance().layerTreeRoot()
         qiceradar_group = root.findGroup("ANTARCTIC QIceRadar Index")
         if qiceradar_group is None:
@@ -687,89 +689,127 @@ class QIceRadarPlugin(QtCore.QObject):
             raise Exception(
                 "Error -- by the time setup_qgis_layers is called, radar_viewer_group should have been created!"
             )
-        transect_group = self.radar_viewer_group.addGroup(transect_name)
+
+        transect_group = self.radar_viewer_group.findGroup(transect_name)
+        if transect_group is None:
+            QgsMessageLog.logMessage(f"Could not find existing group for granule: {transect_name}")
+            transect_group = self.radar_viewer_group.addGroup(transect_name)
+        else:
+            QgsMessageLog.logMessage(f"Found existing group for granule: {transect_name}")
+        self.transect_groups[transect_name] = transect_group
 
         # QGIS layer & feature for the single-trace cursor
+        trace_layer = None
+        for layer_node in transect_group.findLayers():
+            if layer_node.layer().name() == "Highlighted Trace":
+                trace_layer = layer_node.layer()
+                break
+
+        if trace_layer is None:
+            QgsMessageLog.logMessage(f"Could not find trace layer")
+            trace_symbol = QgsMarkerSymbol.createSimple(
+                {
+                    "name": "circle",
+                    "color": QtGui.QColor.fromRgb(255, 255, 0, 255),
+                    "size": "10",
+                    "size_unit": "Point",
+                }
+            )
+            trace_uri = "point?crs=epsg:4326"
+            trace_layer = QgsVectorLayer(trace_uri, "Highlighted Trace", "memory")
+            trace_layer.renderer().setSymbol(trace_symbol)
+            QgsProject.instance().addMapLayer(trace_layer, False)
+            transect_group.addLayer(trace_layer)
+        else:
+            QgsMessageLog.logMessage(f"Found existing trace layer.")
+            # It is easiest to just delete all features and recreate what we need
+            with edit(trace_layer):
+                trace_layer.deleteFeatures(trace_layer.allFeatureIds())
+
+        trace_feature = QgsFeature()
         # Initialize to the pole, then expect the viewer to update it
         # immediately.
         trace_geometry = QgsPoint(0, -90)
-        trace_symbol = QgsMarkerSymbol.createSimple(
-            {
-                "name": "circle",
-                "color": QtGui.QColor.fromRgb(255, 255, 0, 255),
-                "size": "10",
-                "size_unit": "Point",
-            }
-        )
-        trace_feature = QgsFeature()
         trace_feature.setGeometry(trace_geometry)
-        trace_uri = "point?crs=epsg:4326"
-        trace_layer = QgsVectorLayer(trace_uri, "Highlighted Trace", "memory")
         trace_provider = trace_layer.dataProvider()
         trace_provider.addFeature(trace_feature)
-        trace_layer.renderer().setSymbol(trace_symbol)
         trace_layer.updateExtents()
-        QgsProject.instance().addMapLayer(trace_layer, False)
-        transect_group.addLayer(trace_layer)
+        self.trace_features[transect_name] = trace_feature
+        self.trace_layers[transect_name] = trace_layer
 
         # Features for the displayed segment.
         # For my example, I just used all of them. Will probably need to downsample!
-        selected_geometry = QgsLineString([QgsPoint(0, -90)])
+        selected_layer = None
+        for layer_node in transect_group.findLayers():
+            if layer_node.layer().name() == "Selected Region":
+                selected_layer = layer_node.layer()
+                break
+
+        if selected_layer is None:
+            QgsMessageLog.logMessage(f"Could not find selection layer")
+            selected_uri = "LineString?crs=epsg:4326"
+            selected_layer = QgsVectorLayer(selected_uri, "Selected Region", "memory")
+            selected_symbol = QgsLineSymbol.createSimple(
+                {
+                    "color": QtGui.QColor.fromRgb(255, 128, 30, 255),
+                    "line_width": 2,
+                    "line_width_units": "Point",
+                }
+            )
+            selected_layer.renderer().setSymbol(selected_symbol)
+            QgsProject.instance().addMapLayer(selected_layer, False)
+            transect_group.addLayer(selected_layer)
+        else:
+            QgsMessageLog.logMessage(f"Found existing selection layer.")
+            with edit(selected_layer):
+                selected_layer.deleteFeatures(selected_layer.allFeatureIds())
+
         selected_feature = QgsFeature()
+        selected_geometry = QgsLineString([QgsPoint(0, -90)])
         selected_feature.setGeometry(selected_geometry)
-
-        selected_uri = "LineString?crs=epsg:4326"
-        selected_layer = QgsVectorLayer(selected_uri, "Selected Region", "memory")
-
-        selected_symbol = QgsLineSymbol.createSimple(
-            {
-                "color": QtGui.QColor.fromRgb(255, 128, 30, 255),
-                "line_width": 2,
-                "line_width_units": "Point",
-            }
-        )
-        selected_layer.renderer().setSymbol(selected_symbol)
-
         selected_provider = selected_layer.dataProvider()
         selected_provider.addFeature(selected_feature)
         selected_layer.updateExtents()
-
-        QgsProject.instance().addMapLayer(selected_layer, False)
-        transect_group.addLayer(selected_layer)
+        self.radar_xlim_features[transect_name] = selected_feature
+        self.radar_xlim_layers[transect_name] = selected_layer
 
         # Finally, feature for the entire transect
         # TODO: How to get the geometry _here_? We should know it
         # at this point, and it won't change. However, all other
         # geometry is provided in one of the callbacks...
+        segment_layer = None
+        for layer_node in transect_group.findLayers():
+            if layer_node.layer().name() == "Full Transect":
+                segment_layer = layer_node.layer()
+                break
+
+        if segment_layer is None:
+            QgsMessageLog.logMessage(f"Could not find full transect layer")
+            segment_uri = "LineString?crs=epsg:4326"
+            segment_layer = QgsVectorLayer(segment_uri, "Full Transect", "memory")
+            segment_symbol = QgsLineSymbol.createSimple(
+                {
+                    "color": QtGui.QColor.fromRgb(255, 0, 0, 255),
+                    "line_width": 1,
+                    "line_width_units": "Point",
+                }
+            )
+            segment_layer.renderer().setSymbol(segment_symbol)
+            QgsProject.instance().addMapLayer(segment_layer, False)
+            transect_group.addLayer(segment_layer)
+        else:
+            QgsMessageLog.logMessage(f"Found existing full transect layer.")
+            with edit(segment_layer):
+                segment_layer.deleteFeatures(segment_layer.allFeatureIds())
         segment_geometry = QgsLineString([QgsPoint(0, -90)])
 
         segment_feature = QgsFeature()
+        segment_geometry = QgsLineString([QgsPoint(0, -90)])
         segment_feature.setGeometry(segment_geometry)
-
-        segment_uri = "LineString?crs=epsg:4326"
-        segment_layer = QgsVectorLayer(segment_uri, "Full Transect", "memory")
-
-        segment_symbol = QgsLineSymbol.createSimple(
-            {
-                "color": QtGui.QColor.fromRgb(255, 0, 0, 255),
-                "line_width": 1,
-                "line_width_units": "Point",
-            }
-        )
-        segment_layer.renderer().setSymbol(segment_symbol)
         segment_provider = segment_layer.dataProvider()
         segment_provider.addFeature(segment_feature)
-
         segment_layer.updateExtents()
 
-        QgsProject.instance().addMapLayer(segment_layer, False)
-        transect_group.addLayer(segment_layer)
-
-        self.transect_groups[transect_name] = transect_group
-        self.trace_features[transect_name] = trace_feature
-        self.trace_layers[transect_name] = trace_layer
-        self.radar_xlim_features[transect_name] = selected_feature
-        self.radar_xlim_layers[transect_name] = selected_layer
         self.segment_features[transect_name] = segment_feature
         self.segment_layers[transect_name] = segment_layer
 
