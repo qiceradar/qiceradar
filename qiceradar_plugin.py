@@ -174,11 +174,11 @@ class QIceRadarPlugin(QtCore.QObject):
         else:
             cmd_folder = os.path.split(inspect.getfile(frame))[0]
             downloader_icon_path = os.path.join(
-                os.path.join(cmd_folder, "icons/qiceradar_download.png")
+                cmd_folder, "icons/qiceradar_download.png"
             )
             downloader_icon = QtGui.QIcon(downloader_icon_path)
             viewer_icon_path = os.path.join(
-                os.path.join(cmd_folder, "icons/qiceradar_view.png")
+                cmd_folder, "icons/qiceradar_view.png"
             )
             viewer_icon = QtGui.QIcon(viewer_icon_path)
 
