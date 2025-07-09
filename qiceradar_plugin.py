@@ -61,6 +61,7 @@ from qgis.core import (
     QgsSpatialIndex,
     QgsSymbol,
     QgsVectorLayer,
+    QgsWkbTypes,
 )
 from qgis.gui import QgisInterface, QgsMapTool, QgsMapToolPan, QgsMessageBar
 
@@ -220,6 +221,8 @@ class QIceRadarPlugin(QtCore.QObject):
             self.style_layers["trace"].styleChanged.disconnect(self.update_trace_layer_style)
             self.style_layers["selected"].styleChanged.disconnect(self.update_selected_layer_style)
             self.style_layers["segment"].styleChanged.disconnect(self.update_segment_layer_style)
+            self.style_layers["unavailable_multipoint"].styleChanged.disconnect(self.update_multipoint_layer_style)
+            self.style_layers["unavailable_linestring"].styleChanged.disconnect(self.update_multipoint_layer_style)
         except KeyError:
             # If the plugin is reloaded before the style layers have been
             # initialized, we expect a KeyError
@@ -306,9 +309,8 @@ class QIceRadarPlugin(QtCore.QObject):
         symbology_group_name = "QIceRadar Symbology"
         symbology_group = root.findGroup(symbology_group_name)
         if symbology_group is None:
-            self.symbology_group = root.insertGroup(0, symbology_group_name)
-        else:
-            self.symbology_group = symbology_group
+            symbology_group = root.insertGroup(0, symbology_group_name)
+        self.symbology_group = symbology_group
 
         # TODO: add layers!
 
@@ -338,15 +340,7 @@ class QIceRadarPlugin(QtCore.QObject):
             QgsProject.instance().addMapLayer(trace_layer, False)
             symbology_group.addLayer(trace_layer)
 
-
-        # QUESTION: do we even need to add a symbol?
-        # trace_feature = QgsFeature()
-        # trace_geometry = QgsPoint(0, -90)
-        # trace_feature.setGeometry(trace_geometry)
-        # trace_provider = trace_layer.dataProvider()
-        # trace_provider.addFeature(trace_feature)
-        # trace_layer.updateExtents()
-        self.style_layers["trace"]  = trace_layer
+        self.style_layers["trace"] = trace_layer
 
         # Features for the displayed segment.
         selected_layer = None
@@ -372,7 +366,7 @@ class QIceRadarPlugin(QtCore.QObject):
             QgsProject.instance().addMapLayer(selected_layer, False)
             symbology_group.addLayer(selected_layer)
 
-        self.style_layers["selected"]  = selected_layer
+        self.style_layers["selected"] = selected_layer
 
         # Finally, feature for the entire transect
         segment_layer = None
@@ -398,7 +392,60 @@ class QIceRadarPlugin(QtCore.QObject):
             QgsProject.instance().addMapLayer(segment_layer, False)
             symbology_group.addLayer(segment_layer)
 
-        self.style_layers["segment"]  = segment_layer
+        self.style_layers["segment"] = segment_layer
+
+        # Update symbols for unavailable_multipoint and unavailable_linestring
+        # (I won't bother forcing their colors to match, though that could be confusing for users)
+        multipoint_layer = None
+        for layer_node in symbology_group.findLayers():
+            if layer_node.layer().name() == "Unavailable (Points)":
+                multipoint_layer = layer_node.layer()
+                break
+        if multipoint_layer is not None:
+            QgsMessageLog.logMessage(f"Found existing unavailable multipoint layer.")
+        else:
+            QgsMessageLog.logMessage(f"Could not find existing unavailable multipoint layer.")
+            # TODO: Figure out how to disable the outline (stroke style)
+            multipoint_symbol = QgsMarkerSymbol.createSimple(
+                {
+                    "name": "circle",
+                    "color": QtGui.QColor.fromRgb(251, 154, 153, 255),
+                    "size": "1",
+                    "size_unit": "Point",
+                }
+            )
+            multipoint_uri = "point?crs=epsg:4326"
+            multipoint_layer = QgsVectorLayer(multipoint_uri, "Unavailable (Points)", "memory")
+            multipoint_layer.renderer().setSymbol(multipoint_symbol)
+            QgsProject.instance().addMapLayer(multipoint_layer, False)
+            symbology_group.addLayer(multipoint_layer)
+        self.style_layers["unavailable_multipoint"] = multipoint_layer
+
+        linestring_layer = None
+        for layer_node in symbology_group.findLayers():
+            if layer_node.layer().name() == "Unavailable (Lines)":
+                linestring_layer = layer_node.layer()
+                break
+        if linestring_layer is not None:
+            QgsMessageLog.logMessage(f"Found existing unavailable linestring layer.")
+        else:
+            QgsMessageLog.logMessage(f"Could not find existing unavailable linestring layer.")
+            linestring_symbol = QgsLineSymbol.createSimple(
+                {
+                    "color": QtGui.QColor.fromRgb(251, 154, 153, 255),
+                    "line_width": 1,
+                    # TODO: Setting the units like this doesn't seem to work.
+                    "line_width_units": "Pixels",
+                }
+            )
+            linestring_uri = "LineString?crs=epsg:4326"
+            linestring_layer = QgsVectorLayer(linestring_uri, "Unavailable (Lines)", "memory")
+            linestring_layer.renderer().setSymbol(linestring_symbol)
+            QgsProject.instance().addMapLayer(linestring_layer, False)
+            symbology_group.addLayer(linestring_layer)
+        self.style_layers["unavailable_linestring"] = linestring_layer
+
+        # TODO: symbols for available_categorized ...
 
         # This is called *twice* when the user clicks "Apply" or "OK" in the layer properties dialog; I haven't yet figured out why.
         # Using 3 very similar functions rather than lambdas since we need
@@ -406,6 +453,8 @@ class QIceRadarPlugin(QtCore.QObject):
         self.style_layers["trace"].styleChanged.connect(self.update_trace_layer_style)
         self.style_layers["selected"].styleChanged.connect(self.update_selected_layer_style)
         self.style_layers["segment"].styleChanged.connect(self.update_segment_layer_style)
+        self.style_layers["unavailable_multipoint"].styleChanged.connect(self.update_unavailable_layer_style)
+        self.style_layers["unavailable_linestring"].styleChanged.connect(self.update_unavailable_layer_style)
 
         self.symbology_group_initialized = True
 
@@ -446,16 +495,59 @@ class QIceRadarPlugin(QtCore.QObject):
             QgsMessageLog.logMessage(f"Updating full segment style for {layer.parent().name()}!")
             self.copy_layer_style(self.style_layers["segment"], layer.layer())
 
-    def build_spatial_index(self) -> None:
-        """
-        This is slow on my MacBook Pro, but not impossibly so.
-        """
-        QgsMessageLog.logMessage("Building spatial index.")
+    # TODO: this is way slower than it should be; it updates both types of geometry even when only one changed
+    # TODO: figure out how to avoid the callback being called twice, since this is so expensive it really matters
+    def update_unavailable_layer_style(self):
+        QgsMessageLog.logMessage(f"Unavailable layer style changed")
+        # TODO: Needs to be self.index_group!
+        index_group = self.find_index_group()
+        if index_group is None:
+            return
+
+        for layer in index_group.findLayers():
+
+            features = layer.layer().getFeatures()
+            try:
+                feature = next(features)
+            except Exception as ex:
+                QgsMessageLog.logMessage(f"could not get layer features")
+                continue
+
+            # Check layer is marked unavailable
+            if feature.attributeMap()["availability"] != "u":
+                QgsMessageLog.logMessage(f"data is available")
+                continue
+
+            # Check layer geometry is Point
+            geom = feature.geometry()
+            try:
+                # QGIS pre-3.30
+                QgsMessageLog.logMessage(f"testing old types")
+                point_type = QgsWkbTypes.PointGeometry
+            except Exception as ex:
+                # More recent QGIS
+                QgsMessageLog.logMessage(f"using new types")
+                point_type = QgsWkbTypes.GeometryType.Point
+
+            QgsMessageLog.logMessage(f"point_type = {point_type}, geom type = {geom.type()}")
+
+            if geom.type() == point_type:
+                QgsMessageLog.logMessage(f"Updating unavailable multipoint style for {layer.name()}!")
+                self.copy_layer_style(self.style_layers["unavailable_multipoint"], layer.layer())
+            else:
+                QgsMessageLog.logMessage(f"Updating unavailable linestring style for {layer.name()}!")
+                self.copy_layer_style(self.style_layers["unavailable_linestring"], layer.layer())
+
+    def find_index_group(self) -> Optional[QgsLayerTreeGroup]:
+        QgsMessageLog.logMessage("find_index_group")
         root = QgsProject.instance().layerTreeRoot()
-        qiceradar_group = root.findGroup("ANTARCTIC QIceRadar Index")
-        if qiceradar_group is None:
-            qiceradar_group = root.findGroup("ARCTIC QIceRadar Index")
-        if qiceradar_group is None:
+        layer_group = None
+        for layer_group in root.findGroups():
+            if "QIceRadar Index" in layer_group.name():
+                index_group = layer_group
+                break
+
+        if layer_group is None:
             errmsg = (
                 "Could not find index data. \n\n"
                 "You may need to drag the QIceRadar .qlr file into QGIS. \n\n"
@@ -465,6 +557,18 @@ class QIceRadarPlugin(QtCore.QObject):
             message_box = QtWidgets.QMessageBox()
             message_box.setText(errmsg)
             message_box.exec()
+        return layer_group
+
+
+    def build_spatial_index(self) -> None:
+        """
+        This is slow on my MacBook Pro, but not impossibly so.
+        """
+        QgsMessageLog.logMessage("Building spatial index.")
+
+        qiceradar_group = self.find_index_group()
+        if qiceradar_group is None:
+            # find_index_group handles displaying an error message to the user
             return
 
         # We need to store geometries, otherwise nearest neighbor calculations are done
