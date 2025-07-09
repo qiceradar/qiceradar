@@ -33,6 +33,7 @@ import inspect
 import os
 import pathlib
 import sqlite3
+import time
 
 # from db_utils import DatabaseGranule, DatabaseCampaign
 from typing import Dict, List, Optional, Tuple
@@ -141,6 +142,10 @@ class QIceRadarPlugin(QtCore.QObject):
         self.symbology_group: Optional[QgsLayerTreeGroup] = None
         self.style_layers: Dict[str, QgsMapLayer] = {}
         self.symbology_group_initialized = False
+        # I have not been able to find a signal that triggers only once
+        # when the user changes the style of a layer, so we detect multiple
+        # calls and only update on the first.
+        self.style_changed_time = 0
 
         # Similarly, need to wait for project with QIceRadar index to be loaded
         # before we can modify the renderers to indicate downloaded transects
@@ -221,8 +226,8 @@ class QIceRadarPlugin(QtCore.QObject):
             self.style_layers["trace"].styleChanged.disconnect(self.update_trace_layer_style)
             self.style_layers["selected"].styleChanged.disconnect(self.update_selected_layer_style)
             self.style_layers["segment"].styleChanged.disconnect(self.update_segment_layer_style)
-            self.style_layers["unavailable_multipoint"].styleChanged.disconnect(self.update_multipoint_layer_style)
-            self.style_layers["unavailable_linestring"].styleChanged.disconnect(self.update_multipoint_layer_style)
+            self.style_layers["unavailable_multipoint"].styleChanged.disconnect(self.update_unavailable_multipoint_layer_style)
+            self.style_layers["unavailable_linestring"].styleChanged.disconnect(self.update_unavailable_linestring_layer_style)
         except KeyError:
             # If the plugin is reloaded before the style layers have been
             # initialized, we expect a KeyError
@@ -298,7 +303,7 @@ class QIceRadarPlugin(QtCore.QObject):
         * it is confusing that the callbacks aren't attached until the user has
           clicked one of the QIceRadar actions.
         """
-        QgsMessageLog.logMessage(f"create_symbology_group")
+        # QgsMessageLog.logMessage(f"create_symbology_group")
         if self.symbology_group_initialized:
             return
 
@@ -323,9 +328,10 @@ class QIceRadarPlugin(QtCore.QObject):
 
         if trace_layer is not None:
             # Leave the existing layer as-is; use its saved styling.
-            QgsMessageLog.logMessage(f"Found existing trace layer.")
+            # QgsMessageLog.logMessage(f"...Found existing trace layer.")
+            pass
         else:
-            QgsMessageLog.logMessage(f"Could not find trace layer")
+            # QgsMessageLog.logMessage(f"...Could not find trace layer")
             trace_symbol = QgsMarkerSymbol.createSimple(
                 {
                     "name": "circle",
@@ -350,9 +356,10 @@ class QIceRadarPlugin(QtCore.QObject):
                 break
 
         if selected_layer is not None:
-            QgsMessageLog.logMessage(f"Found existing selection layer.")
+            # QgsMessageLog.logMessage(f"...Found existing selection layer.")
+            pass
         else:
-            QgsMessageLog.logMessage(f"Could not find selection layer")
+            # QgsMessageLog.logMessage(f"...Could not find selection layer")
             selected_symbol = QgsLineSymbol.createSimple(
                 {
                     "color": QtGui.QColor.fromRgb(255, 128, 30, 255),
@@ -376,9 +383,10 @@ class QIceRadarPlugin(QtCore.QObject):
                 break
 
         if segment_layer is not None:
-            QgsMessageLog.logMessage(f"Found existing full transect layer.")
+            # QgsMessageLog.logMessage(f"...Found existing full transect layer.")
+            pass
         else:
-            QgsMessageLog.logMessage(f"Could not find full transect layer")
+            # QgsMessageLog.logMessage(f"...Could not find full transect layer")
             segment_symbol = QgsLineSymbol.createSimple(
                 {
                     "color": QtGui.QColor.fromRgb(255, 0, 0, 255),
@@ -402,9 +410,10 @@ class QIceRadarPlugin(QtCore.QObject):
                 multipoint_layer = layer_node.layer()
                 break
         if multipoint_layer is not None:
-            QgsMessageLog.logMessage(f"Found existing unavailable multipoint layer.")
+            # QgsMessageLog.logMessage(f"...Found existing unavailable multipoint layer.")
+            pass
         else:
-            QgsMessageLog.logMessage(f"Could not find existing unavailable multipoint layer.")
+            # QgsMessageLog.logMessage(f"...Could not find existing unavailable multipoint layer.")
             # TODO: Figure out how to disable the outline (stroke style)
             multipoint_symbol = QgsMarkerSymbol.createSimple(
                 {
@@ -427,9 +436,10 @@ class QIceRadarPlugin(QtCore.QObject):
                 linestring_layer = layer_node.layer()
                 break
         if linestring_layer is not None:
-            QgsMessageLog.logMessage(f"Found existing unavailable linestring layer.")
+            # QgsMessageLog.logMessage(f"...Found existing unavailable linestring layer.")
+            pass
         else:
-            QgsMessageLog.logMessage(f"Could not find existing unavailable linestring layer.")
+            # QgsMessageLog.logMessage(f"...Could not find existing unavailable linestring layer.")
             linestring_symbol = QgsLineSymbol.createSimple(
                 {
                     "color": QtGui.QColor.fromRgb(251, 154, 153, 255),
@@ -447,14 +457,18 @@ class QIceRadarPlugin(QtCore.QObject):
 
         # TODO: symbols for available_categorized ...
 
-        # This is called *twice* when the user clicks "Apply" or "OK" in the layer properties dialog; I haven't yet figured out why.
-        # Using 3 very similar functions rather than lambdas since we need
-        # to pass the function as an argument to disconnect.
+        # This is called *twice* when the user clicks "Apply" or "OK" in the
+        # layer properties dialog; I experimented with other signals to no avail:
+        # * styleLoaded is never triggered
+        # * rendererChanged and styleChanged trigger twice
+        # * repaintRequester triggers 3x
+        # So ... I have implemented logic to only update styles once per second
+        # These callbacks need to be passed as an argument to disconnect, so don't use lambdas.
         self.style_layers["trace"].styleChanged.connect(self.update_trace_layer_style)
         self.style_layers["selected"].styleChanged.connect(self.update_selected_layer_style)
         self.style_layers["segment"].styleChanged.connect(self.update_segment_layer_style)
-        self.style_layers["unavailable_multipoint"].styleChanged.connect(self.update_unavailable_layer_style)
-        self.style_layers["unavailable_linestring"].styleChanged.connect(self.update_unavailable_layer_style)
+        self.style_layers["unavailable_multipoint"].styleChanged.connect(self.update_unavailable_multipoint_layer_style)
+        self.style_layers["unavailable_linestring"].styleChanged.connect(self.update_unavailable_linestring_layer_style)
 
         self.symbology_group_initialized = True
 
@@ -467,79 +481,132 @@ class QIceRadarPlugin(QtCore.QObject):
         target_layer.styleManager().removeStyle('copied')
         target_layer.styleManager().addStyle('copied', style)
         target_layer.styleManager().setCurrentStyle('copied')
-        target_layer.triggerRepaint()
-        target_layer.emitStyleChanged()
+
+        # Surprisingly, this doesn't seem to be required...maybe these
+        # callbacks are executed before the canvas refresh triggered by
+        # the user editing the symbology layer happens?
+        # target_layer.triggerRepaint()
+        # target_layer.emitStyleChanged()
 
     def update_trace_layer_style(self):
         QgsMessageLog.logMessage(f"Trace layer style changed")
-        # Iterate over QgsLayerTreeLayers in the group
+        if time.time() - self.style_changed_time < 1.0:
+            QgsMessageLog.logMessage(f"...repeated call, skipping")
+            return
         for layer in self.radar_viewer_group.findLayers():
             if layer.layer().name() != "Highlighted Trace":
                 continue
             QgsMessageLog.logMessage(f"Updating trace style for {layer.parent().name()}!")
             self.copy_layer_style(self.style_layers["trace"], layer.layer())
+        self.style_changed_time = time.time()
 
     def update_selected_layer_style(self):
         QgsMessageLog.logMessage(f"Selected layer style changed")
+        if time.time() - self.style_changed_time < 1.0:
+            QgsMessageLog.logMessage(f"...repeated call, skipping")
+            return
         for layer in self.radar_viewer_group.findLayers():
             if layer.layer().name() != "Selected Region":
                 continue
             QgsMessageLog.logMessage(f"Updating selected region style for {layer.parent().name()}!")
             self.copy_layer_style(self.style_layers["selected"], layer.layer())
+        self.style_changed_time = time.time()
 
     def update_segment_layer_style(self):
         QgsMessageLog.logMessage(f"Segment layer style changed")
+        if time.time() - self.style_changed_time < 1.0:
+            QgsMessageLog.logMessage(f"...repeated call, skipping")
+            return
         for layer in self.radar_viewer_group.findLayers():
             if layer.layer().name() != "Full Transect":
                 continue
             QgsMessageLog.logMessage(f"Updating full segment style for {layer.parent().name()}!")
             self.copy_layer_style(self.style_layers["segment"], layer.layer())
+        self.style_changed_time = time.time()
 
-    # TODO: this is way slower than it should be; it updates both types of geometry even when only one changed
-    # TODO: figure out how to avoid the callback being called twice, since this is so expensive it really matters
-    def update_unavailable_layer_style(self):
-        QgsMessageLog.logMessage(f"Unavailable layer style changed")
-        # TODO: Needs to be self.index_group!
+    def update_unavailable_multipoint_layer_style(self):
+        QgsMessageLog.logMessage(f"Unavailable point layer style changed")
+        # The pyQGIS cookbook still uses QgsWkbTypes.PointGeometry, though
+        # the documentation seems to suggest using QgsWkbTypes.GeometryType.Point
+        self.update_unavailable_layer_style(QgsWkbTypes.PointGeometry)
+
+    def update_unavailable_linestring_layer_style(self):
+        QgsMessageLog.logMessage(f"Unavailable line layer style changed")
+        # Same as above, we might want QgsWkbTypes.GeometryType.Line
+        self.update_unavailable_layer_style(QgsWkbTypes.LineGeometry)
+
+    # NOTE: I'm unsure about the typing here ... might only be valid for
+    #       post-3.30, while I'm using the older types.
+    def update_unavailable_layer_style(self, geom_type=QgsWkbTypes.GeometryType):
+        if time.time() - self.style_changed_time < 1.0:
+            QgsMessageLog.logMessage(f"...repeated call, skipping")
+            return
+
         index_group = self.find_index_group()
         if index_group is None:
             return
 
+        t0 = time.time()
+        copy_style_time = 0
+        availability_check_time = 0
+        get_features_time = 0
         for layer in index_group.findLayers():
-
+            t7 = time.time()
             features = layer.layer().getFeatures()
             try:
+                # All layers created by QIceRadar have a single type of features
                 feature = next(features)
             except Exception as ex:
                 QgsMessageLog.logMessage(f"could not get layer features")
+                t8a = time.time()
+                get_features_time += t8a - t7
                 continue
+            t8b = time.time()
+            get_features_time += t8b - t7
 
             # Check layer is marked unavailable
+            t5 = time.time()
             if feature.attributeMap()["availability"] != "u":
-                QgsMessageLog.logMessage(f"data is available")
+                t6a = time.time()
+                availability_check_time += t6a - t5
+                # QgsMessageLog.logMessage(f"data is available for {layer.name()}")
                 continue
+            t6b = time.time()
+            availability_check_time += t6b - t5
 
             # Check layer geometry is Point
             geom = feature.geometry()
-            try:
-                # QGIS pre-3.30
-                QgsMessageLog.logMessage(f"testing old types")
-                point_type = QgsWkbTypes.PointGeometry
-            except Exception as ex:
-                # More recent QGIS
-                QgsMessageLog.logMessage(f"using new types")
-                point_type = QgsWkbTypes.GeometryType.Point
+            point_type = QgsWkbTypes.PointGeometry
 
-            QgsMessageLog.logMessage(f"point_type = {point_type}, geom type = {geom.type()}")
+            t3 = time.time()
+            if geom.type() == geom_type:
+                if geom_type is QgsWkbTypes.PointGeometry:
+                    # QgsMessageLog.logMessage(f"Updating unavailable multipoint style for {layer.name()}!")
+                    self.copy_layer_style(self.style_layers["unavailable_multipoint"], layer.layer())
+                elif geom_type is QgsWkbTypes.LineGeometry:
+                    # QgsMessageLog.logMessage(f"Updating unavailable linestring style for {layer.name()}!")
+                    self.copy_layer_style(self.style_layers["unavailable_linestring"], layer.layer())
+            t4 = time.time()
+            copy_style_time += t4 - t3
 
-            if geom.type() == point_type:
-                QgsMessageLog.logMessage(f"Updating unavailable multipoint style for {layer.name()}!")
-                self.copy_layer_style(self.style_layers["unavailable_multipoint"], layer.layer())
-            else:
-                QgsMessageLog.logMessage(f"Updating unavailable linestring style for {layer.name()}!")
-                self.copy_layer_style(self.style_layers["unavailable_linestring"], layer.layer())
+        # This also seems to be optional, though the cookbook says it should be done.
+        t1 = time.time()
+        self.iface.mapCanvas().refresh()
+        t2 = time.time()
+
+        # I don't think I can make this any faster with the current layer
+        # organization -- the bulk of the time is spent getting features from
+        # individual layers to check geometry type.
+        QgsMessageLog.logMessage(f"time to iterate over layers: {t1 - t0}")
+        QgsMessageLog.logMessage(f"... time spent getting features {get_features_time}")
+        QgsMessageLog.logMessage(f"... time spent filtering availability {availability_check_time}")
+        QgsMessageLog.logMessage(f"... time spent copying layer styling {copy_style_time}")
+        QgsMessageLog.logMessage(f"... time to refresh canvas: {t2 - t1}")
+
+        self.style_changed_time = time.time()
 
     def find_index_group(self) -> Optional[QgsLayerTreeGroup]:
-        QgsMessageLog.logMessage("find_index_group")
+        # QgsMessageLog.logMessage("find_index_group")
         root = QgsProject.instance().layerTreeRoot()
         layer_group = None
         for layer_group in root.findGroups():
