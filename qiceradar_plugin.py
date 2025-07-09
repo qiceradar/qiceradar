@@ -138,6 +138,7 @@ class QIceRadarPlugin(QtCore.QObject):
         # For now, these layers go in the main layer tree, so we have to wait
         # to initialize it.
         self.symbology_group: Optional[QgsLayerTreeGroup] = None
+        self.style_layers: Dict[str, QgsMapLayer] = {}
         self.symbology_group_initialized = False
 
         # Similarly, need to wait for project with QIceRadar index to be loaded
@@ -215,6 +216,17 @@ class QIceRadarPlugin(QtCore.QObject):
         if isinstance(curr_tool, QIceRadarSelectionTool):
             self.iface.mapCanvas().unsetMapTool(curr_tool)
 
+        try:
+            self.style_layers["trace"].styleChanged.disconnect(self.update_trace_layer_style)
+            self.style_layers["selected"].styleChanged.disconnect(self.update_selected_layer_style)
+            self.style_layers["segment"].styleChanged.disconnect(self.update_segment_layer_style)
+        except KeyError:
+            # If the plugin is reloaded before the style layers have been
+            # initialized, we expect a KeyError
+            pass
+        except Exception as ex:
+            QgsMessageLog.logMessage(f"unexpected exception when disconnecting style changed callback: {ex}, type={type(ex)}")
+
         self.iface.removeToolBarIcon(self.viewer_action)
         self.iface.removeToolBarIcon(self.downloader_action)
         self.iface.removePluginMenu("&Radar Viewer", self.viewer_action)
@@ -274,7 +286,16 @@ class QIceRadarPlugin(QtCore.QObject):
 
         TODO: consider moving this out of the main layer tree and into a
         dock widget with other QIceRadar controls.
+
+        For now, we're saving the style via the layer styling in the project,
+        which means we have to initialize after the project is loaded...
+        It might be cleaner to do so via QSettings, since:
+        * we don't currently detect that the layers have changed and update
+          our pointers to them
+        * it is confusing that the callbacks aren't attached until the user has
+          clicked one of the QIceRadar actions.
         """
+        QgsMessageLog.logMessage(f"create_symbology_group")
         if self.symbology_group_initialized:
             return
 
@@ -290,7 +311,110 @@ class QIceRadarPlugin(QtCore.QObject):
             self.symbology_group = symbology_group
 
         # TODO: add layers!
+
+        # QGIS layer & feature for the single-trace cursor
+        trace_layer = None
+        for layer_node in symbology_group.findLayers():
+            if layer_node.layer().name() == "Highlighted Trace":
+                trace_layer = layer_node.layer()
+                break
+
+        if trace_layer is not None:
+            # Leave the existing layer as-is; use its saved styling.
+            QgsMessageLog.logMessage(f"Found existing trace layer.")
+        else:
+            QgsMessageLog.logMessage(f"Could not find trace layer")
+            trace_symbol = QgsMarkerSymbol.createSimple(
+                {
+                    "name": "circle",
+                    "color": QtGui.QColor.fromRgb(255, 255, 0, 255),
+                    "size": "10",
+                    "size_unit": "Point",
+                }
+            )
+            trace_uri = "point?crs=epsg:4326"
+            trace_layer = QgsVectorLayer(trace_uri, "Highlighted Trace", "memory")
+            trace_layer.renderer().setSymbol(trace_symbol)
+            QgsProject.instance().addMapLayer(trace_layer, False)
+            symbology_group.addLayer(trace_layer)
+
+
+        # QUESTION: do we even need to add a symbol?
+        # trace_feature = QgsFeature()
+        # trace_geometry = QgsPoint(0, -90)
+        # trace_feature.setGeometry(trace_geometry)
+        # trace_provider = trace_layer.dataProvider()
+        # trace_provider.addFeature(trace_feature)
+        # trace_layer.updateExtents()
+        self.style_layers["trace"]  = trace_layer
+
+        # Features for the displayed segment.
+        selected_layer = None
+        for layer_node in symbology_group.findLayers():
+            if layer_node.layer().name() == "Selected Region":
+                selected_layer = layer_node.layer()
+                break
+
+        if selected_layer is not None:
+            QgsMessageLog.logMessage(f"Found existing selection layer.")
+        else:
+            QgsMessageLog.logMessage(f"Could not find selection layer")
+            selected_symbol = QgsLineSymbol.createSimple(
+                {
+                    "color": QtGui.QColor.fromRgb(255, 128, 30, 255),
+                    "line_width": 2,
+                    "line_width_units": "Point",
+                }
+            )
+            selected_uri = "LineString?crs=epsg:4326"
+            selected_layer = QgsVectorLayer(selected_uri, "Selected Region", "memory")
+            selected_layer.renderer().setSymbol(selected_symbol)
+            QgsProject.instance().addMapLayer(selected_layer, False)
+            symbology_group.addLayer(selected_layer)
+
+        self.style_layers["selected"]  = selected_layer
+
+        # Finally, feature for the entire transect
+        segment_layer = None
+        for layer_node in symbology_group.findLayers():
+            if layer_node.layer().name() == "Full Transect":
+                segment_layer = layer_node.layer()
+                break
+
+        if segment_layer is not None:
+            QgsMessageLog.logMessage(f"Found existing full transect layer.")
+        else:
+            QgsMessageLog.logMessage(f"Could not find full transect layer")
+            segment_symbol = QgsLineSymbol.createSimple(
+                {
+                    "color": QtGui.QColor.fromRgb(255, 0, 0, 255),
+                    "line_width": 1,
+                    "line_width_units": "Point",
+                }
+            )
+            segment_uri = "LineString?crs=epsg:4326"
+            segment_layer = QgsVectorLayer(segment_uri, "Full Transect", "memory")
+            segment_layer.renderer().setSymbol(segment_symbol)
+            QgsProject.instance().addMapLayer(segment_layer, False)
+            symbology_group.addLayer(segment_layer)
+
+        self.style_layers["segment"]  = segment_layer
+
+        # This is called *twice* when the user clicks "Apply" or "OK" in the layer properties dialog
+        self.style_layers["trace"].styleChanged.connect(self.update_trace_layer_style)
+        self.style_layers["selected"].styleChanged.connect(self.update_selected_layer_style)
+        self.style_layers["segment"].styleChanged.connect(self.update_segment_layer_style)
+
         self.symbology_group_initialized = True
+
+    def update_trace_layer_style(self):
+        QgsMessageLog.logMessage(f"Trace layer style changed")
+
+    def update_selected_layer_style(self):
+        QgsMessageLog.logMessage(f"Selected layer style changed")
+
+    def update_segment_layer_style(self):
+        QgsMessageLog.logMessage(f"Segment layer style changed")
 
 
     def build_spatial_index(self) -> None:
