@@ -538,6 +538,14 @@ class QIceRadarPlugin(QtCore.QObject):
     # NOTE: I'm unsure about the typing here ... might only be valid for
     #       post-3.30, while I'm using the older types.
     def update_unavailable_layer_style(self, geom_type=QgsWkbTypes.GeometryType):
+        """
+        Copy style from the style layer to all layers with unavailable data
+        that match the input geometry type.
+
+        This takes a few seconds, but I don't think I can make it any faster
+        with the current layer organization, since the bulk of the time is spent
+        simply iterating through layers and grabbing the first feature.
+        """
         if time.time() - self.style_changed_time < 1.0:
             QgsMessageLog.logMessage(f"...repeated call, skipping")
             return
@@ -546,62 +554,30 @@ class QIceRadarPlugin(QtCore.QObject):
         if index_group is None:
             return
 
-        t0 = time.time()
-        copy_style_time = 0
-        availability_check_time = 0
-        get_features_time = 0
         for layer in index_group.findLayers():
-            t7 = time.time()
             features = layer.layer().getFeatures()
             try:
                 # All layers created by QIceRadar have a single type of features
                 feature = next(features)
             except Exception as ex:
                 QgsMessageLog.logMessage(f"could not get layer features")
-                t8a = time.time()
-                get_features_time += t8a - t7
                 continue
-            t8b = time.time()
-            get_features_time += t8b - t7
 
             # Check layer is marked unavailable
-            t5 = time.time()
             if feature.attributeMap()["availability"] != "u":
-                t6a = time.time()
-                availability_check_time += t6a - t5
                 # QgsMessageLog.logMessage(f"data is available for {layer.name()}")
                 continue
-            t6b = time.time()
-            availability_check_time += t6b - t5
 
-            # Check layer geometry is Point
-            geom = feature.geometry()
-            point_type = QgsWkbTypes.PointGeometry
-
-            t3 = time.time()
-            if geom.type() == geom_type:
+            if feature.geometry().type() == geom_type:
                 if geom_type is QgsWkbTypes.PointGeometry:
                     # QgsMessageLog.logMessage(f"Updating unavailable multipoint style for {layer.name()}!")
                     self.copy_layer_style(self.style_layers["unavailable_multipoint"], layer.layer())
                 elif geom_type is QgsWkbTypes.LineGeometry:
                     # QgsMessageLog.logMessage(f"Updating unavailable linestring style for {layer.name()}!")
                     self.copy_layer_style(self.style_layers["unavailable_linestring"], layer.layer())
-            t4 = time.time()
-            copy_style_time += t4 - t3
 
         # This also seems to be optional, though the cookbook says it should be done.
-        t1 = time.time()
         self.iface.mapCanvas().refresh()
-        t2 = time.time()
-
-        # I don't think I can make this any faster with the current layer
-        # organization -- the bulk of the time is spent getting features from
-        # individual layers to check geometry type.
-        QgsMessageLog.logMessage(f"time to iterate over layers: {t1 - t0}")
-        QgsMessageLog.logMessage(f"... time spent getting features {get_features_time}")
-        QgsMessageLog.logMessage(f"... time spent filtering availability {availability_check_time}")
-        QgsMessageLog.logMessage(f"... time spent copying layer styling {copy_style_time}")
-        QgsMessageLog.logMessage(f"... time to refresh canvas: {t2 - t1}")
 
         self.style_changed_time = time.time()
 
@@ -626,6 +602,20 @@ class QIceRadarPlugin(QtCore.QObject):
             message_box.exec()
         return layer_group
 
+
+    def is_valid_granule_feature(self, feature: QgsFeature):
+        attributes = feature.attributeMap()
+        for field in [
+            "availability",
+            "campaign",
+            "institution",
+            "granule",
+            "segment",
+            "region",
+        ]:
+            if field not in attributes:
+                return False
+        return True
 
     def build_spatial_index(self) -> None:
         """
@@ -662,27 +652,27 @@ class QIceRadarPlugin(QtCore.QObject):
                     # happy with calling methods only defined by the subclass.
                     campaign_layer: QgsMapLayer = campaign.layer()
                     assert isinstance(campaign_layer, QgsVectorLayer)
-                    feat = next(campaign_layer.getFeatures())
-                    # TODO: Would be better to have a proper function for checking this.
-                    for field in [
-                        "availability",
-                        "campaign",
-                        "institution",
-                        "granule",
-                        "segment",
-                        "region",
-                    ]:
-                        if field not in feat.attributeMap():
-                            QgsMessageLog.logMessage(
-                                f"Layer in {campaign} missing expected field {field}; not adding features to index."
-                            )
-                            break
-                    for feature in campaign_layer.getFeatures():
+                    features = campaign_layer.getFeatures()
+                    campaign_layer_validated = False
+                    for feature in features:
+                        if not campaign_layer_validated:
+                            # I'm not sure how valuable this check is; we're assuming
+                            # that the first feature is all we need to check (has user
+                            # added spurious features to a layer accidentally? If so,
+                            # this won't help). The catch-all at the bottom may be enough.
+                            valid_layer = self.is_valid_granule_feature(feature)
+                            if not valid_layer:
+                                QgsMessageLog.logMessage(
+                                    f"Feature in layer {campaign} missing expected field; not adding to index."
+                                )
+                                break
+                            campaign_layer_validated = True
+
                         self.spatial_index_lookup[index_id] = (
                             campaign.layer().id(),
                             feature.id(),
                         )
-                        feature_name = feature.attributeMap()["name"]
+                        feature_name = feature["name"]
                         assert isinstance(feature_name, str)  # make mypy happy
                         if feature_name in self.transect_name_lookup:
                             # Don't die, but do log a message
