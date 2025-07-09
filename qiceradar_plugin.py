@@ -400,22 +400,51 @@ class QIceRadarPlugin(QtCore.QObject):
 
         self.style_layers["segment"]  = segment_layer
 
-        # This is called *twice* when the user clicks "Apply" or "OK" in the layer properties dialog
+        # This is called *twice* when the user clicks "Apply" or "OK" in the layer properties dialog; I haven't yet figured out why.
+        # Using 3 very similar functions rather than lambdas since we need
+        # to pass the function as an argument to disconnect.
         self.style_layers["trace"].styleChanged.connect(self.update_trace_layer_style)
         self.style_layers["selected"].styleChanged.connect(self.update_selected_layer_style)
         self.style_layers["segment"].styleChanged.connect(self.update_segment_layer_style)
 
         self.symbology_group_initialized = True
 
+    def copy_layer_style(self, source_layer, target_layer):
+        # copied from https://gis.stackexchange.com/questions/444905/copying-layer-styles-using-pyqgis
+        style_name = source_layer.styleManager().currentStyle()
+        style = source_layer.styleManager().style(style_name)
+
+        # addStyle will not override a style name, so remove it first
+        target_layer.styleManager().removeStyle('copied')
+        target_layer.styleManager().addStyle('copied', style)
+        target_layer.styleManager().setCurrentStyle('copied')
+        target_layer.triggerRepaint()
+        target_layer.emitStyleChanged()
+
     def update_trace_layer_style(self):
         QgsMessageLog.logMessage(f"Trace layer style changed")
+        # Iterate over QgsLayerTreeLayers in the group
+        for layer in self.radar_viewer_group.findLayers():
+            if layer.layer().name() != "Highlighted Trace":
+                continue
+            QgsMessageLog.logMessage(f"Updating trace style for {layer.parent().name()}!")
+            self.copy_layer_style(self.style_layers["trace"], layer.layer())
 
     def update_selected_layer_style(self):
         QgsMessageLog.logMessage(f"Selected layer style changed")
+        for layer in self.radar_viewer_group.findLayers():
+            if layer.layer().name() != "Selected Region":
+                continue
+            QgsMessageLog.logMessage(f"Updating selected region style for {layer.parent().name()}!")
+            self.copy_layer_style(self.style_layers["selected"], layer.layer())
 
     def update_segment_layer_style(self):
         QgsMessageLog.logMessage(f"Segment layer style changed")
-
+        for layer in self.radar_viewer_group.findLayers():
+            if layer.layer().name() != "Full Transect":
+                continue
+            QgsMessageLog.logMessage(f"Updating full segment style for {layer.parent().name()}!")
+            self.copy_layer_style(self.style_layers["segment"], layer.layer())
 
     def build_spatial_index(self) -> None:
         """
