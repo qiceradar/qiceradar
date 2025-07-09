@@ -896,17 +896,9 @@ class QIceRadarPlugin(QtCore.QObject):
 
         if trace_layer is None:
             QgsMessageLog.logMessage(f"Could not find trace layer")
-            trace_symbol = QgsMarkerSymbol.createSimple(
-                {
-                    "name": "circle",
-                    "color": QtGui.QColor.fromRgb(255, 255, 0, 255),
-                    "size": "10",
-                    "size_unit": "Point",
-                }
-            )
             trace_uri = "point?crs=epsg:4326"
             trace_layer = QgsVectorLayer(trace_uri, "Highlighted Trace", "memory")
-            trace_layer.renderer().setSymbol(trace_symbol)
+            self.copy_layer_style(self.style_layers["trace"], trace_layer)
             QgsProject.instance().addMapLayer(trace_layer, False)
             transect_group.addLayer(trace_layer)
         else:
@@ -916,8 +908,7 @@ class QIceRadarPlugin(QtCore.QObject):
                 trace_layer.deleteFeatures(trace_layer.allFeatureIds())
 
         trace_feature = QgsFeature()
-        # Initialize to the pole, then expect the viewer to update it
-        # immediately.
+        # Initialize to the pole, then expect the RadarViewer to update it immediately
         trace_geometry = QgsPoint(0, -90)
         trace_feature.setGeometry(trace_geometry)
         trace_provider = trace_layer.dataProvider()
@@ -927,7 +918,6 @@ class QIceRadarPlugin(QtCore.QObject):
         self.trace_layers[transect_name] = trace_layer
 
         # Features for the displayed segment.
-        # For my example, I just used all of them. Will probably need to downsample!
         selected_layer = None
         for layer_node in transect_group.findLayers():
             if layer_node.layer().name() == "Selected Region":
@@ -938,14 +928,7 @@ class QIceRadarPlugin(QtCore.QObject):
             QgsMessageLog.logMessage(f"Could not find selection layer")
             selected_uri = "LineString?crs=epsg:4326"
             selected_layer = QgsVectorLayer(selected_uri, "Selected Region", "memory")
-            selected_symbol = QgsLineSymbol.createSimple(
-                {
-                    "color": QtGui.QColor.fromRgb(255, 128, 30, 255),
-                    "line_width": 2,
-                    "line_width_units": "Point",
-                }
-            )
-            selected_layer.renderer().setSymbol(selected_symbol)
+            self.copy_layer_style(self.style_layers["selected"], selected_layer)
             QgsProject.instance().addMapLayer(selected_layer, False)
             transect_group.addLayer(selected_layer)
         else:
@@ -976,14 +959,7 @@ class QIceRadarPlugin(QtCore.QObject):
             QgsMessageLog.logMessage(f"Could not find full transect layer")
             segment_uri = "LineString?crs=epsg:4326"
             segment_layer = QgsVectorLayer(segment_uri, "Full Transect", "memory")
-            segment_symbol = QgsLineSymbol.createSimple(
-                {
-                    "color": QtGui.QColor.fromRgb(255, 0, 0, 255),
-                    "line_width": 1,
-                    "line_width_units": "Point",
-                }
-            )
-            segment_layer.renderer().setSymbol(segment_symbol)
+            self.copy_layer_style(self.style_layers["segment"], segment_layer)
             QgsProject.instance().addMapLayer(segment_layer, False)
             transect_group.addLayer(segment_layer)
         else:
