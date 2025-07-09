@@ -134,6 +134,12 @@ class QIceRadarPlugin(QtCore.QObject):
 
         # Need to wait for project to be opened before actually creating layer group
         self.radar_viewer_group: Optional[QgsLayerTreeGroup] = None
+
+        # For now, these layers go in the main layer tree, so we have to wait
+        # to initialize it.
+        self.symbology_group: Optional[QgsLayerTreeGroup] = None
+        self.symbology_group_initialized = False
+
         # Similarly, need to wait for project with QIceRadar index to be loaded
         # before we can modify the renderers to indicate downloaded transects
         self.download_renderer_added = False
@@ -256,6 +262,36 @@ class QIceRadarPlugin(QtCore.QObject):
             self.radar_viewer_group = root.insertGroup(0, "Radar Viewer")
         else:
             self.radar_viewer_group = radar_group
+
+    def create_symbology_group(self) -> None:
+        """
+        Create group containing dummy layers for each of the symbols
+        the user might want to style.
+
+        Attach callbacks to these dummy layers that then set the style
+        indicating status of layers in the index or extent of currently
+        viewed radargram.
+
+        TODO: consider moving this out of the main layer tree and into a
+        dock widget with other QIceRadar controls.
+        """
+        if self.symbology_group_initialized:
+            return
+
+        root = QgsProject.instance().layerTreeRoot()
+        if root is None:
+            raise Exception("Unable to retrieve layerTreeRoot; viewer will not work")
+
+        symbology_group_name = "QIceRadar Symbology"
+        symbology_group = root.findGroup(symbology_group_name)
+        if symbology_group is None:
+            self.symbology_group = root.insertGroup(0, symbology_group_name)
+        else:
+            self.symbology_group = symbology_group
+
+        # TODO: add layers!
+        self.symbology_group_initialized = True
+
 
     def build_spatial_index(self) -> None:
         """
@@ -1054,6 +1090,8 @@ class QIceRadarPlugin(QtCore.QObject):
         if not self.download_renderer_added:
             self.update_download_renderer()
 
+        self.create_symbology_group()
+
         download_selection_tool = QIceRadarSelectionTool(self.iface.mapCanvas())
         download_selection_tool.selected_point.connect(
             self.selected_download_point_callback
@@ -1079,6 +1117,7 @@ class QIceRadarPlugin(QtCore.QObject):
         QgsMessageLog.logMessage("User clicked run_viewer")
 
         self.create_radar_viewer_group()
+        self.create_symbology_group()
 
         if not self.ensure_valid_rootdir():
             return
