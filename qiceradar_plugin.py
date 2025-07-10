@@ -41,6 +41,8 @@ from typing import Dict, List, Optional, Tuple
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
 import PyQt5.QtWidgets as QtWidgets
+import PyQt5.QtXml as QtXml
+
 import yaml
 from qgis.core import (
     edit,
@@ -80,6 +82,7 @@ from .qiceradar_selection_widget import (
     QIceRadarSelectionTool,
     QIceRadarSelectionWidget,
 )
+from .qiceradar_symbology_widget import SymbologyWidget
 from .radar_viewer_window import RadarWindow
 
 
@@ -102,31 +105,6 @@ class QIceRadarPlugin(QtCore.QObject):
         self.supported_download_methods = ["nsidc", "wget"]
 
         self.download_window: Optional[DownloadWindow] = None
-
-        self.controls_window = ControlsWindow(self.iface)
-        self.controls_dock_widget = QgsDockWidget("QIceRadar Controls")
-        self.controls_dock_widget.setWidget(self.controls_window)
-
-        # This is an ugly hack where I hard code which widget to tab alongside...
-        # I could not figure out how to filter existing widgets based on area,
-        # widget.dockLocation() shows up in Qt 6.7, and we are still on Qt5.
-        dock_widgets = self.iface.mainWindow().findChildren(QtWidgets.QDockWidget)
-        msg = " ".join([widget.objectName() for widget in dock_widgets])
-        QgsMessageLog.logMessage(f"Found widgets: {msg}")
-        tab_widget = None
-        for widget in dock_widgets:
-            if widget.objectName() in ["MessageLog", "PythonConsole"]:
-                tab_widget = widget
-                break
-        if tab_widget is not None:
-            self.iface.mainWindow().tabifyDockWidget(tab_widget, self.controls_dock_widget)
-        else:
-            self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.controls_dock_widget)
-        # This does not always result in the controls which it being above
-        # everything else in the tab group. I wonder if posting log messages
-        # causes that panel to be made visible...
-        self.controls_dock_widget.setUserVisible(True)
-
 
         # The spatial index needs to be created for each new project
         # TODO: Consider whether to support user switching projects and
@@ -163,17 +141,7 @@ class QIceRadarPlugin(QtCore.QObject):
         # Need to wait for project to be opened before actually creating layer group
         self.radar_viewer_group: Optional[QgsLayerTreeGroup] = None
 
-        # For now, these layers go in the main layer tree, so we have to wait
-        # to initialize it.
-        self.symbology_group: Optional[QgsLayerTreeGroup] = None
-        self.style_layers: Dict[str, QgsMapLayer] = {}
-        self.symbology_group_initialized = False
-        # I have not been able to find a signal that triggers only once
-        # when the user changes the style of a layer, so we detect multiple
-        # calls and only update on the first.
-        self.style_changed_time = 0
-
-        # Similarly, need to wait for project with QIceRadar index to be loaded
+        # need to wait for project with QIceRadar index to be loaded
         # before we can modify the renderers to indicate downloaded transects
         self.download_renderer_added = False
 
@@ -207,6 +175,42 @@ class QIceRadarPlugin(QtCore.QObject):
                 cmd_folder, "icons/qiceradar_view.png"
             )
             viewer_icon = QtGui.QIcon(viewer_icon_path)
+
+        # This symbology widget needs to be instantiated here, since its
+        # signals and slots are tied tightly to the plugin.
+        self.symbology_widget = SymbologyWidget(self.iface)
+
+        # hook up signals
+        self.symbology_widget.trace_style_changed.connect(self.on_trace_style_changed)
+        self.symbology_widget.selected_style_changed.connect(self.on_selected_style_changed)
+        self.symbology_widget.segment_style_changed.connect(self.on_segment_style_changed)
+        self.symbology_widget.unavailable_line_style_changed.connect(self.on_unavailable_line_style_changed)
+        self.symbology_widget.unavailable_point_style_changed.connect(self.on_unavailable_point_style_changed)
+        self.symbology_widget.categorized_style_changed.connect(self.on_categorized_style_changed)
+
+        self.controls_window = ControlsWindow(self.symbology_widget)
+        self.controls_dock_widget = QgsDockWidget("QIceRadar Controls")
+        self.controls_dock_widget.setWidget(self.controls_window)
+
+        # This is an ugly hack where I hard code which widget to create a tab group with...
+        # I could not figure out how to filter existing widgets based on area,
+        # widget.dockLocation() shows up in Qt 6.7, and we are still on Qt5.
+        dock_widgets = self.iface.mainWindow().findChildren(QtWidgets.QDockWidget)
+        msg = " ".join([widget.objectName() for widget in dock_widgets])
+        QgsMessageLog.logMessage(f"Found widgets: {msg}")
+        tab_widget = None
+        for widget in dock_widgets:
+            if widget.objectName() in ["MessageLog", "PythonConsole"]:
+                tab_widget = widget
+                break
+        if tab_widget is not None:
+            self.iface.mainWindow().tabifyDockWidget(tab_widget, self.controls_dock_widget)
+        else:
+            self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.controls_dock_widget)
+        # This does not always result in the controls which it being above
+        # everything else in the tab group. I wonder if posting log messages
+        # causes that panel to be made visible...
+        self.controls_dock_widget.setUserVisible(True)
 
         # TODO: May want to support a different tooltip in the menu that
         #   launches a GUI where you can either type in a line or select
@@ -247,20 +251,6 @@ class QIceRadarPlugin(QtCore.QObject):
         curr_tool = self.iface.mapCanvas().mapTool()
         if isinstance(curr_tool, QIceRadarSelectionTool):
             self.iface.mapCanvas().unsetMapTool(curr_tool)
-
-        try:
-            self.style_layers["trace"].styleChanged.disconnect(self.update_trace_layer_style)
-            self.style_layers["selected"].styleChanged.disconnect(self.update_selected_layer_style)
-            self.style_layers["segment"].styleChanged.disconnect(self.update_segment_layer_style)
-            self.style_layers["categorized"].styleChanged.disconnect(self.update_categorized_layer_style)
-            self.style_layers["unavailable_multipoint"].styleChanged.disconnect(self.update_unavailable_multipoint_layer_style)
-            self.style_layers["unavailable_linestring"].styleChanged.disconnect(self.update_unavailable_linestring_layer_style)
-        except KeyError:
-            # If the plugin is reloaded before the style layers have been
-            # initialized, we expect a KeyError
-            pass
-        except Exception as ex:
-            QgsMessageLog.logMessage(f"unexpected exception when disconnecting style changed callback: {ex}, type={type(ex)}")
 
         self.iface.removeToolBarIcon(self.viewer_action)
         self.iface.removeToolBarIcon(self.downloader_action)
@@ -310,329 +300,48 @@ class QIceRadarPlugin(QtCore.QObject):
         else:
             self.radar_viewer_group = radar_group
 
-    def create_symbology_group(self) -> None:
+    def on_named_layer_style_changed(self, style_str: str, target_layer_name: str) -> None:
         """
-        Create group containing dummy layers for each of the symbols
-        the user might want to style.
+        Change the style for every layer in the radar viewer group with name
+        matching the target name.
 
-        Attach callbacks to these dummy layers that then set the style
-        indicating status of layers in the index or extent of currently
-        viewed radargram.
-
-        TODO: consider moving this out of the main layer tree and into a
-        dock widget with other QIceRadar controls.
-
-        For now, we're saving the style via the layer styling in the project,
-        which means we have to initialize after the project is loaded...
-        It might be cleaner to do so via QSettings, since:
-        * we don't currently detect that the layers have changed and update
-          our pointers to them
-        * it is confusing that the callbacks aren't attached until the user has
-          clicked one of the QIceRadar actions.
-
-        TODO: I actually really don't like saving the styles -- if the user has
-              borked them somehow, i want reloading QIceRadar to reset to a
-              known good state.
+        TODO: It might be more robust to explicitly keep a list of layers
+        that have been created, rather than filtering them on name (which the
+        users are able to change)
         """
-        # QgsMessageLog.logMessage(f"create_symbology_group")
-        if self.symbology_group_initialized:
-            return
+        if self.radar_viewer_group is None:
+            self.create_radar_viewer_group()
 
-        root = QgsProject.instance().layerTreeRoot()
-        if root is None:
-            raise Exception("Unable to retrieve layerTreeRoot; viewer will not work")
+        doc = QtXml.QDomDocument()
+        doc.setContent(style_str)
 
-        symbology_group_name = "QIceRadar Symbology"
-        symbology_group = root.findGroup(symbology_group_name)
-        if symbology_group is None:
-            symbology_group = root.insertGroup(0, symbology_group_name)
-        self.symbology_group = symbology_group
-
-        # TODO: add layers!
-
-        # QGIS layer & feature for the single-trace cursor
-        trace_layer = None
-        for layer_node in symbology_group.findLayers():
-            if layer_node.layer().name() == "Highlighted Trace":
-                trace_layer = layer_node.layer()
-                break
-
-        if trace_layer is not None:
-            # Leave the existing layer as-is; use its saved styling.
-            # QgsMessageLog.logMessage(f"...Found existing trace layer.")
-            pass
-        else:
-            # QgsMessageLog.logMessage(f"...Could not find trace layer")
-            trace_symbol = QgsMarkerSymbol.createSimple(
-                {
-                    "name": "circle",
-                    "color": QtGui.QColor.fromRgb(255, 255, 0, 255),
-                    "size": "8",
-                    "outline_style": "no"
-                }
-            )
-            trace_symbol.setOutputUnit(Qgis.RenderUnit.Points)
-            trace_uri = "point?crs=epsg:4326"
-            trace_layer = QgsVectorLayer(trace_uri, "Highlighted Trace", "memory")
-            trace_layer.renderer().setSymbol(trace_symbol)
-            QgsProject.instance().addMapLayer(trace_layer, False)
-            symbology_group.addLayer(trace_layer)
-
-        self.style_layers["trace"] = trace_layer
-
-        # Features for the displayed segment.
-        selected_layer = None
-        for layer_node in symbology_group.findLayers():
-            if layer_node.layer().name() == "Selected Region":
-                selected_layer = layer_node.layer()
-                break
-
-        if selected_layer is not None:
-            # QgsMessageLog.logMessage(f"...Found existing selection layer.")
-            pass
-        else:
-            # QgsMessageLog.logMessage(f"...Could not find selection layer")
-            selected_symbol = QgsLineSymbol.createSimple(
-                {
-                    "color": QtGui.QColor.fromRgb(255, 128, 30, 255),
-                    "line_width": 2,
-                }
-            )
-            selected_symbol.setOutputUnit(Qgis.RenderUnit.Points)
-            selected_uri = "LineString?crs=epsg:4326"
-            selected_layer = QgsVectorLayer(selected_uri, "Selected Region", "memory")
-            selected_layer.renderer().setSymbol(selected_symbol)
-            QgsProject.instance().addMapLayer(selected_layer, False)
-            symbology_group.addLayer(selected_layer)
-
-        self.style_layers["selected"] = selected_layer
-
-        # Finally, feature for the entire transect
-        segment_layer = None
-        for layer_node in symbology_group.findLayers():
-            if layer_node.layer().name() == "Full Transect":
-                segment_layer = layer_node.layer()
-                break
-
-        if segment_layer is not None:
-            # QgsMessageLog.logMessage(f"...Found existing full transect layer.")
-            pass
-        else:
-            # QgsMessageLog.logMessage(f"...Could not find full transect layer")
-            segment_symbol = QgsLineSymbol.createSimple(
-                {
-                    "color": QtGui.QColor.fromRgb(255, 0, 0, 255),
-                    "line_width": 1,
-                }
-            )
-            segment_symbol.setOutputUnit(Qgis.RenderUnit.Points)
-            segment_uri = "LineString?crs=epsg:4326"
-            segment_layer = QgsVectorLayer(segment_uri, "Full Transect", "memory")
-            segment_layer.renderer().setSymbol(segment_symbol)
-            QgsProject.instance().addMapLayer(segment_layer, False)
-            symbology_group.addLayer(segment_layer)
-
-        self.style_layers["segment"] = segment_layer
-
-        categorized_layer = None
-        for layer_node in symbology_group.findLayers():
-            try:
-                if layer_node.layer().name() == "Radargram Availability":
-                    categorized_layer = layer_node.layer()
-                    break
-            except Exception as ex:
-                # layer_node.layer() may be None if the layer is created but corrupt
-                QgsMessageLog.logMessage(f"{repr(ex)}")
-                continue
-        if categorized_layer is not None:
-            # QgsMessageLog.logMessage(f"...Found existing categorized layer.")
-            pass
-        else:
-            categorized_uri = "LineString?crs=epsg:4326"
-            categorized_layer = QgsVectorLayer(categorized_uri, "Radargram Availability", "memory")
-            symbol = QgsSymbol.defaultSymbol(categorized_layer.geometryType())
-            renderer = QgsRuleBasedRenderer(symbol)
-            root_rule = renderer.rootRule()
-
-            dl_rule = root_rule.children()[0].clone()
-            dl_rule.setLabel("Downloaded")
-            #QUESTION: Shall I go ahead and set the rules here, if we are going to be copying the symbology?
-            # => NO. the rules are layer-dependent, since they encode the root directory
-            dl_rule.symbol().setWidth(0.35) # Make them more visible
-            dl_rule.symbol().setColor(QtGui.QColor(133, 54, 229, 255))
-            root_rule.appendChild(dl_rule)
-
-            supported_rule = root_rule.children()[0].clone()
-            supported_rule.setLabel("Supported")
-            supported_rule.symbol().setColor(QtGui.QColor(31, 120, 180, 255))
-            root_rule.appendChild(supported_rule)
-
-            else_rule = root_rule.children()[0].clone()
-            else_rule.setLabel("Available")
-            else_rule.symbol().setColor(QtGui.QColor(68, 68, 68, 255))
-            root_rule.appendChild(else_rule)
-
-            root_rule.removeChildAt(0)
-
-            categorized_layer.setRenderer(renderer)
-            symbology_group.addLayer(categorized_layer)
-        self.style_layers["categorized"] = categorized_layer
-
-
-        # Update symbols for unavailable_multipoint and unavailable_linestring
-        # (I won't bother forcing their colors to match, though that could be confusing for users)
-        multipoint_layer = None
-        for layer_node in symbology_group.findLayers():
-            if layer_node.layer().name() == "Unavailable (Points)":
-                multipoint_layer = layer_node.layer()
-                break
-        if multipoint_layer is not None:
-            # QgsMessageLog.logMessage(f"...Found existing unavailable multipoint layer.")
-            pass
-        else:
-            # QgsMessageLog.logMessage(f"...Could not find existing unavailable multipoint layer.")
-            # TODO: Figure out how to disable the outline (stroke style)
-            multipoint_symbol = QgsMarkerSymbol.createSimple(
-                {
-                    "name": "circle",
-                    "color": QtGui.QColor.fromRgb(251, 154, 153, 255),
-                    "size": "1",
-                    "outline_style": "no"
-                }
-            )
-            multipoint_symbol.setOutputUnit(Qgis.RenderUnit.Points)
-            QgsMessageLog.logMessage(f"creating default multi point symbol properties: ")
-            QgsMessageLog.logMessage(f"{multipoint_symbol.symbolLayers()[0].properties()}")
-            multipoint_uri = "point?crs=epsg:4326"
-            multipoint_layer = QgsVectorLayer(multipoint_uri, "Unavailable (Points)", "memory")
-            multipoint_layer.renderer().setSymbol(multipoint_symbol)
-            QgsProject.instance().addMapLayer(multipoint_layer, False)
-            symbology_group.addLayer(multipoint_layer)
-        self.style_layers["unavailable_multipoint"] = multipoint_layer
-
-        linestring_layer = None
-        for layer_node in symbology_group.findLayers():
-            if layer_node.layer().name() == "Unavailable (Lines)":
-                linestring_layer = layer_node.layer()
-                break
-        if linestring_layer is not None:
-            # QgsMessageLog.logMessage(f"...Found existing unavailable linestring layer.")
-            pass
-        else:
-            # QgsMessageLog.logMessage(f"...Could not find existing unavailable linestring layer.")
-            linestring_symbol = QgsLineSymbol.createSimple(
-                {
-                    "color": QtGui.QColor.fromRgb(251, 154, 153, 255),
-                    "line_width": 1,
-                }
-            )
-            # pre 3.30,  QgsUnitTypes.RenderPoints
-            linestring_symbol.setOutputUnit(Qgis.RenderUnit.Points)
-            QgsMessageLog.logMessage(f"creating default line string symbol properties: ")
-            QgsMessageLog.logMessage(f"{linestring_symbol.symbolLayers()[0].properties()}")
-            linestring_uri = "LineString?crs=epsg:4326"
-            linestring_layer = QgsVectorLayer(linestring_uri, "Unavailable (Lines)", "memory")
-            linestring_layer.renderer().setSymbol(linestring_symbol)
-            QgsProject.instance().addMapLayer(linestring_layer, False)
-            symbology_group.addLayer(linestring_layer)
-        self.style_layers["unavailable_linestring"] = linestring_layer
-
-
-        # This is called *twice* when the user clicks "Apply" or "OK" in the
-        # layer properties dialog; I experimented with other signals to no avail:
-        # * styleLoaded is never triggered
-        # * rendererChanged and styleChanged trigger twice
-        # * repaintRequester triggers 3x
-        # So ... I have implemented logic to only update styles once per second
-        # These callbacks need to be passed as an argument to disconnect, so don't use lambdas.
-        self.style_layers["trace"].styleChanged.connect(self.update_trace_layer_style)
-        self.style_layers["selected"].styleChanged.connect(self.update_selected_layer_style)
-        self.style_layers["segment"].styleChanged.connect(self.update_segment_layer_style)
-        self.style_layers["categorized"].styleChanged.connect(self.update_categorized_layer_style)
-        self.style_layers["unavailable_multipoint"].styleChanged.connect(self.update_unavailable_multipoint_layer_style)
-        self.style_layers["unavailable_linestring"].styleChanged.connect(self.update_unavailable_linestring_layer_style)
-
-        self.symbology_group_initialized = True
-
-    def copy_layer_style(self, source_layer, target_layer):
-        # copied from https://gis.stackexchange.com/questions/444905/copying-layer-styles-using-pyqgis
-        style_name = source_layer.styleManager().currentStyle()
-        style = source_layer.styleManager().style(style_name)
-
-        # addStyle will not override a style name, so remove it first
-        target_layer.styleManager().removeStyle('copied')
-        target_layer.styleManager().addStyle('copied', style)
-        target_layer.styleManager().setCurrentStyle('copied')
-
-        # Surprisingly, this doesn't seem to be required...maybe these
-        # callbacks are executed before the canvas refresh triggered by
-        # the user editing the symbology layer happens?
-        # target_layer.triggerRepaint()
-        # target_layer.emitStyleChanged()
-
-    def update_trace_layer_style(self):
-        QgsMessageLog.logMessage(f"Trace layer style changed")
-        if time.time() - self.style_changed_time < 1.0:
-            QgsMessageLog.logMessage(f"...repeated call, skipping")
-            return
         for layer in self.radar_viewer_group.findLayers():
-            if layer.layer().name() != "Highlighted Trace":
+            if layer.layer().name() != target_layer_name:
                 continue
-            QgsMessageLog.logMessage(f"Updating trace style for {layer.parent().name()}!")
-            self.copy_layer_style(self.style_layers["trace"], layer.layer())
-        self.style_changed_time = time.time()
+            # QgsMessageLog.logMessage(f"Updating style for {layer.parent().name()}")
+            result = layer.layer().importNamedStyle(doc)
+            layer.layer().triggerRepaint()
 
-    def update_selected_layer_style(self):
-        QgsMessageLog.logMessage(f"Selected layer style changed")
-        if time.time() - self.style_changed_time < 1.0:
-            QgsMessageLog.logMessage(f"...repeated call, skipping")
-            return
-        for layer in self.radar_viewer_group.findLayers():
-            if layer.layer().name() != "Selected Region":
-                continue
-            QgsMessageLog.logMessage(f"Updating selected region style for {layer.parent().name()}!")
-            self.copy_layer_style(self.style_layers["selected"], layer.layer())
-        self.style_changed_time = time.time()
+    def on_trace_style_changed(self, style_str: str):
+        QgsMessageLog.logMessage(f"on_trace_style_changed")
+        self.on_named_layer_style_changed(style_str, "Highlighted Trace")
 
-    def update_segment_layer_style(self):
-        QgsMessageLog.logMessage(f"Segment layer style changed")
-        if time.time() - self.style_changed_time < 1.0:
-            QgsMessageLog.logMessage(f"...repeated call, skipping")
-            return
-        for layer in self.radar_viewer_group.findLayers():
-            if layer.layer().name() != "Full Transect":
-                continue
-            QgsMessageLog.logMessage(f"Updating full segment style for {layer.parent().name()}!")
-            self.copy_layer_style(self.style_layers["segment"], layer.layer())
-        self.style_changed_time = time.time()
+    def on_selected_style_changed(self, style_str: str):
+        QgsMessageLog.logMessage(f"on_selected_style_changed")
+        self.on_named_layer_style_changed(style_str, "Selected Region")
 
-    def update_categorized_layer_style(self):
-        QgsMessageLog.logMessage(f"Categorized layer style changed")
-        if time.time() - self.style_changed_time < 1.0:
-            QgsMessageLog.logMessage(f"...repeated call, skipping")
-            return
+    def on_segment_style_changed(self, style_str: str):
+        QgsMessageLog.logMessage(f"on_segment_style_changed")
+        self.on_named_layer_style_changed(style_str, "Full Transect")
 
-        # This update assumes that rule based renderers have already been created,
-        # so initialize them if necessary
-        if not self.download_renderer_added:
-            self.update_download_renderer()
+    def on_categorized_style_changed(self, style_str: str):
+        QgsMessageLog.logMessage(f"on_categorized_style_changed")
 
-        source_renderer = self.style_layers["categorized"].renderer()
-        downloaded_symbol, supported_symbol, available_symbol = None, None, None
-        for rule in source_renderer.rootRule().children():
-            if rule.label() == "Downloaded":
-                downloaded_symbol = rule.symbol()
-            elif rule.label() == "Supported":
-                supported_symbol = rule.symbol()
-            elif rule.label() == "Available":
-                available_symbol = rule.symbol().clone()
 
-        if downloaded_symbol is None or supported_symbol is None or available_symbol is None:
-            msg = "Invalid Radargram Availability layer; reload QIceRadar"
-            message_box = QtWidgets.QMessageBox()
-            message_box.setText(errmsg)
-            message_box.exec()
-            return
+        # # We can't import the whole style, since it will overwrite the rules
+        # for the categorized renderer. We only want to set the symbols.
+        doc = QtXml.QDomDocument()
+        doc.setContent(style_str)
 
         index_group = self.find_index_group()
         for layer in index_group.findLayers():
@@ -651,56 +360,62 @@ class QIceRadarPlugin(QtCore.QObject):
                 # QgsMessageLog.logMessage(f"...skipping {layer.layer().name()}")
                 continue
 
-            # QgsMessageLog.logMessage(f"...Updating full segment style for {layer.layer().name()}")
-
+            # This feels really hacky -- I couldn't figur eout how to only grab
+            # symbol styles, so we copy over the whole style, then restore the
+            # filter rules for the renderer.
+            download_filter, supported_filter, else_filter = None, None, None
             for rule in dest_renderer.rootRule().children():
-                # new_symbol = QgsSymbol.defaultSymbol(layer.geometryType())
                 if rule.label() == "Downloaded":
-                    rule.setSymbol(downloaded_symbol.clone())
+                    download_filter = rule.filterExpression()
                 elif rule.label() == "Supported":
-                    rule.setSymbol(supported_symbol.clone())
+                    supported_filter = rule.filterExpression()
                 elif rule.label() == "Available":
-                    rule.setSymbol(available_symbol.clone())
+                    else_filter = rule.filterExpression()
+            # QgsMessageLog.logMessage(f"download_filter = {download_filter}")
+            # QgsMessageLog.logMessage(f"supported_filter = {supported_filter}")
+            # QgsMessageLog.logMessage(f"else_filter = {else_filter}")
+
+            result = layer.layer().importNamedStyle(doc)
+
+            # Have to grab renderer again, since importing the style changed it.
+            dest_renderer = layer.layer().renderer()
+            for rule in dest_renderer.rootRule().children():
+                if rule.label() == "Downloaded":
+                    rule.setFilterExpression(download_filter)
+                elif rule.label() == "Supported":
+                    rule.setFilterExpression(supported_filter)
+                elif rule.label() == "Available":
+                    rule.setFilterExpression(else_filter)
+            layer.layer().setRenderer(dest_renderer)
 
             self.iface.layerTreeView().refreshLayerSymbology(layer.layer().id())
             layer.layer().triggerRepaint()
 
-        self.style_changed_time = time.time()
 
-    def update_unavailable_multipoint_layer_style(self):
-        QgsMessageLog.logMessage(f"Unavailable point layer style changed. user selected:")
-        renderer_symbol=self.style_layers['unavailable_multipoint'].renderer().symbol()
-        QgsMessageLog.logMessage(f"{renderer_symbol.symbolLayers()[0].properties()}")
-        # The pyQGIS cookbook still uses QgsWkbTypes.PointGeometry, though
-        # the documentation seems to suggest using QgsWkbTypes.GeometryType.Point
-        self.update_unavailable_layer_style(QgsWkbTypes.PointGeometry)
+    def on_unavailable_point_style_changed(self, style_str: str):
+        self.update_unavailable_layer_style(style_str, QgsWkbTypes.PointGeometry)
 
-    def update_unavailable_linestring_layer_style(self):
-        QgsMessageLog.logMessage(f"Unavailable line layer style changed. user selected:")
-        # Dump user selected properties for debugging
-        renderer_symbol=self.style_layers['unavailable_linestring'].renderer().symbol()
-        QgsMessageLog.logMessage(f"{renderer_symbol.symbolLayers()[0].properties()}")
-        # Same as above, we might want QgsWkbTypes.GeometryType.Line
-        self.update_unavailable_layer_style(QgsWkbTypes.LineGeometry)
+    def on_unavailable_line_style_changed(self, style_str: str):
+        self.update_unavailable_layer_style(style_str, QgsWkbTypes.LineGeometry)
 
     # NOTE: I'm unsure about the typing here ... might only be valid for
     #       post-3.30, while I'm using the older types.
-    def update_unavailable_layer_style(self, geom_type=QgsWkbTypes.GeometryType):
+    def update_unavailable_layer_style(self, style_str: str, geom_type: QgsWkbTypes.GeometryType) -> None:
         """
-        Copy style from the style layer to all layers with unavailable data
-        that match the input geometry type.
+        Copy style from the style layer to all layers in the QIceRadar index
+        with unavailable data that match the input geometry type.
 
         This takes a few seconds, but I don't think I can make it any faster
         with the current layer organization, since the bulk of the time is spent
         simply iterating through layers and grabbing the first feature.
         """
-        if time.time() - self.style_changed_time < 1.0:
-            QgsMessageLog.logMessage(f"...repeated call, skipping")
-            return
 
         index_group = self.find_index_group()
         if index_group is None:
             return
+
+        doc = QtXml.QDomDocument()
+        doc.setContent(style_str)
 
         for layer in index_group.findLayers():
             features = layer.layer().getFeatures()
@@ -717,17 +432,12 @@ class QIceRadarPlugin(QtCore.QObject):
                 continue
 
             if feature.geometry().type() == geom_type:
-                if geom_type is QgsWkbTypes.PointGeometry:
-                    # QgsMessageLog.logMessage(f"Updating unavailable multipoint style for {layer.name()}!")
-                    self.copy_layer_style(self.style_layers["unavailable_multipoint"], layer.layer())
-                elif geom_type is QgsWkbTypes.LineGeometry:
-                    # QgsMessageLog.logMessage(f"Updating unavailable linestring style for {layer.name()}!")
-                    self.copy_layer_style(self.style_layers["unavailable_linestring"], layer.layer())
+                layer.layer().importNamedStyle(doc)
+                layer.layer().triggerRepaint()
 
         # This also seems to be optional, though the cookbook says it should be done.
         self.iface.mapCanvas().refresh()
 
-        self.style_changed_time = time.time()
 
     def find_index_group(self) -> Optional[QgsLayerTreeGroup]:
         # QgsMessageLog.logMessage("find_index_group")
@@ -1178,27 +888,37 @@ class QIceRadarPlugin(QtCore.QObject):
         points = list(zip(rw.radar_data.lon, rw.radar_data.lat))
         self.update_segment_points(db_granule.granule_name, points)
 
+        # QUESTION: Is storing a dict of dock widgets all I need to do to
+        # allow multiple radargrams to be open at once? (In that case, both
+        # the quit and the ex button would need to remove and clean up the
+        # dock widget. And I would want to initialize them as tabs within
+        # the same area...)
         self.dw = QtWidgets.QDockWidget(db_granule.granule_name)
         self.dw.setWidget(rw)
         self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.dw)
 
-    def setup_qgis_layers(self, transect_name: str) -> None:
+    def setup_qgis_layers(self, granule_name: str) -> None:
         if self.radar_viewer_group is None:
             raise Exception(
                 "Error -- by the time setup_qgis_layers is called, radar_viewer_group should have been created!"
             )
 
-        transect_group = self.radar_viewer_group.findGroup(transect_name)
-        if transect_group is None:
-            QgsMessageLog.logMessage(f"Could not find existing group for granule: {transect_name}")
-            transect_group = self.radar_viewer_group.addGroup(transect_name)
+        granule_group = self.radar_viewer_group.findGroup(granule_name)
+        if granule_group is None:
+            QgsMessageLog.logMessage(f"Could not find existing group for granule: {granule_name}")
+            granule_group = self.radar_viewer_group.addGroup(granule_name)
         else:
-            QgsMessageLog.logMessage(f"Found existing group for granule: {transect_name}")
-        self.transect_groups[transect_name] = transect_group
+            QgsMessageLog.logMessage(f"Found existing group for granule: {granule_name}")
+        self.transect_groups[granule_name] = granule_group
+        self.add_trace_layer(granule_group, granule_name)
+        self.add_selected_layer(granule_group, granule_name)
+        self.add_segment_layer(granule_group, granule_name)
 
+
+    def add_trace_layer(self, granule_group: QgsLayerTreeGroup, granule_name: str) -> None:
         # QGIS layer & feature for the single-trace cursor
         trace_layer = None
-        for layer_node in transect_group.findLayers():
+        for layer_node in granule_group.findLayers():
             if layer_node.layer().name() == "Highlighted Trace":
                 trace_layer = layer_node.layer()
                 break
@@ -1207,14 +927,24 @@ class QIceRadarPlugin(QtCore.QObject):
             QgsMessageLog.logMessage(f"Could not find trace layer")
             trace_uri = "point?crs=epsg:4326"
             trace_layer = QgsVectorLayer(trace_uri, "Highlighted Trace", "memory")
-            self.copy_layer_style(self.style_layers["trace"], trace_layer)
             QgsProject.instance().addMapLayer(trace_layer, False)
-            transect_group.addLayer(trace_layer)
+            granule_group.addLayer(trace_layer)
         else:
             QgsMessageLog.logMessage(f"Found existing trace layer.")
             # It is easiest to just delete all features and recreate what we need
             with edit(trace_layer):
                 trace_layer.deleteFeatures(trace_layer.allFeatureIds())
+
+        qs = QtCore.QSettings()
+        style_str = qs.value("qiceradar_config/trace_layer_style", None)
+        if style_str is None:
+            QgsMessageLog.logMessage(f"Could not find: qiceradar_config/trace_layer_style")
+        else:
+            doc = QtXml.QDomDocument()
+            doc.setContent(style_str)
+            result = trace_layer.importNamedStyle(doc)
+            if not result:
+                QgsMessageLog.logMessage(f"add_trace_layer: {result}")
 
         trace_feature = QgsFeature()
         # Initialize to the pole, then expect the RadarViewer to update it immediately
@@ -1223,12 +953,13 @@ class QIceRadarPlugin(QtCore.QObject):
         trace_provider = trace_layer.dataProvider()
         trace_provider.addFeature(trace_feature)
         trace_layer.updateExtents()
-        self.trace_features[transect_name] = trace_feature
-        self.trace_layers[transect_name] = trace_layer
+        self.trace_features[granule_name] = trace_feature
+        self.trace_layers[granule_name] = trace_layer
 
+    def add_selected_layer(self, granule_group: QgsLayerTreeGroup, granule_name: str) -> None:
         # Features for the displayed segment.
         selected_layer = None
-        for layer_node in transect_group.findLayers():
+        for layer_node in granule_group.findLayers():
             if layer_node.layer().name() == "Selected Region":
                 selected_layer = layer_node.layer()
                 break
@@ -1237,13 +968,23 @@ class QIceRadarPlugin(QtCore.QObject):
             QgsMessageLog.logMessage(f"Could not find selection layer")
             selected_uri = "LineString?crs=epsg:4326"
             selected_layer = QgsVectorLayer(selected_uri, "Selected Region", "memory")
-            self.copy_layer_style(self.style_layers["selected"], selected_layer)
             QgsProject.instance().addMapLayer(selected_layer, False)
-            transect_group.addLayer(selected_layer)
+            granule_group.addLayer(selected_layer)
         else:
             QgsMessageLog.logMessage(f"Found existing selection layer.")
             with edit(selected_layer):
                 selected_layer.deleteFeatures(selected_layer.allFeatureIds())
+
+        qs = QtCore.QSettings()
+        style_str = qs.value("qiceradar_config/selected_layer_style", None)
+        if style_str is None:
+            QgsMessageLog.logMessage(f"Could not find: qiceradar_config/selected_layer_style")
+        else:
+            doc = QtXml.QDomDocument()
+            doc.setContent(style_str)
+            result = selected_layer.importNamedStyle(doc)
+            if not result:
+                QgsMessageLog.logMessage(f"add_selected_layer: {result}")
 
         selected_feature = QgsFeature()
         selected_geometry = QgsLineString([QgsPoint(0, -90)])
@@ -1251,15 +992,16 @@ class QIceRadarPlugin(QtCore.QObject):
         selected_provider = selected_layer.dataProvider()
         selected_provider.addFeature(selected_feature)
         selected_layer.updateExtents()
-        self.radar_xlim_features[transect_name] = selected_feature
-        self.radar_xlim_layers[transect_name] = selected_layer
+        self.radar_xlim_features[granule_name] = selected_feature
+        self.radar_xlim_layers[granule_name] = selected_layer
 
+    def add_segment_layer(self, granule_group: QgsLayerTreeGroup, granule_name: str) -> None:
         # Finally, feature for the entire transect
         # TODO: How to get the geometry _here_? We should know it
         # at this point, and it won't change. However, all other
         # geometry is provided in one of the callbacks...
         segment_layer = None
-        for layer_node in transect_group.findLayers():
+        for layer_node in granule_group.findLayers():
             if layer_node.layer().name() == "Full Transect":
                 segment_layer = layer_node.layer()
                 break
@@ -1268,14 +1010,24 @@ class QIceRadarPlugin(QtCore.QObject):
             QgsMessageLog.logMessage(f"Could not find full transect layer")
             segment_uri = "LineString?crs=epsg:4326"
             segment_layer = QgsVectorLayer(segment_uri, "Full Transect", "memory")
-            self.copy_layer_style(self.style_layers["segment"], segment_layer)
             QgsProject.instance().addMapLayer(segment_layer, False)
-            transect_group.addLayer(segment_layer)
+            granule_group.addLayer(segment_layer)
         else:
             QgsMessageLog.logMessage(f"Found existing full transect layer.")
             with edit(segment_layer):
                 segment_layer.deleteFeatures(segment_layer.allFeatureIds())
         segment_geometry = QgsLineString([QgsPoint(0, -90)])
+
+        qs = QtCore.QSettings()
+        style_str = qs.value("qiceradar_config/segment_layer_style", None)
+        if style_str is None:
+            QgsMessageLog.logMessage(f"Could not find: qiceradar_config/segment_layer_style")
+        else:
+            doc = QtXml.QDomDocument()
+            doc.setContent(style_str)
+            result = segment_layer.importNamedStyle(doc)
+            if not result:
+                QgsMessageLog.logMessage(f"add_segment_layer: {result}")
 
         segment_feature = QgsFeature()
         segment_geometry = QgsLineString([QgsPoint(0, -90)])
@@ -1284,8 +1036,8 @@ class QIceRadarPlugin(QtCore.QObject):
         segment_provider.addFeature(segment_feature)
         segment_layer.updateExtents()
 
-        self.segment_features[transect_name] = segment_feature
-        self.segment_layers[transect_name] = segment_layer
+        self.segment_features[granule_name] = segment_feature
+        self.segment_layers[granule_name] = segment_layer
 
     def update_trace_callback(self, transect_name: str, lon: float, lat: float) -> None:
         """
@@ -1434,23 +1186,6 @@ class QIceRadarPlugin(QtCore.QObject):
         """
         qiceradar_group = self.find_index_group()
 
-        # TODO: this block duplicates code in update_categorized_layer_style...
-        source_renderer = self.style_layers["categorized"].renderer()
-        downloaded_symbol, supported_symbol, available_symbol = None, None, None
-        for rule in source_renderer.rootRule().children():
-            if rule.label() == "Downloaded":
-                downloaded_symbol = rule.symbol()
-            elif rule.label() == "Supported":
-                supported_symbol = rule.symbol()
-            elif rule.label() == "Available":
-                available_symbol = rule.symbol().clone()
-        if downloaded_symbol is None or supported_symbol is None or available_symbol is None:
-            msg = "Invalid Radargram Availability layer; reload QIceRadar"
-            message_box = QtWidgets.QMessageBox()
-            message_box.setText(errmsg)
-            message_box.exec()
-            return
-
         # Converting the Path object back to string in order to work on windows
         # (Can't use path.join within the filter expression)
         # Otherwise, we were getting D:\RadarData/ANTARCTIC, which doesn't work,
@@ -1485,20 +1220,17 @@ class QIceRadarPlugin(QtCore.QObject):
             dl_rule.setFilterExpression(
                 f"""length("relative_path") > 0 and file_exists('{rootdir}/' + "relative_path")"""
             )
-            dl_rule.setSymbol(downloaded_symbol.clone())
             root_rule.appendChild(dl_rule)
 
             #  distinction between "a" and "s" in the geopackage database
             supported_rule = root_rule.children()[0].clone()
             supported_rule.setLabel("Supported")
             supported_rule.setFilterExpression(f"""length("relative_path") > 0 and not file_exists('{self.config.rootdir}/' + "relative_path")""")
-            supported_rule.setSymbol(supported_symbol.clone())
             root_rule.appendChild(supported_rule)
 
             else_rule = root_rule.children()[0].clone()
             else_rule.setLabel("Available")
             else_rule.setFilterExpression("ELSE")
-            else_rule.setSymbol(available_symbol.clone())
             root_rule.appendChild(else_rule)
 
             root_rule.removeChildAt(0)
@@ -1509,6 +1241,12 @@ class QIceRadarPlugin(QtCore.QObject):
 
         self.download_renderer_added = True
 
+        # Hacky way to force styles to be updated from the config
+        qs = QtCore.QSettings()
+        style_str = qs.value("qiceradar_config/categorized_layer_style", None)
+        if style_str is not None:
+            self.on_categorized_style_changed(style_str)
+
     def run_downloader(self) -> None:
         QgsMessageLog.logMessage("User clicked run_downloader")
         if not self.ensure_valid_rootdir():
@@ -1518,8 +1256,6 @@ class QIceRadarPlugin(QtCore.QObject):
             self.build_spatial_index()
         if not self.download_renderer_added:
             self.update_download_renderer()
-
-        self.create_symbology_group()
 
         download_selection_tool = QIceRadarSelectionTool(self.iface.mapCanvas())
         download_selection_tool.selected_point.connect(
@@ -1546,7 +1282,6 @@ class QIceRadarPlugin(QtCore.QObject):
         QgsMessageLog.logMessage("User clicked run_viewer")
 
         self.create_radar_viewer_group()
-        self.create_symbology_group()
 
         if not self.ensure_valid_rootdir():
             return

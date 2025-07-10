@@ -28,8 +28,12 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import time
+
+import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
 import PyQt5.QtWidgets as QtWidgets
+import PyQt5.QtXml as QtXml
 
 from qgis.core import (
     Qgis,
@@ -37,8 +41,10 @@ from qgis.core import (
     QgsLayerTreeModel,
     QgsLineSymbol,
     QgsMarkerSymbol,
+    QgsMessageLog,
     QgsProject,
     QgsRuleBasedRenderer,
+    QgsSettings,
     QgsSymbol,
     QgsVectorLayer,
 )
@@ -46,6 +52,7 @@ from qgis.gui import (
     QgsLayerTreeView,
     QgsLayerTreeViewMenuProvider,
 )
+
 
 class SymbologyMenuProvider(QgsLayerTreeViewMenuProvider):
     def __init__(self, view, iface):
@@ -59,30 +66,64 @@ class SymbologyMenuProvider(QgsLayerTreeViewMenuProvider):
 
         menu = QtWidgets.QMenu()
         layer_properties_action = QtWidgets.QAction("Layer Properties", menu)
-        layer_properties_action.triggered.connect(self.openLayerProperties)
+        layer_properties_action.triggered.connect(self.open_layer_properties)
         menu.addAction(layer_properties_action)
+
         return menu
 
-    def openLayerProperties(self):
+    def open_layer_properties(self):
         self.iface.showLayerProperties(self.view.currentLayer(), 'mOptsPage_Symbology')
 
 
 class SymbologyWidget(QtWidgets.QWidget):
+    """
+    Create layer tree containing dummy layers for each of the symbols
+    the user might want to style.
+
+    Attach callbacks to these dummy layers that then emit a signal indicating
+    that the corresponding layer styles should be updated.
+    """
+    trace_style_changed = QtCore.pyqtSignal(str)
+    selected_style_changed = QtCore.pyqtSignal(str)
+    segment_style_changed = QtCore.pyqtSignal(str)
+    unavailable_point_style_changed = QtCore.pyqtSignal(str)
+    unavailable_line_style_changed = QtCore.pyqtSignal(str)
+    categorized_style_changed = QtCore.pyqtSignal(str)
+
+    # Keys for accessing layer styles in the global QGIS settings
+    trace_style_config_key = "qiceradar_config/trace_layer_style"
+    selected_style_config_key = "qiceradar_config/selected_layer_style"
+    segment_style_config_key = "qiceradar_config/segment_layer_style"
+    unavailable_point_style_config_key = "qiceradar_config/unavailable_point_layer_style"
+    unavailable_line_style_config_key = "qiceradar_config/unavailable_line_layer_style"
+    categorized_style_config_key = "qiceradar_config/categorized_layer_style"
+
+
     def __init__(self, iface) -> None:
         super().__init__()
         self.iface = iface
+        # I have not been able to find a signal that triggers only once
+        # when the user changes the style of a layer, so we detect multiple
+        # calls and only update on the first.
+        self.style_changed_time = 0.0
 
         self.tree_root, self.view, self.model = SymbologyWidget.setup_tree_view(self.iface)
         self.setup_layers(self.tree_root)
         self.setup_ui()
 
     def setup_ui(self) -> None:
-        layout = QtWidgets.QHBoxLayout()
-        layout.addWidget(self.view)
-        self.setLayout(layout)
+        vbox = QtWidgets.QVBoxLayout()
 
-    # TODO: need to disconnect callbacks when plugin is unloaded
-    # TODO: hook these styles up to the configuration for save/load
+        label = QtWidgets.QLabel("Layer Styles")
+        label.setAlignment(QtCore.Qt.AlignCenter)
+        reset_button = QtWidgets.QPushButton("Reset Defaults")
+        reset_button.clicked.connect(self.reset_styles_to_default)
+
+        vbox.addWidget(label)
+        vbox.addWidget(self.view)
+        vbox.addWidget(reset_button)
+
+        self.setLayout(vbox)
 
     @staticmethod
     def setup_tree_view(iface) -> (QgsLayerTree, QgsLayerTreeView, QgsLayerTreeModel):
@@ -105,31 +146,152 @@ class SymbologyWidget(QtWidgets.QWidget):
         self.trace_layer = SymbologyWidget.add_trace_layer(root)
         self.selected_layer = SymbologyWidget.add_selected_layer(root)
         self.segment_layer = SymbologyWidget.add_segment_layer(root)
+        self.point_layer = SymbologyWidget.add_unavailable_multipoint_layer(root)
+        self.line_layer = SymbologyWidget.add_unavailable_linestring_layer(root)
         self.categorized_layer = SymbologyWidget.add_categorized_layer(root)
-        self.multipoint_layer = SymbologyWidget.add_unavailable_multipoint_layer(root)
-        self.linestring_layer = SymbologyWidget.add_unavailable_linestring_layer(root)
 
-        # TODO: setup callbacks to act on the main layer tree root
+        # The styleChanged signal is emitted twice when the user clicks
+        # "Apply" or "OK" in the layer properties dialog; I experimented
+        # with other signals to no avail:
+        # * styleLoaded is never triggered
+        # * rendererChanged and styleChanged trigger twice
+        # * repaintRequester triggers 3x
+        # So ... I have implemented logic to only update styles once per second
+        self.trace_layer.styleChanged.connect(self.update_trace_layer_style)
+        self.selected_layer.styleChanged.connect(self.update_selected_layer_style)
+        self.segment_layer.styleChanged.connect(self.update_segment_layer_style)
+        self.point_layer.styleChanged.connect(self.update_unavailable_point_layer_style)
+        self.line_layer.styleChanged.connect(self.update_unavailable_line_layer_style)
+        self.categorized_layer.styleChanged.connect(self.update_categorized_layer_style)
+
+    def reset_styles_to_default(self) -> None:
+        """
+        Reset all styles in the symbology widget to their defaults
+        """
+        trace_symbol = SymbologyWidget.make_trace_symbol()
+        self.trace_layer.renderer().setSymbol(trace_symbol)
+
+        selected_symbol = SymbologyWidget.make_selected_symbol()
+        self.selected_layer.renderer().setSymbol(selected_symbol)
+
+        segment_symbol = SymbologyWidget.make_segment_symbol()
+        self.segment_layer.renderer().setSymbol(segment_symbol)
+
+        multipoint_symbol = SymbologyWidget.make_unavailable_point_symbol()
+        self.point_layer.renderer().setSymbol(multipoint_symbol)
+
+        linestring_symbol = SymbologyWidget.make_unavailable_line_symbol()
+        self.line_layer.renderer().setSymbol(linestring_symbol)
+
+        categorized_renderer = SymbologyWidget.make_categorized_renderer()
+        self.categorized_layer.setRenderer(categorized_renderer)
+
+        for layer in [self.trace_layer, self.selected_layer, self.segment_layer, self.point_layer, self.line_layer, self.categorized_layer]:
+            self.view.refreshLayerSymbology(layer.id())
+
+        # Every style might have changed, so go ahead and trigger updates for all.
+        # We need to force the update since this programmatic triggering
+        # may trigger them faster than the timeout to detect duplicate signals.
+        self.update_trace_layer_style(force_update=True)
+        self.update_selected_layer_style(force_update=True)
+        self.update_segment_layer_style(force_update=True)
+        self.update_unavailable_point_layer_style(force_update=True)
+        self.update_unavailable_line_layer_style(force_update=True)
+        # We don't need to manually force the update for the categorized layer,
+        # since setting the renderer triggers that.
+        # self.update_categorized_layer_style(force_update=True)
 
     @staticmethod
-    def add_unavailable_linestring_layer(root: QgsLayerTree) -> QgsVectorLayer:
-        linestring_symbol = QgsLineSymbol.createSimple(
+    def make_trace_symbol() -> QgsMarkerSymbol:
+        trace_symbol = QgsMarkerSymbol.createSimple(
             {
-                "color": QtGui.QColor.fromRgb(251, 154, 153, 255),
+                "name": "circle",
+                "color": QtGui.QColor.fromRgb(255, 255, 0, 255),
+                "size": "8",
+                "outline_style": "no"
+            }
+        )
+        trace_symbol.setOutputUnit(Qgis.RenderUnit.Points)
+        return trace_symbol
+
+    @staticmethod
+    def add_trace_layer(root: QgsLayerTree) -> QgsVectorLayer:
+        trace_uri = "point?crs=epsg:4326"
+        trace_layer = QgsVectorLayer(trace_uri, "Highlighted Trace", "memory")
+
+        qs = QtCore.QSettings()
+        style_str = qs.value(SymbologyWidget.trace_style_config_key, None)
+        if style_str is None:
+            trace_symbol = SymbologyWidget.make_trace_symbol()
+            trace_layer.renderer().setSymbol(trace_symbol)
+        else:
+            doc = QtXml.QDomDocument()
+            doc.setContent(style_str)
+            result = trace_layer.importNamedStyle(doc)
+
+        root.addLayer(trace_layer)
+        return trace_layer
+
+    @staticmethod
+    def make_selected_symbol() -> QgsLineSymbol:
+        selected_symbol = QgsLineSymbol.createSimple(
+            {
+                "color": QtGui.QColor.fromRgb(255, 128, 30, 255),
+                "line_width": 2,
+            }
+        )
+        selected_symbol.setOutputUnit(Qgis.RenderUnit.Points)
+        return selected_symbol
+
+    @staticmethod
+    def add_selected_layer(root: QgsLayerTree) -> QgsVectorLayer:
+        selected_uri = "LineString?crs=epsg:4326"
+        selected_layer = QgsVectorLayer(selected_uri, "Selected Region", "memory")
+
+        qs = QtCore.QSettings()
+        style_str = qs.value(SymbologyWidget.selected_style_config_key, None)
+        if style_str is None:
+            selected_symbol = SymbologyWidget.make_selected_symbol()
+            selected_layer.renderer().setSymbol(selected_symbol)
+        else:
+            doc = QtXml.QDomDocument()
+            doc.setContent(style_str)
+            result = selected_layer.importNamedStyle(doc)
+
+        root.addLayer(selected_layer)
+        return selected_layer
+
+    @staticmethod
+    def make_segment_symbol() -> QgsLineSymbol:
+        segment_symbol = QgsLineSymbol.createSimple(
+            {
+                "color": QtGui.QColor.fromRgb(255, 0, 0, 255),
                 "line_width": 1,
             }
         )
-        # pre 3.30,  QgsUnitTypes.RenderPoints
-        linestring_symbol.setOutputUnit(Qgis.RenderUnit.Points)
-        linestring_uri = "LineString?crs=epsg:4326"
-        linestring_layer = QgsVectorLayer(linestring_uri, "Unavailable (Lines)", "memory")
-        linestring_layer.renderer().setSymbol(linestring_symbol)
-        QgsProject.instance().addMapLayer(linestring_layer, False)
-        root.addLayer(linestring_layer)
-        return linestring_layer
+        segment_symbol.setOutputUnit(Qgis.RenderUnit.Points)
+        return segment_symbol
 
     @staticmethod
-    def add_unavailable_multipoint_layer(root: QgsLayerTree) -> QgsVectorLayer:
+    def add_segment_layer(root: QgsLayerTree) -> QgsVectorLayer:
+        segment_uri = "LineString?crs=epsg:4326"
+        segment_layer = QgsVectorLayer(segment_uri, "Full Transect", "memory")
+
+        qs = QtCore.QSettings()
+        style_str = qs.value(SymbologyWidget.segment_style_config_key, None)
+        if style_str is None:
+            segment_symbol = SymbologyWidget.make_segment_symbol()
+            segment_layer.renderer().setSymbol(segment_symbol)
+        else:
+            doc = QtXml.QDomDocument()
+            doc.setContent(style_str)
+            result = segment_layer.importNamedStyle(doc)
+
+        root.addLayer(segment_layer)
+        return segment_layer
+
+    @staticmethod
+    def make_unavailable_point_symbol() -> QgsMarkerSymbol:
         multipoint_symbol = QgsMarkerSymbol.createSimple(
             {
                 "name": "circle",
@@ -139,25 +301,69 @@ class SymbologyWidget(QtWidgets.QWidget):
             }
         )
         multipoint_symbol.setOutputUnit(Qgis.RenderUnit.Points)
+        return multipoint_symbol
+
+    @staticmethod
+    def add_unavailable_multipoint_layer(root: QgsLayerTree) -> QgsVectorLayer:
         multipoint_uri = "point?crs=epsg:4326"
         multipoint_layer = QgsVectorLayer(multipoint_uri, "Unavailable (Points)", "memory")
-        multipoint_layer.renderer().setSymbol(multipoint_symbol)
-        QgsProject.instance().addMapLayer(multipoint_layer, False)
+
+        qs = QtCore.QSettings()
+        style_str = qs.value(SymbologyWidget.unavailable_point_style_config_key, None)
+        if style_str is None:
+            multipoint_symbol = SymbologyWidget.make_unavailable_point_symbol()
+            multipoint_layer.renderer().setSymbol(multipoint_symbol)
+        else:
+            doc = QtXml.QDomDocument()
+            doc.setContent(style_str)
+            result = multipoint_layer.importNamedStyle(doc)
+
         root.addLayer(multipoint_layer)
         return multipoint_layer
 
     @staticmethod
-    def add_categorized_layer(root: QgsLayerTree) -> QgsVectorLayer:
-        categorized_uri = "LineString?crs=epsg:4326"
-        categorized_layer = QgsVectorLayer(categorized_uri, "Radargram Availability", "memory")
-        symbol = QgsSymbol.defaultSymbol(categorized_layer.geometryType())
+    def make_unavailable_line_symbol() -> QgsLineSymbol:
+        linestring_symbol = QgsLineSymbol.createSimple(
+            {
+                "color": QtGui.QColor.fromRgb(251, 154, 153, 255),
+                "line_width": 1,
+            }
+        )
+        # pre 3.30,  QgsUnitTypes.RenderPoints
+        linestring_symbol.setOutputUnit(Qgis.RenderUnit.Points)
+        return linestring_symbol
+
+    @staticmethod
+    def add_unavailable_linestring_layer(root: QgsLayerTree) -> QgsVectorLayer:
+        linestring_uri = "LineString?crs=epsg:4326"
+        linestring_layer = QgsVectorLayer(linestring_uri, "Unavailable (Lines)", "memory")
+
+        qs = QtCore.QSettings()
+        style_str = qs.value(SymbologyWidget.unavailable_line_style_config_key, None)
+        if style_str is None:
+            linestring_symbol = SymbologyWidget.make_unavailable_line_symbol()
+            linestring_layer.renderer().setSymbol(linestring_symbol)
+        else:
+            doc = QtXml.QDomDocument()
+            doc.setContent(style_str)
+            result = linestring_layer.importNamedStyle(doc)
+
+        root.addLayer(linestring_layer)
+        return linestring_layer
+
+    @staticmethod
+    def make_categorized_renderer() -> QgsRuleBasedRenderer:
+        """
+        This sets the style for named rules, but is not able to define the
+        filter expressions since they depend on the root directory, which
+        isn't known until the project loads and we search for the index group
+        """
+        symbol = QgsLineSymbol()
         renderer = QgsRuleBasedRenderer(symbol)
         root_rule = renderer.rootRule()
 
         dl_rule = root_rule.children()[0].clone()
         dl_rule.setLabel("Downloaded")
-        #QUESTION: Shall I go ahead and set the rules here, if we are going to be copying the symbology?
-        # => NO. the rules are layer-dependent, since they encode the root directory
         dl_rule.symbol().setWidth(0.35) # Make them more visible
         dl_rule.symbol().setColor(QtGui.QColor(133, 54, 229, 255))
         root_rule.appendChild(dl_rule)
@@ -173,57 +379,107 @@ class SymbologyWidget(QtWidgets.QWidget):
         root_rule.appendChild(else_rule)
 
         root_rule.removeChildAt(0)
+        return renderer
 
-        categorized_layer.setRenderer(renderer)
+    @staticmethod
+    def add_categorized_layer(root: QgsLayerTree) -> QgsVectorLayer:
+        categorized_uri = "LineString?crs=epsg:4326"
+        categorized_layer = QgsVectorLayer(categorized_uri, "Radargram Availability", "memory")
+
+        qs = QtCore.QSettings()
+        style_str = qs.value(SymbologyWidget.categorized_style_config_key, None)
+        if style_str is None:
+            renderer = SymbologyWidget.make_categorized_renderer()
+            categorized_layer.setRenderer(renderer)
+        else:
+            doc = QtXml.QDomDocument()
+            doc.setContent(style_str)
+            result = categorized_layer.importNamedStyle(doc)
+
         root.addLayer(categorized_layer)
         return categorized_layer
 
-    @staticmethod
-    def add_segment_layer(root: QgsLayerTree) -> QgsVectorLayer:
-        segment_symbol = QgsLineSymbol.createSimple(
-            {
-                "color": QtGui.QColor.fromRgb(255, 0, 0, 255),
-                "line_width": 1,
-            }
-        )
-        segment_symbol.setOutputUnit(Qgis.RenderUnit.Points)
-        segment_uri = "LineString?crs=epsg:4326"
-        segment_layer = QgsVectorLayer(segment_uri, "Full Transect", "memory")
-        segment_layer.renderer().setSymbol(segment_symbol)
-        QgsProject.instance().addMapLayer(segment_layer, False)
-        root.addLayer(segment_layer)
-        return segment_layer
+    def update_trace_layer_style(self, force_update=False):
+        QgsMessageLog.logMessage(f"update_trace_layer_style")
+        # TODO: would this check be better as a decorator?
+        dt = time.time() - self.style_changed_time
+        if dt < 1.0 and not force_update:
+            QgsMessageLog.logMessage(f"...repeated call, skipping")
+            return
+        doc = QtXml.QDomDocument()
+        self.trace_layer.exportNamedStyle(doc)
+        style_str = doc.toString()
+        qs = QtCore.QSettings()
+        qs.setValue(self.trace_style_config_key, style_str)
+        self.trace_style_changed.emit(style_str)
+        self.style_changed_time = time.time()
 
-    @staticmethod
-    def add_selected_layer(root: QgsLayerTree) -> QgsVectorLayer:
-        selected_symbol = QgsLineSymbol.createSimple(
-            {
-                "color": QtGui.QColor.fromRgb(255, 128, 30, 255),
-                "line_width": 2,
-            }
-        )
-        selected_symbol.setOutputUnit(Qgis.RenderUnit.Points)
-        selected_uri = "LineString?crs=epsg:4326"
-        selected_layer = QgsVectorLayer(selected_uri, "Selected Region", "memory")
-        selected_layer.renderer().setSymbol(selected_symbol)
-        QgsProject.instance().addMapLayer(selected_layer, False)
-        root.addLayer(selected_layer)
-        return selected_layer
+    def update_selected_layer_style(self, force_update=False):
+        QgsMessageLog.logMessage(f"update_selected_layer_style")
+        dt = time.time() - self.style_changed_time
+        if dt < 1.0 and not force_update:
+            QgsMessageLog.logMessage(f"...repeated call, skipping")
+            return
+        doc = QtXml.QDomDocument()
+        self.selected_layer.exportNamedStyle(doc)
+        style_str = doc.toString()
+        qs = QtCore.QSettings()
+        qs.setValue(self.selected_style_config_key, style_str)
+        self.selected_style_changed.emit(style_str)
+        self.style_changed_time = time.time()
 
-    @staticmethod
-    def add_trace_layer(root: QgsLayerTree) -> QgsVectorLayer:
-        trace_symbol = QgsMarkerSymbol.createSimple(
-            {
-                "name": "circle",
-                "color": QtGui.QColor.fromRgb(255, 255, 0, 255),
-                "size": "8",
-                "outline_style": "no"
-            }
-        )
-        trace_symbol.setOutputUnit(Qgis.RenderUnit.Points)
-        trace_uri = "point?crs=epsg:4326"
-        trace_layer = QgsVectorLayer(trace_uri, "Highlighted Trace", "memory")
-        trace_layer.renderer().setSymbol(trace_symbol)
-        QgsProject.instance().addMapLayer(trace_layer, False)
-        root.addLayer(trace_layer)
-        return trace_layer
+    def update_segment_layer_style(self, force_update=False):
+        QgsMessageLog.logMessage(f"update_segment_layer_style")
+        dt = time.time() - self.style_changed_time
+        if dt < 1.0 and not force_update:
+            QgsMessageLog.logMessage(f"...repeated call, skipping")
+            return
+        doc = QtXml.QDomDocument()
+        self.segment_layer.exportNamedStyle(doc)
+        style_str = doc.toString()
+        qs = QtCore.QSettings()
+        qs.setValue(self.segment_style_config_key, style_str)
+        self.segment_style_changed.emit(style_str)
+        self.style_changed_time = time.time()
+
+    def update_unavailable_point_layer_style(self, force_update=False):
+        QgsMessageLog.logMessage(f"update_unavailable_point_layer_style")
+        dt = time.time() - self.style_changed_time
+        if dt < 1.0 and not force_update:
+            QgsMessageLog.logMessage(f"...repeated call, skipping")
+            return
+        doc = QtXml.QDomDocument()
+        self.point_layer.exportNamedStyle(doc)
+        style_str = doc.toString()
+        qs = QtCore.QSettings()
+        qs.setValue(self.unavailable_point_style_config_key, style_str)
+        self.unavailable_point_style_changed.emit(style_str)
+        self.style_changed_time = time.time()
+
+    def update_unavailable_line_layer_style(self, force_update=False):
+        QgsMessageLog.logMessage(f"update_unavailable_line_layer_style")
+        dt = time.time() - self.style_changed_time
+        if dt < 1.0 and not force_update:
+            QgsMessageLog.logMessage(f"...repeated call, skipping")
+            return
+        doc = QtXml.QDomDocument()
+        self.line_layer.exportNamedStyle(doc)
+        style_str = doc.toString()
+        qs = QtCore.QSettings()
+        qs.setValue(self.unavailable_line_style_config_key, style_str)
+        self.unavailable_line_style_changed.emit(style_str)
+        self.style_changed_time = time.time()
+
+    def update_categorized_layer_style(self, force_update=False):
+        QgsMessageLog.logMessage(f"update_categorized_layer_style")
+        dt = time.time() - self.style_changed_time
+        if dt < 1.0 and not force_update:
+            QgsMessageLog.logMessage(f"...repeated call, skipping")
+            return
+        doc = QtXml.QDomDocument()
+        self.categorized_layer.exportNamedStyle(doc)
+        style_str = doc.toString()
+        qs = QtCore.QSettings()
+        qs.setValue(self.categorized_style_config_key, style_str)
+        self.categorized_style_changed.emit(style_str)
+        self.style_changed_time = time.time()

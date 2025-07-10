@@ -34,24 +34,17 @@ from qgis.gui import QgisInterface
 from .qiceradar_symbology_widget import SymbologyWidget
 
 class ControlsWindow(QtWidgets.QMainWindow):
-    def __init__(self, iface: QgisInterface) -> None:
+    def __init__(self, symbology_widget: SymbologyWidget) -> None:
         super().__init__()
-        self.iface = iface
+        self.symbology_widget = symbology_widget
         self.setWindowTitle("QIceRadar Controls")
         self.setup_ui()
 
     def setup_ui(self) -> None:
         central_widget = QtWidgets.QWidget()
 
-        style_vbox = QtWidgets.QVBoxLayout()
-        label = QtWidgets.QLabel("Layer Styles")
-        label.setAlignment(Qt.AlignCenter)
-        symbology_widget = SymbologyWidget(self.iface)
-        style_vbox.addWidget(label)
-        style_vbox.addWidget(symbology_widget)
-
         hbox = QtWidgets.QHBoxLayout()
-        hbox.addLayout(style_vbox)
+        hbox.addWidget(self.symbology_widget)
         hbox.addStretch(1.0)
 
         central_widget.setLayout(hbox)
