@@ -226,6 +226,7 @@ class QIceRadarPlugin(QtCore.QObject):
             self.style_layers["trace"].styleChanged.disconnect(self.update_trace_layer_style)
             self.style_layers["selected"].styleChanged.disconnect(self.update_selected_layer_style)
             self.style_layers["segment"].styleChanged.disconnect(self.update_segment_layer_style)
+            self.style_layers["categorized"].styleChanged.disconnect(self.update_categorized_layer_style)
             self.style_layers["unavailable_multipoint"].styleChanged.disconnect(self.update_unavailable_multipoint_layer_style)
             self.style_layers["unavailable_linestring"].styleChanged.disconnect(self.update_unavailable_linestring_layer_style)
         except KeyError:
@@ -302,6 +303,10 @@ class QIceRadarPlugin(QtCore.QObject):
           our pointers to them
         * it is confusing that the callbacks aren't attached until the user has
           clicked one of the QIceRadar actions.
+
+        TODO: I actually really don't like saving the styles -- if the user has
+              borked them somehow, i want reloading QIceRadar to reset to a
+              known good state.
         """
         # QgsMessageLog.logMessage(f"create_symbology_group")
         if self.symbology_group_initialized:
@@ -405,9 +410,14 @@ class QIceRadarPlugin(QtCore.QObject):
 
         categorized_layer = None
         for layer_node in symbology_group.findLayers():
-            if layer_node.layer().name() == "Radargram Availability":
-                categorized_layer = layer_node.layer()
-                break
+            try:
+                if layer_node.layer().name() == "Radargram Availability":
+                    categorized_layer = layer_node.layer()
+                    break
+            except Exception as ex:
+                # layer_node.layer() may be None if the layer is created but corrupt
+                QgsMessageLog.logMessage(f"{repr(ex)}")
+                continue
         if categorized_layer is not None:
             # QgsMessageLog.logMessage(f"...Found existing categorized layer.")
             pass
@@ -512,6 +522,7 @@ class QIceRadarPlugin(QtCore.QObject):
         self.style_layers["trace"].styleChanged.connect(self.update_trace_layer_style)
         self.style_layers["selected"].styleChanged.connect(self.update_selected_layer_style)
         self.style_layers["segment"].styleChanged.connect(self.update_segment_layer_style)
+        self.style_layers["categorized"].styleChanged.connect(self.update_categorized_layer_style)
         self.style_layers["unavailable_multipoint"].styleChanged.connect(self.update_unavailable_multipoint_layer_style)
         self.style_layers["unavailable_linestring"].styleChanged.connect(self.update_unavailable_linestring_layer_style)
 
@@ -567,6 +578,68 @@ class QIceRadarPlugin(QtCore.QObject):
                 continue
             QgsMessageLog.logMessage(f"Updating full segment style for {layer.parent().name()}!")
             self.copy_layer_style(self.style_layers["segment"], layer.layer())
+        self.style_changed_time = time.time()
+
+    def update_categorized_layer_style(self):
+        QgsMessageLog.logMessage(f"Categorized layer style changed")
+        if time.time() - self.style_changed_time < 1.0:
+            QgsMessageLog.logMessage(f"...repeated call, skipping")
+            return
+
+        # This update assumes that rule based renderers have already been created,
+        # so initialize them if necessary
+        if not self.download_renderer_added:
+            self.update_download_renderer()
+
+        source_renderer = self.style_layers["categorized"].renderer()
+        downloaded_symbol, supported_symbol, available_symbol = None, None, None
+        for rule in source_renderer.rootRule().children():
+            if rule.label() == "Downloaded":
+                downloaded_symbol = rule.symbol()
+            elif rule.label() == "Supported":
+                supported_symbol = rule.symbol()
+            elif rule.label() == "Available":
+                available_symbol = rule.symbol().clone()
+
+        # TODO: check symbols are not none
+        if downloaded_symbol is None or supported_symbol is None or available_symbol is None:
+            msg = "Invalid Radargram Availability layer; reload QIceRadar"
+            message_box = QtWidgets.QMessageBox()
+            message_box.setText(errmsg)
+            message_box.exec()
+            return
+
+        index_group = self.find_index_group()
+        for layer in index_group.findLayers():
+            features = layer.layer().getFeatures()
+            try:
+                feature = next(features)
+            except StopIteration:
+                QgsMessageLog.logMessage(f"Could not find features for {layer}")
+                continue
+            if not self.is_valid_granule_feature(feature):
+                continue
+
+            # Only layers with available data will have a rule based renderer
+            dest_renderer = layer.layer().renderer()
+            if not isinstance(dest_renderer, QgsRuleBasedRenderer):
+                # QgsMessageLog.logMessage(f"...skipping {layer.layer().name()}")
+                continue
+
+            # QgsMessageLog.logMessage(f"...Updating full segment style for {layer.layer().name()}")
+
+            for rule in dest_renderer.rootRule().children():
+                # new_symbol = QgsSymbol.defaultSymbol(layer.geometryType())
+                if rule.label() == "Downloaded":
+                    rule.setSymbol(downloaded_symbol.clone())
+                elif rule.label() == "Supported":
+                    rule.setSymbol(supported_symbol.clone())
+                elif rule.label() == "Available":
+                    rule.setSymbol(available_symbol.clone())
+
+            self.iface.layerTreeView().refreshLayerSymbology(layer.layer().id())
+            layer.layer().triggerRepaint()
+
         self.style_changed_time = time.time()
 
     def update_unavailable_multipoint_layer_style(self):
@@ -1334,22 +1407,7 @@ class QIceRadarPlugin(QtCore.QObject):
         We indicate which data has been downloaded by changing the
         renderer to be rule-based, checking whether the file exists.
         """
-        # This is copied from building the spatial index
-        root = QgsProject.instance().layerTreeRoot()
-        qiceradar_group = root.findGroup("ANTARCTIC QIceRadar Index")
-        if qiceradar_group is None:
-            qiceradar_group = root.findGroup("ARCTIC QIceRadar Index")
-        if qiceradar_group is None:
-            errmsg = (
-                "Could not find index data. \n\n"
-                "You may need to drag the QIceRadar .qlr file into QGIS. \n\n"
-                "Or, if you renamed the index layer, please revert the name to either "
-                "'ANTARCTIC QIceRadarIndex' or 'ARCTIC QIceRadar Index'"
-            )
-            message_box = QtWidgets.QMessageBox()
-            message_box.setText(errmsg)
-            message_box.exec()
-            return
+        qiceradar_group = self.find_index_group()
 
         # Iterate through all layers in the group
         for ll in qiceradar_group.findLayers():
