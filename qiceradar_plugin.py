@@ -107,7 +107,7 @@ class QIceRadarPlugin(QtCore.QObject):
         self.controls_dock_widget = QgsDockWidget("QIceRadar Controls")
         self.controls_dock_widget.setWidget(self.controls_window)
 
-        # This is an ugly half where I hard code widget to tab next to...
+        # This is an ugly hack where I hard code which widget to tab alongside...
         # I could not figure out how to filter existing widgets based on area,
         # widget.dockLocation() shows up in Qt 6.7, and we are still on Qt5.
         dock_widgets = self.iface.mainWindow().findChildren(QtWidgets.QDockWidget)
