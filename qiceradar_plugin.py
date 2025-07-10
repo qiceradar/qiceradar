@@ -336,10 +336,11 @@ class QIceRadarPlugin(QtCore.QObject):
                 {
                     "name": "circle",
                     "color": QtGui.QColor.fromRgb(255, 255, 0, 255),
-                    "size": "10",
-                    "size_unit": "Point",
+                    "size": "8",
+                    "outline_style": "no"
                 }
             )
+            trace_symbol.setOutputUnit(Qgis.RenderUnit.Points)
             trace_uri = "point?crs=epsg:4326"
             trace_layer = QgsVectorLayer(trace_uri, "Highlighted Trace", "memory")
             trace_layer.renderer().setSymbol(trace_symbol)
@@ -364,9 +365,9 @@ class QIceRadarPlugin(QtCore.QObject):
                 {
                     "color": QtGui.QColor.fromRgb(255, 128, 30, 255),
                     "line_width": 2,
-                    "line_width_units": "Point",
                 }
             )
+            selected_symbol.setOutputUnit(Qgis.RenderUnit.Points)
             selected_uri = "LineString?crs=epsg:4326"
             selected_layer = QgsVectorLayer(selected_uri, "Selected Region", "memory")
             selected_layer.renderer().setSymbol(selected_symbol)
@@ -391,9 +392,9 @@ class QIceRadarPlugin(QtCore.QObject):
                 {
                     "color": QtGui.QColor.fromRgb(255, 0, 0, 255),
                     "line_width": 1,
-                    "line_width_units": "Point",
                 }
             )
+            segment_symbol.setOutputUnit(Qgis.RenderUnit.Points)
             segment_uri = "LineString?crs=epsg:4326"
             segment_layer = QgsVectorLayer(segment_uri, "Full Transect", "memory")
             segment_layer.renderer().setSymbol(segment_symbol)
@@ -420,9 +421,12 @@ class QIceRadarPlugin(QtCore.QObject):
                     "name": "circle",
                     "color": QtGui.QColor.fromRgb(251, 154, 153, 255),
                     "size": "1",
-                    "size_unit": "Point",
+                    "outline_style": "no"
                 }
             )
+            multipoint_symbol.setOutputUnit(Qgis.RenderUnit.Points)
+            QgsMessageLog.logMessage(f"creating default multi point symbol properties: ")
+            QgsMessageLog.logMessage(f"{multipoint_symbol.symbolLayers()[0].properties()}")
             multipoint_uri = "point?crs=epsg:4326"
             multipoint_layer = QgsVectorLayer(multipoint_uri, "Unavailable (Points)", "memory")
             multipoint_layer.renderer().setSymbol(multipoint_symbol)
@@ -444,10 +448,12 @@ class QIceRadarPlugin(QtCore.QObject):
                 {
                     "color": QtGui.QColor.fromRgb(251, 154, 153, 255),
                     "line_width": 1,
-                    # TODO: Setting the units like this doesn't seem to work.
-                    "line_width_units": "Pixels",
                 }
             )
+            # pre 3.30,  QgsUnitTypes.RenderPoints
+            linestring_symbol.setOutputUnit(Qgis.RenderUnit.Points)
+            QgsMessageLog.logMessage(f"creating default line string symbol properties: ")
+            QgsMessageLog.logMessage(f"{linestring_symbol.symbolLayers()[0].properties()}")
             linestring_uri = "LineString?crs=epsg:4326"
             linestring_layer = QgsVectorLayer(linestring_uri, "Unavailable (Lines)", "memory")
             linestring_layer.renderer().setSymbol(linestring_symbol)
@@ -525,13 +531,18 @@ class QIceRadarPlugin(QtCore.QObject):
         self.style_changed_time = time.time()
 
     def update_unavailable_multipoint_layer_style(self):
-        QgsMessageLog.logMessage(f"Unavailable point layer style changed")
+        QgsMessageLog.logMessage(f"Unavailable point layer style changed. user selected:")
+        renderer_symbol=self.style_layers['unavailable_multipoint'].renderer().symbol()
+        QgsMessageLog.logMessage(f"{renderer_symbol.symbolLayers()[0].properties()}")
         # The pyQGIS cookbook still uses QgsWkbTypes.PointGeometry, though
         # the documentation seems to suggest using QgsWkbTypes.GeometryType.Point
         self.update_unavailable_layer_style(QgsWkbTypes.PointGeometry)
 
     def update_unavailable_linestring_layer_style(self):
-        QgsMessageLog.logMessage(f"Unavailable line layer style changed")
+        QgsMessageLog.logMessage(f"Unavailable line layer style changed. user selected:")
+        # Dump user selected properties for debugging
+        renderer_symbol=self.style_layers['unavailable_linestring'].renderer().symbol()
+        QgsMessageLog.logMessage(f"{renderer_symbol.symbolLayers()[0].properties()}")
         # Same as above, we might want QgsWkbTypes.GeometryType.Line
         self.update_unavailable_layer_style(QgsWkbTypes.LineGeometry)
 
@@ -621,12 +632,12 @@ class QIceRadarPlugin(QtCore.QObject):
         """
         This is slow on my MacBook Pro, but not impossibly so.
         """
-        QgsMessageLog.logMessage("Building spatial index.")
-
         qiceradar_group = self.find_index_group()
         if qiceradar_group is None:
             # find_index_group handles displaying an error message to the user
             return
+
+        QgsMessageLog.logMessage("Building spatial index.")
 
         # We need to store geometries, otherwise nearest neighbor calculations are done
         # based on bounding boxes and the list of closest transects is nonsensical.
