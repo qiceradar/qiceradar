@@ -403,6 +403,46 @@ class QIceRadarPlugin(QtCore.QObject):
 
         self.style_layers["segment"] = segment_layer
 
+        categorized_layer = None
+        for layer_node in symbology_group.findLayers():
+            if layer_node.layer().name() == "Radargram Availability":
+                categorized_layer = layer_node.layer()
+                break
+        if categorized_layer is not None:
+            # QgsMessageLog.logMessage(f"...Found existing categorized layer.")
+            pass
+        else:
+            categorized_uri = "LineString?crs=epsg:4326"
+            categorized_layer = QgsVectorLayer(categorized_uri, "Radargram Availability", "memory")
+            symbol = QgsSymbol.defaultSymbol(categorized_layer.geometryType())
+            renderer = QgsRuleBasedRenderer(symbol)
+            root_rule = renderer.rootRule()
+
+            dl_rule = root_rule.children()[0].clone()
+            dl_rule.setLabel("Downloaded")
+            #QUESTION: Shall I go ahead and set the rules here, if we are going to be copying the symbology?
+            # => NO. the rules are layer-dependent, since they encode the root directory
+            dl_rule.symbol().setWidth(0.35) # Make them more visible
+            dl_rule.symbol().setColor(QtGui.QColor(133, 54, 229, 255))
+            root_rule.appendChild(dl_rule)
+
+            supported_rule = root_rule.children()[0].clone()
+            supported_rule.setLabel("Supported")
+            supported_rule.symbol().setColor(QtGui.QColor(31, 120, 180, 255))
+            root_rule.appendChild(supported_rule)
+
+            else_rule = root_rule.children()[0].clone()
+            else_rule.setLabel("Available")
+            else_rule.symbol().setColor(QtGui.QColor(68, 68, 68, 255))
+            root_rule.appendChild(else_rule)
+
+            root_rule.removeChildAt(0)
+
+            categorized_layer.setRenderer(renderer)
+            symbology_group.addLayer(categorized_layer)
+        self.style_layers["categorized"] = categorized_layer
+
+
         # Update symbols for unavailable_multipoint and unavailable_linestring
         # (I won't bother forcing their colors to match, though that could be confusing for users)
         multipoint_layer = None
@@ -461,7 +501,6 @@ class QIceRadarPlugin(QtCore.QObject):
             symbology_group.addLayer(linestring_layer)
         self.style_layers["unavailable_linestring"] = linestring_layer
 
-        # TODO: symbols for available_categorized ...
 
         # This is called *twice* when the user clicks "Apply" or "OK" in the
         # layer properties dialog; I experimented with other signals to no avail:
@@ -1335,17 +1374,8 @@ class QIceRadarPlugin(QtCore.QObject):
 
             root_rule = renderer.rootRule()
 
-            # TODO: For now, this will only work for BAS data! making
-            #  it work for everybody will require having relative filepaths
-            #  in the campaign tables (otherwise, I'd be reconstructing it
-            #  here in a campaign-specific way. Ugh.)
             dl_rule = root_rule.children()[0].clone()
             dl_rule.setLabel("Downloaded")
-            region = f0.attributeMap()["region"]
-            assert isinstance(region, str)  # Make mypy happy; region is an Optional
-            region = region.upper()
-            institution = f0.attributeMap()["institution"]
-            campaign = f0.attributeMap()["campaign"]
 
             # Converting the Path object back to string in order to work on windows
             # (Can't use path.join within the filter expression)
