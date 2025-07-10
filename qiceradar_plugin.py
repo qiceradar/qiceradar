@@ -64,7 +64,7 @@ from qgis.core import (
     QgsVectorLayer,
     QgsWkbTypes,
 )
-from qgis.gui import QgisInterface, QgsMapTool, QgsMapToolPan, QgsMessageBar
+from qgis.gui import QgisInterface, QgsDockWidget, QgsMapTool, QgsMapToolPan, QgsMessageBar
 
 from .datautils import db_utils
 from .download_widget import DownloadConfirmationDialog, DownloadWindow
@@ -75,6 +75,7 @@ from .qiceradar_config import (
     rootdir_is_valid,
 )
 from .qiceradar_config_widget import QIceRadarConfigWidget
+from .qiceradar_controls_window import ControlsWindow
 from .qiceradar_selection_widget import (
     QIceRadarSelectionTool,
     QIceRadarSelectionWidget,
@@ -101,6 +102,31 @@ class QIceRadarPlugin(QtCore.QObject):
         self.supported_download_methods = ["nsidc", "wget"]
 
         self.download_window: Optional[DownloadWindow] = None
+
+        self.controls_window = ControlsWindow(self.iface)
+        self.controls_dock_widget = QgsDockWidget("QIceRadar Controls")
+        self.controls_dock_widget.setWidget(self.controls_window)
+
+        # This is an ugly half where I hard code widget to tab next to...
+        # I could not figure out how to filter existing widgets based on area,
+        # widget.dockLocation() shows up in Qt 6.7, and we are still on Qt5.
+        dock_widgets = self.iface.mainWindow().findChildren(QtWidgets.QDockWidget)
+        msg = " ".join([widget.objectName() for widget in dock_widgets])
+        QgsMessageLog.logMessage(f"Found widgets: {msg}")
+        tab_widget = None
+        for widget in dock_widgets:
+            if widget.objectName() in ["MessageLog", "PythonConsole"]:
+                tab_widget = widget
+                break
+        if tab_widget is not None:
+            self.iface.mainWindow().tabifyDockWidget(tab_widget, self.controls_dock_widget)
+        else:
+            self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.controls_dock_widget)
+        # This does not always result in the controls which it being above
+        # everything else in the tab group. I wonder if posting log messages
+        # causes that panel to be made visible...
+        self.controls_dock_widget.setUserVisible(True)
+
 
         # The spatial index needs to be created for each new project
         # TODO: Consider whether to support user switching projects and
