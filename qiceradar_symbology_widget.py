@@ -6,6 +6,7 @@
 #
 # 1. Redistributions of source code must retain the above copyright
 #    notice, this list of conditions and the following disclaimer.
+#    notice, this list of conditions and the following disclaimer.
 #
 # 2. Redistributions in binary form must reproduce the above copyright
 #    notice, this list of conditions and the following disclaimer in
@@ -28,23 +29,31 @@
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import PyQt5.QtWidgets as QtWidgets
-from qgis.gui import QgisInterface
 
-from .qiceradar_symbology_widget import SymbologyWidget
+from qgis.core import QgsLayerTree, QgsLayerTreeModel
+from qgis.gui import QgsLayerTreeView
 
-class ControlsWindow(QtWidgets.QMainWindow):
-    def __init__(self, iface: QgisInterface) -> None:
+
+class SymbologyWidget(QtWidgets.QWidget):
+    def __init__(self, iface) -> None:
         super().__init__()
         self.iface = iface
-        self.setWindowTitle("QIceRadar Controls")
+
+        self.setup_layers()
         self.setup_ui()
 
+
     def setup_ui(self) -> None:
-        central_widget = QtWidgets.QWidget()
-        vbox = QtWidgets.QVBoxLayout()
-        label = QtWidgets.QLabel("Testing")
-        symbology_widget = SymbologyWidget(self.iface)
-        vbox.addWidget(label)
-        vbox.addWidget(symbology_widget)
-        central_widget.setLayout(vbox)
-        self.setCentralWidget(central_widget)
+        layout = QtWidgets.QHBoxLayout()
+        layout.addWidget(self.view)
+        self.setLayout(layout)
+
+    def setup_layers(self) -> None:
+        self.root = QgsLayerTree()
+        self.view = QgsLayerTreeView()
+        self.model = QgsLayerTreeModel(self.root)
+        self.model.setFlag(QgsLayerTreeModel.AllowNodeChangeVisibility)
+        self.model.setFlag(QgsLayerTreeModel.AllowNodeRename)
+        self.model.setFlag(QgsLayerTreeModel.AllowNodeReorder)
+        self.view.setModel(self.model)
+
