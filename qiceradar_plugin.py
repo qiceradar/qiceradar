@@ -601,7 +601,6 @@ class QIceRadarPlugin(QtCore.QObject):
             elif rule.label() == "Available":
                 available_symbol = rule.symbol().clone()
 
-        # TODO: check symbols are not none
         if downloaded_symbol is None or supported_symbol is None or available_symbol is None:
             msg = "Invalid Radargram Availability layer; reload QIceRadar"
             message_box = QtWidgets.QMessageBox()
@@ -1409,6 +1408,29 @@ class QIceRadarPlugin(QtCore.QObject):
         """
         qiceradar_group = self.find_index_group()
 
+        # TODO: this block duplicates code in update_categorized_layer_style...
+        source_renderer = self.style_layers["categorized"].renderer()
+        downloaded_symbol, supported_symbol, available_symbol = None, None, None
+        for rule in source_renderer.rootRule().children():
+            if rule.label() == "Downloaded":
+                downloaded_symbol = rule.symbol()
+            elif rule.label() == "Supported":
+                supported_symbol = rule.symbol()
+            elif rule.label() == "Available":
+                available_symbol = rule.symbol().clone()
+        if downloaded_symbol is None or supported_symbol is None or available_symbol is None:
+            msg = "Invalid Radargram Availability layer; reload QIceRadar"
+            message_box = QtWidgets.QMessageBox()
+            message_box.setText(errmsg)
+            message_box.exec()
+            return
+
+        # Converting the Path object back to string in order to work on windows
+        # (Can't use path.join within the filter expression)
+        # Otherwise, we were getting D:\RadarData/ANTARCTIC, which doesn't work,
+        # while a string with only '/' does work on modern Windows.
+        rootdir = str(self.config.rootdir).replace('\\', '/')
+
         # Iterate through all layers in the group
         for ll in qiceradar_group.findLayers():
             # get the QgsMapLayer from the QgsLayerTreeLayer
@@ -1434,31 +1456,23 @@ class QIceRadarPlugin(QtCore.QObject):
 
             dl_rule = root_rule.children()[0].clone()
             dl_rule.setLabel("Downloaded")
-
-            # Converting the Path object back to string in order to work on windows
-            # (Can't use path.join within the filter expression)
-            # Otherwise, we were getting D:\RadarData/ANTARCTIC, which doesn't work,
-            # while a string with only '/' does work on modern Windows.
-            rootdir = str(self.config.rootdir).replace('\\', '/')
             dl_rule.setFilterExpression(
                 f"""length("relative_path") > 0 and file_exists('{rootdir}/' + "relative_path")"""
             )
-            dl_rule.symbol().setWidth(0.35) # Make them more visible
-            dl_rule.symbol().setColor(QtGui.QColor(133, 54, 229, 255))
+            dl_rule.setSymbol(downloaded_symbol.clone())
             root_rule.appendChild(dl_rule)
 
-            # TODO: add additional "supported" rule here, and remove the
             #  distinction between "a" and "s" in the geopackage database
             supported_rule = root_rule.children()[0].clone()
             supported_rule.setLabel("Supported")
             supported_rule.setFilterExpression(f"""length("relative_path") > 0 and not file_exists('{self.config.rootdir}/' + "relative_path")""")
-            supported_rule.symbol().setColor(QtGui.QColor(31, 120, 180, 255))
+            supported_rule.setSymbol(supported_symbol.clone())
             root_rule.appendChild(supported_rule)
 
             else_rule = root_rule.children()[0].clone()
             else_rule.setLabel("Available")
             else_rule.setFilterExpression("ELSE")
-            else_rule.symbol().setColor(QtGui.QColor(68, 68, 68, 255))
+            else_rule.setSymbol(available_symbol.clone())
             root_rule.appendChild(else_rule)
 
             root_rule.removeChildAt(0)
@@ -1546,8 +1560,6 @@ class QIceRadarPlugin(QtCore.QObject):
             action.setChecked(checked)
         except AttributeError:
             QgsMessageLog.logMessage("could not uncheck action")
-
-
 
     def start_download(
         self, granule: str, url: str, destination_filepath: pathlib.Path, filesize: int, headers: Dict[str, str]
