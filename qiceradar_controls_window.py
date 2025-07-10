@@ -27,6 +27,7 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+from PyQt5.QtCore import Qt
 import PyQt5.QtWidgets as QtWidgets
 from qgis.gui import QgisInterface
 
@@ -41,10 +42,18 @@ class ControlsWindow(QtWidgets.QMainWindow):
 
     def setup_ui(self) -> None:
         central_widget = QtWidgets.QWidget()
-        vbox = QtWidgets.QVBoxLayout()
-        label = QtWidgets.QLabel("Testing")
+
+        style_vbox = QtWidgets.QVBoxLayout()
+        label = QtWidgets.QLabel("Layer Styles")
+        label.setAlignment(Qt.AlignCenter)
         symbology_widget = SymbologyWidget(self.iface)
-        vbox.addWidget(label)
-        vbox.addWidget(symbology_widget)
-        central_widget.setLayout(vbox)
+        style_vbox.addWidget(label)
+        style_vbox.addWidget(symbology_widget)
+
+        hbox = QtWidgets.QHBoxLayout()
+        hbox.addLayout(style_vbox)
+        hbox.addStretch(1.0)
+
+        central_widget.setLayout(hbox)
+
         self.setCentralWidget(central_widget)
