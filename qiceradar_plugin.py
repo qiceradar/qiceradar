@@ -1045,24 +1045,23 @@ class QIceRadarPlugin(QtCore.QObject):
         """
         # QgsMessageLog.logMessage(f"update_trace_callback with position: {lon}, {lat}!")
         trace_layer = self.trace_layers[transect_name]
-        trace_layer.startEditing()
-        trace_feature = self.trace_features[transect_name]
-        trace_layer.changeGeometry(trace_feature.id(), QgsGeometry(QgsPoint(lon, lat)))
-        trace_layer.commitChanges()
+        with edit(trace_layer):
+            trace_feature = self.trace_features[transect_name]
+            trace_layer.changeGeometry(trace_feature.id(), QgsGeometry(QgsPoint(lon, lat)))
+            trace_layer.updateExtents()
 
     def update_radar_xlim_callback(
         self, transect_name: str, points: List[Tuple[float, float]]
     ) -> None:
         # QgsMessageLog.logMessage(f"update_selected_callback with {len(points)} points!")
-        # To change the location of the displayed feature:
         radar_xlim_geometry = QgsGeometry(
             QgsLineString([QgsPoint(lon, lat) for lon, lat in points])
         )
         radar_xlim_layer = self.radar_xlim_layers[transect_name]
-        radar_xlim_layer.startEditing()
-        radar_xlim_feature = self.radar_xlim_features[transect_name]
-        radar_xlim_layer.changeGeometry(radar_xlim_feature.id(), radar_xlim_geometry)
-        radar_xlim_layer.commitChanges()
+        with edit(radar_xlim_layer):
+            radar_xlim_feature = self.radar_xlim_features[transect_name]
+            radar_xlim_layer.changeGeometry(radar_xlim_feature.id(), radar_xlim_geometry)
+            radar_xlim_layer.updateExtents()
 
     def update_segment_points(
         self, transect_name: str, points: List[Tuple[float, float]]
@@ -1080,10 +1079,10 @@ class QIceRadarPlugin(QtCore.QObject):
             QgsLineString([QgsPoint(lon, lat) for lon, lat in points])
         )
         segment_layer = self.segment_layers[transect_name]
-        segment_layer.startEditing()
-        segment_feature = self.segment_features[transect_name]
-        segment_layer.changeGeometry(segment_feature.id(), segment_geometry)
-        segment_layer.commitChanges()
+        with edit(segment_layer):
+            segment_feature = self.segment_features[transect_name]
+            segment_layer.changeGeometry(segment_feature.id(), segment_geometry)
+            segment_layer.updateExtents()
 
     def selected_download_point_callback(self, point: QgsPoint) -> None:
         op = QIceRadarPlugin.Operation.DOWNLOAD
