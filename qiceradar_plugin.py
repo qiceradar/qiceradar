@@ -143,7 +143,7 @@ class QIceRadarPlugin(QtCore.QObject):
 
         # need to wait for project with QIceRadar index to be loaded
         # before we can modify the renderers to indicate downloaded transects
-        self.download_renderer_added = False
+        self.index_layers_categorized = False
 
         self.transect_groups: Dict[str, QgsLayerTreeGroup] = {}
         self.trace_features: Dict[str, QgsFeature] = {}
@@ -336,14 +336,17 @@ class QIceRadarPlugin(QtCore.QObject):
 
     def on_categorized_style_changed(self, style_str: str):
         QgsMessageLog.logMessage(f"on_categorized_style_changed")
+        # This update assumes that rule based renderers have already been created,
+        # so initialize them if necessary
+        if not self.index_layers_categorized:
+            self.update_index_layer_renderers()
 
-
-        # # We can't import the whole style, since it will overwrite the rules
-        # for the categorized renderer. We only want to set the symbols.
         doc = QtXml.QDomDocument()
         doc.setContent(style_str)
 
         index_group = self.find_index_group()
+        if index_group is None:
+            return
         for layer in index_group.findLayers():
             features = layer.layer().getFeatures()
             try:
@@ -360,9 +363,9 @@ class QIceRadarPlugin(QtCore.QObject):
                 # QgsMessageLog.logMessage(f"...skipping {layer.layer().name()}")
                 continue
 
-            # This feels really hacky -- I couldn't figur eout how to only grab
-            # symbol styles, so we copy over the whole style, then restore the
-            # filter rules for the renderer.
+            # Cache filter expressions for the categories.
+            # I couldn't figure out how to only grab symbol styles, so copy
+            # whole style then restore the filter rules for the renderer.
             download_filter, supported_filter, else_filter = None, None, None
             for rule in dest_renderer.rootRule().children():
                 if rule.label() == "Downloaded":
@@ -371,9 +374,6 @@ class QIceRadarPlugin(QtCore.QObject):
                     supported_filter = rule.filterExpression()
                 elif rule.label() == "Available":
                     else_filter = rule.filterExpression()
-            # QgsMessageLog.logMessage(f"download_filter = {download_filter}")
-            # QgsMessageLog.logMessage(f"supported_filter = {supported_filter}")
-            # QgsMessageLog.logMessage(f"else_filter = {else_filter}")
 
             result = layer.layer().importNamedStyle(doc)
 
@@ -479,9 +479,8 @@ class QIceRadarPlugin(QtCore.QObject):
         """
         This is slow on my MacBook Pro, but not impossibly so.
         """
-        qiceradar_group = self.find_index_group()
-        if qiceradar_group is None:
-            # find_index_group handles displaying an error message to the user
+        index_group = self.find_index_group()
+        if index_group is None:
             return
 
         QgsMessageLog.logMessage("Building spatial index.")
@@ -490,7 +489,7 @@ class QIceRadarPlugin(QtCore.QObject):
         # based on bounding boxes and the list of closest transects is nonsensical.
         self.spatial_index = QgsSpatialIndex(QgsSpatialIndex.FlagStoreFeatureGeometries)
         index_id = 0
-        for institution_group in qiceradar_group.children():
+        for institution_group in index_group.children():
             if not isinstance(institution_group, QgsLayerTreeGroup):
                 # Really, there shouldn't be any, but who knows what layers the user may have added.
                 QgsMessageLog.logMessage(
@@ -1124,7 +1123,7 @@ class QIceRadarPlugin(QtCore.QObject):
                 self.message_bar.pushMessage(msg, level=Qgis.Warning, duration=10)
                 # self.iface.mainWindow().repaint()
                 self.build_spatial_index()
-                self.update_download_renderer()
+                self.update_index_layer_renderers()
                 return
 
 
@@ -1179,12 +1178,14 @@ class QIceRadarPlugin(QtCore.QObject):
         cw.config_saved.connect(self.set_config)
         cw.run()
 
-    def update_download_renderer(self) -> None:
+    def update_index_layer_renderers(self) -> None:
         """
         We indicate which data has been downloaded by changing the
         renderer to be rule-based, checking whether the file exists.
         """
-        qiceradar_group = self.find_index_group()
+        index_group = self.find_index_group()
+        if index_group is None:
+            return
 
         # Converting the Path object back to string in order to work on windows
         # (Can't use path.join within the filter expression)
@@ -1193,7 +1194,7 @@ class QIceRadarPlugin(QtCore.QObject):
         rootdir = str(self.config.rootdir).replace('\\', '/')
 
         # Iterate through all layers in the group
-        for ll in qiceradar_group.findLayers():
+        for ll in index_group.findLayers():
             # get the QgsMapLayer from the QgsLayerTreeLayer
             layer: QgsMapLayer = ll.layer()
             assert isinstance(layer, QgsVectorLayer)
@@ -1239,7 +1240,7 @@ class QIceRadarPlugin(QtCore.QObject):
             layer.triggerRepaint()  # This causes it to apply + redraw
             ll.setExpanded(False)
 
-        self.download_renderer_added = True
+        self.index_layers_categorized = True
 
         # Hacky way to force styles to be updated from the config
         qs = QtCore.QSettings()
@@ -1254,8 +1255,8 @@ class QIceRadarPlugin(QtCore.QObject):
             return
         if self.spatial_index is None:
             self.build_spatial_index()
-        if not self.download_renderer_added:
-            self.update_download_renderer()
+        if not self.index_layers_categorized:
+            self.update_index_layer_renderers()
 
         download_selection_tool = QIceRadarSelectionTool(self.iface.mapCanvas())
         download_selection_tool.selected_point.connect(
@@ -1291,8 +1292,8 @@ class QIceRadarPlugin(QtCore.QObject):
         if self.spatial_index is None:
             self.build_spatial_index()
 
-        if not self.download_renderer_added:
-            self.update_download_renderer()
+        if not self.index_layers_categorized:
+            self.update_index_layer_renderers()
 
         # Create a MapTool to select point on map. After this point, it is callback driven.
         viewer_selection_tool = QIceRadarSelectionTool(self.iface.mapCanvas())
@@ -1332,7 +1333,7 @@ class QIceRadarPlugin(QtCore.QObject):
         if self.download_window is None:
             self.download_window = DownloadWindow(self.iface)
             self.download_window.download_finished.connect(
-                self.update_download_renderer
+                self.update_index_layer_renderers
             )
             self.dock_widget = QtWidgets.QDockWidget("QIceRadar Downloader")
             self.dock_widget.setWidget(self.download_window)
