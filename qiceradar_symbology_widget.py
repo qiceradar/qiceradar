@@ -48,6 +48,12 @@ from qgis.core import (
     QgsSymbol,
     QgsVectorLayer,
 )
+
+try:
+    # Needed pre-3.30
+    from qgis.core import QgsUnitTypes
+except Exception as ex:
+    pass
 from qgis.gui import (
     QgsLayerTreeView,
     QgsLayerTreeViewMenuProvider,
@@ -203,7 +209,7 @@ class SymbologyWidget(QtWidgets.QWidget):
 
     @staticmethod
     def make_trace_symbol() -> QgsMarkerSymbol:
-        trace_symbol = QgsMarkerSymbol.createSimple(
+        symbol = QgsMarkerSymbol.createSimple(
             {
                 "name": "circle",
                 "color": QtGui.QColor.fromRgb(255, 255, 0, 255),
@@ -211,8 +217,12 @@ class SymbologyWidget(QtWidgets.QWidget):
                 "outline_style": "no"
             }
         )
-        trace_symbol.setOutputUnit(Qgis.RenderUnit.Points)
-        return trace_symbol
+        try:
+            symbol.setOutputUnit(Qgis.RenderUnit.Points)
+        except Exception as ex:
+            # Prior to QGIS 3.30, these enums were organized differently
+            symbol.setOutputUnit(QgsUnitTypes.RenderPoints)
+        return symbol
 
     @staticmethod
     def add_trace_layer(root: QgsLayerTree) -> QgsVectorLayer:
@@ -234,14 +244,18 @@ class SymbologyWidget(QtWidgets.QWidget):
 
     @staticmethod
     def make_selected_symbol() -> QgsLineSymbol:
-        selected_symbol = QgsLineSymbol.createSimple(
+        symbol = QgsLineSymbol.createSimple(
             {
                 "color": QtGui.QColor.fromRgb(255, 128, 30, 255),
                 "line_width": 2,
             }
         )
-        selected_symbol.setOutputUnit(Qgis.RenderUnit.Points)
-        return selected_symbol
+        try:
+            symbol.setOutputUnit(Qgis.RenderUnit.Points)
+        except Exception as ex:
+            # Prior to QGIS 3.30, these enums were organized differently
+            symbol.setOutputUnit(QgsUnitTypes.RenderPoints)
+        return symbol
 
     @staticmethod
     def add_selected_layer(root: QgsLayerTree) -> QgsVectorLayer:
@@ -263,14 +277,18 @@ class SymbologyWidget(QtWidgets.QWidget):
 
     @staticmethod
     def make_segment_symbol() -> QgsLineSymbol:
-        segment_symbol = QgsLineSymbol.createSimple(
+        symbol = QgsLineSymbol.createSimple(
             {
                 "color": QtGui.QColor.fromRgb(255, 0, 0, 255),
                 "line_width": 1,
             }
         )
-        segment_symbol.setOutputUnit(Qgis.RenderUnit.Points)
-        return segment_symbol
+        try:
+            symbol.setOutputUnit(Qgis.RenderUnit.Points)
+        except Exception as ex:
+            # Prior to QGIS 3.30, these enums were organized differently
+            symbol.setOutputUnit(QgsUnitTypes.RenderPoints)
+        return symbol
 
     @staticmethod
     def add_segment_layer(root: QgsLayerTree) -> QgsVectorLayer:
@@ -292,7 +310,7 @@ class SymbologyWidget(QtWidgets.QWidget):
 
     @staticmethod
     def make_unavailable_point_symbol() -> QgsMarkerSymbol:
-        multipoint_symbol = QgsMarkerSymbol.createSimple(
+        symbol = QgsMarkerSymbol.createSimple(
             {
                 "name": "circle",
                 "color": QtGui.QColor.fromRgb(251, 154, 153, 255),
@@ -300,8 +318,12 @@ class SymbologyWidget(QtWidgets.QWidget):
                 "outline_style": "no"
             }
         )
-        multipoint_symbol.setOutputUnit(Qgis.RenderUnit.Points)
-        return multipoint_symbol
+        try:
+            symbol.setOutputUnit(Qgis.RenderUnit.Points)
+        except Exception as ex:
+            # Prior to QGIS 3.30, these enums were organized differently
+            symbol.setOutputUnit(QgsUnitTypes.RenderPoints)
+        return symbol
 
     @staticmethod
     def add_unavailable_multipoint_layer(root: QgsLayerTree) -> QgsVectorLayer:
@@ -323,15 +345,18 @@ class SymbologyWidget(QtWidgets.QWidget):
 
     @staticmethod
     def make_unavailable_line_symbol() -> QgsLineSymbol:
-        linestring_symbol = QgsLineSymbol.createSimple(
+        symbol = QgsLineSymbol.createSimple(
             {
                 "color": QtGui.QColor.fromRgb(251, 154, 153, 255),
                 "line_width": 1,
             }
         )
-        # pre 3.30,  QgsUnitTypes.RenderPoints
-        linestring_symbol.setOutputUnit(Qgis.RenderUnit.Points)
-        return linestring_symbol
+        try:
+            symbol.setOutputUnit(Qgis.RenderUnit.Points)
+        except Exception as ex:
+            # Prior to QGIS 3.30, these enums were organized differently
+            symbol.setOutputUnit(QgsUnitTypes.RenderPoints)
+        return symbol
 
     @staticmethod
     def add_unavailable_linestring_layer(root: QgsLayerTree) -> QgsVectorLayer:

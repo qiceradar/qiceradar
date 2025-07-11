@@ -194,7 +194,7 @@ class QIceRadarPlugin(QtCore.QObject):
         self.controls_dock_widget = QgsDockWidget("QIceRadar Controls")
         self.controls_dock_widget.setWidget(self.controls_window)
         self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.controls_dock_widget)
-        # If we make it tabified, it tends to get hidden immediately by the messages
+        # If we make it tabified, it tends to get hidden immediately by the log messages
         # self.iface.addTabifiedDockWidget(QtCore.Qt.BottomDockWidgetArea,
         #                                  self.controls_dock_widget,
         #                                  tabifyWith=["PythonConsole"],
@@ -1337,4 +1337,5 @@ class QIceRadarPlugin(QtCore.QObject):
                                          raiseTab=True)
         # TODO: add downloadTransectWidget to the download window!
         self.download_window.download(granule, url, destination_filepath, filesize, headers)
+        # Bring to front again, in case user closed it
         self.download_dock_widget.setUserVisible(True)
