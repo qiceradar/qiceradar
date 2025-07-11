@@ -55,6 +55,11 @@ from qgis.gui import (
 
 
 class SymbologyMenuProvider(QgsLayerTreeViewMenuProvider):
+    """
+    For the symbology widget, the user needs to be able to edit the layer
+    symbols. I did not find a straightforward way to pop up only the edit
+    symbol dialogue, so this pops up the entire layer properties dialog.
+    """
     def __init__(self, view, iface):
         super().__init__()
         self.view = view
@@ -68,7 +73,6 @@ class SymbologyMenuProvider(QgsLayerTreeViewMenuProvider):
         layer_properties_action = QtWidgets.QAction("Layer Properties", menu)
         layer_properties_action.triggered.connect(self.open_layer_properties)
         menu.addAction(layer_properties_action)
-
         return menu
 
     def open_layer_properties(self):
@@ -98,7 +102,6 @@ class SymbologyWidget(QtWidgets.QWidget):
     unavailable_line_style_config_key = "qiceradar_config/unavailable_line_layer_style"
     categorized_style_config_key = "qiceradar_config/categorized_layer_style"
 
-
     def __init__(self, iface) -> None:
         super().__init__()
         self.iface = iface
@@ -112,17 +115,15 @@ class SymbologyWidget(QtWidgets.QWidget):
         self.setup_ui()
 
     def setup_ui(self) -> None:
-        vbox = QtWidgets.QVBoxLayout()
-
         label = QtWidgets.QLabel("Layer Styles")
         label.setAlignment(QtCore.Qt.AlignCenter)
         reset_button = QtWidgets.QPushButton("Reset Defaults")
         reset_button.clicked.connect(self.reset_styles_to_default)
 
+        vbox = QtWidgets.QVBoxLayout()
         vbox.addWidget(label)
         vbox.addWidget(self.view)
         vbox.addWidget(reset_button)
-
         self.setLayout(vbox)
 
     @staticmethod
@@ -134,7 +135,6 @@ class SymbologyWidget(QtWidgets.QWidget):
         model.setFlag(QgsLayerTreeModel.AllowNodeRename, False)
         model.setFlag(QgsLayerTreeModel.AllowNodeReorder, False)
         view.setModel(model)
-
         view.setMenuProvider(SymbologyMenuProvider(view, iface))
         return root, view, model
 
@@ -399,87 +399,77 @@ class SymbologyWidget(QtWidgets.QWidget):
         root.addLayer(categorized_layer)
         return categorized_layer
 
+    def deduplicate_updates(fun):
+        def wrapper(self, *args, **kwargs):
+            try:
+                force_update = kwargs["force_update"]
+            except Exception as ex:
+                force_update = False
+
+            dt = time.time() - self.style_changed_time
+            if dt < 1.0 and not force_update:
+                QgsMessageLog.logMessage(f"...repeated call, skipping (decorator!)")
+                return
+            fun(self, *args, **kwargs)
+            self.style_changed_time = time.time()
+        return wrapper
+
+    @deduplicate_updates
     def update_trace_layer_style(self, force_update=False):
         QgsMessageLog.logMessage(f"update_trace_layer_style")
-        # TODO: would this check be better as a decorator?
-        dt = time.time() - self.style_changed_time
-        if dt < 1.0 and not force_update:
-            QgsMessageLog.logMessage(f"...repeated call, skipping")
-            return
         doc = QtXml.QDomDocument()
         self.trace_layer.exportNamedStyle(doc)
         style_str = doc.toString()
         qs = QtCore.QSettings()
         qs.setValue(self.trace_style_config_key, style_str)
         self.trace_style_changed.emit(style_str)
-        self.style_changed_time = time.time()
 
+    @deduplicate_updates
     def update_selected_layer_style(self, force_update=False):
         QgsMessageLog.logMessage(f"update_selected_layer_style")
-        dt = time.time() - self.style_changed_time
-        if dt < 1.0 and not force_update:
-            QgsMessageLog.logMessage(f"...repeated call, skipping")
-            return
         doc = QtXml.QDomDocument()
         self.selected_layer.exportNamedStyle(doc)
         style_str = doc.toString()
         qs = QtCore.QSettings()
         qs.setValue(self.selected_style_config_key, style_str)
         self.selected_style_changed.emit(style_str)
-        self.style_changed_time = time.time()
 
+    @deduplicate_updates
     def update_segment_layer_style(self, force_update=False):
         QgsMessageLog.logMessage(f"update_segment_layer_style")
-        dt = time.time() - self.style_changed_time
-        if dt < 1.0 and not force_update:
-            QgsMessageLog.logMessage(f"...repeated call, skipping")
-            return
         doc = QtXml.QDomDocument()
         self.segment_layer.exportNamedStyle(doc)
         style_str = doc.toString()
         qs = QtCore.QSettings()
         qs.setValue(self.segment_style_config_key, style_str)
         self.segment_style_changed.emit(style_str)
-        self.style_changed_time = time.time()
 
+    @deduplicate_updates
     def update_unavailable_point_layer_style(self, force_update=False):
         QgsMessageLog.logMessage(f"update_unavailable_point_layer_style")
-        dt = time.time() - self.style_changed_time
-        if dt < 1.0 and not force_update:
-            QgsMessageLog.logMessage(f"...repeated call, skipping")
-            return
         doc = QtXml.QDomDocument()
         self.point_layer.exportNamedStyle(doc)
         style_str = doc.toString()
         qs = QtCore.QSettings()
         qs.setValue(self.unavailable_point_style_config_key, style_str)
         self.unavailable_point_style_changed.emit(style_str)
-        self.style_changed_time = time.time()
 
+    @deduplicate_updates
     def update_unavailable_line_layer_style(self, force_update=False):
         QgsMessageLog.logMessage(f"update_unavailable_line_layer_style")
-        dt = time.time() - self.style_changed_time
-        if dt < 1.0 and not force_update:
-            QgsMessageLog.logMessage(f"...repeated call, skipping")
-            return
         doc = QtXml.QDomDocument()
         self.line_layer.exportNamedStyle(doc)
         style_str = doc.toString()
         qs = QtCore.QSettings()
         qs.setValue(self.unavailable_line_style_config_key, style_str)
         self.unavailable_line_style_changed.emit(style_str)
-        self.style_changed_time = time.time()
 
+    @deduplicate_updates
     def update_categorized_layer_style(self, force_update=False):
         QgsMessageLog.logMessage(f"update_categorized_layer_style")
-        dt = time.time() - self.style_changed_time
-        if dt < 1.0 and not force_update:
-            QgsMessageLog.logMessage(f"...repeated call, skipping")
-            return
         doc = QtXml.QDomDocument()
         self.categorized_layer.exportNamedStyle(doc)
         style_str = doc.toString()
         qs = QtCore.QSettings()
         qs.setValue(self.categorized_style_config_key, style_str)
         self.categorized_style_changed.emit(style_str)
-        self.style_changed_time = time.time()
