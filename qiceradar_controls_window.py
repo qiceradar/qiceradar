@@ -45,7 +45,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
 
         hbox = QtWidgets.QHBoxLayout()
         hbox.addWidget(self.symbology_widget)
-        hbox.addStretch(1.0)
+        hbox.addStretch(1)
 
         central_widget.setLayout(hbox)
 

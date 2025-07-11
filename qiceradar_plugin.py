@@ -104,6 +104,8 @@ class QIceRadarPlugin(QtCore.QObject):
         self.supported_data_formats = ["awi_netcdf", "bas_netcdf", "utig_netcdf", "cresis_mat"]
         self.supported_download_methods = ["nsidc", "wget"]
 
+        # Create this here because we try to clean it up on unload
+        self.download_dock_widget: Optional[QtWidgets.QDockWidget] = None
         self.download_window: Optional[DownloadWindow] = None
 
         # The spatial index needs to be created for each new project
@@ -191,26 +193,13 @@ class QIceRadarPlugin(QtCore.QObject):
         self.controls_window = ControlsWindow(self.symbology_widget)
         self.controls_dock_widget = QgsDockWidget("QIceRadar Controls")
         self.controls_dock_widget.setWidget(self.controls_window)
+        self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.controls_dock_widget)
+        # If we make it tabified, it tends to get hidden immediately by the messages
+        # self.iface.addTabifiedDockWidget(QtCore.Qt.BottomDockWidgetArea,
+        #                                  self.controls_dock_widget,
+        #                                  tabifyWith=["PythonConsole"],
+        #                                  raiseTab=True)
 
-        # This is an ugly hack where I hard code which widget to create a tab group with...
-        # I could not figure out how to filter existing widgets based on area,
-        # widget.dockLocation() shows up in Qt 6.7, and we are still on Qt5.
-        dock_widgets = self.iface.mainWindow().findChildren(QtWidgets.QDockWidget)
-        msg = " ".join([widget.objectName() for widget in dock_widgets])
-        QgsMessageLog.logMessage(f"Found widgets: {msg}")
-        tab_widget = None
-        for widget in dock_widgets:
-            if widget.objectName() in ["MessageLog", "PythonConsole"]:
-                tab_widget = widget
-                break
-        if tab_widget is not None:
-            self.iface.mainWindow().tabifyDockWidget(tab_widget, self.controls_dock_widget)
-        else:
-            self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.controls_dock_widget)
-        # This does not always result in the controls which it being above
-        # everything else in the tab group. I wonder if posting log messages
-        # causes that panel to be made visible...
-        self.controls_dock_widget.setUserVisible(True)
 
         # TODO: May want to support a different tooltip in the menu that
         #   launches a GUI where you can either type in a line or select
@@ -247,7 +236,7 @@ class QIceRadarPlugin(QtCore.QObject):
         Required method; called when plugin unloaded.
         """
         # If we don't deactivate the map tool explicitly, it will remain
-        # active and cause an error if the user tries to click
+        # active and cause an error if the user tries to click on the map
         curr_tool = self.iface.mapCanvas().mapTool()
         if isinstance(curr_tool, QIceRadarSelectionTool):
             self.iface.mapCanvas().unsetMapTool(curr_tool)
@@ -256,8 +245,13 @@ class QIceRadarPlugin(QtCore.QObject):
         self.iface.removeToolBarIcon(self.downloader_action)
         self.iface.removePluginMenu("&Radar Viewer", self.viewer_action)
         self.iface.removePluginMenu("&Radar Downloader", self.downloader_action)
+        self.iface.removeDockWidget(self.controls_dock_widget)
         del self.viewer_action
         del self.downloader_action
+        del self.controls_dock_widget
+        if self.download_dock_widget is not None:
+            self.iface.removeDockWidget(self.download_dock_widget)
+            del self.download_dock_widget
 
     def set_config(self, config: UserConfig) -> None:
         """
@@ -1329,14 +1323,18 @@ class QIceRadarPlugin(QtCore.QObject):
         After the confirmation dialog has finished, this section
         actually kicks off the download
         """
-        if self.download_window is None:
+        if self.download_dock_widget is None:
             self.download_window = DownloadWindow(self.iface)
             self.download_window.download_finished.connect(
                 self.update_index_layer_renderers
             )
-            self.dock_widget = QtWidgets.QDockWidget("QIceRadar Downloader")
-            self.dock_widget.setWidget(self.download_window)
-            # TODO: Figure out how to handle the user closing the dock widget
-            self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.dock_widget)
+            self.download_dock_widget = QgsDockWidget("QIceRadar Downloader")
+            self.download_dock_widget.setWidget(self.download_window)
+            # self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.download_dock_widget)
+            self.iface.addTabifiedDockWidget(QtCore.Qt.BottomDockWidgetArea,
+                                         self.download_dock_widget,
+                                         tabifyWith=["PythonConsole","MessageLog"],
+                                         raiseTab=True)
         # TODO: add downloadTransectWidget to the download window!
         self.download_window.download(granule, url, destination_filepath, filesize, headers)
+        self.download_dock_widget.setUserVisible(True)
