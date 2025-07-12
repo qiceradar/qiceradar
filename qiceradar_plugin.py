@@ -421,7 +421,7 @@ class QIceRadarPlugin(QtCore.QObject):
                 continue
 
             # Check layer is marked unavailable
-            if feature.attributeMap()["availability"] != "u":
+            if feature["availability"] != "u":
                 # QgsMessageLog.logMessage(f"data is available for {layer.name()}")
                 continue
 
@@ -762,10 +762,10 @@ class QIceRadarPlugin(QtCore.QObject):
         connection.close()
 
         if db_granule is None:
-            availability = feature.attributeMap()["availability"]
+            availability = feature["availability"]
             if availability == "u":
-                institution = feature.attributeMap()["institution"]
-                campaign = feature.attributeMap()["campaign"]
+                institution = feature["institution"]
+                campaign = feature["campaign"]
                 self.display_unavailable_dialog(institution, campaign)
             else:
                 # TODO: This is a bit confusing -- if db_granule is None,
@@ -1129,9 +1129,7 @@ class QIceRadarPlugin(QtCore.QObject):
             assert isinstance(layer, QgsVectorLayer)
             feature = layer.getFeature(feature_id)
 
-            feature_name = feature.attributeMap()[
-                "name"
-            ]  # This returns Optional[object]
+            feature_name = feature["name"]  # This returns Optional[object]
             assert isinstance(feature_name, str)  # Again, making mypy happy
             # QgsMessageLog.logMessage(
             #     f"Neighbor: {neighbor}, layer = {layer.id()}, "
@@ -1200,8 +1198,8 @@ class QIceRadarPlugin(QtCore.QObject):
                 QgsMessageLog.logMessage(f"Could not find features for {layer}")
                 continue
             # Only need to check availability of single features, since all in
-            # the layer will be the same.
-            if f0.attributeMap()["availability"] == "u":
+            # the layer should be the same.
+            if f0["availability"] == "u":
                 continue
 
             symbol = QgsSymbol.defaultSymbol(layer.geometryType())
