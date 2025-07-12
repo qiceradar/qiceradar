@@ -387,14 +387,14 @@ class QIceRadarPlugin(QtCore.QObject):
 
 
     def on_unavailable_point_style_changed(self, style_str: str):
-        self.update_unavailable_layer_style(style_str, QgsWkbTypes.PointGeometry)
+        self.on_unavailable_layer_style_changed(style_str, QgsWkbTypes.PointGeometry)
 
     def on_unavailable_line_style_changed(self, style_str: str):
-        self.update_unavailable_layer_style(style_str, QgsWkbTypes.LineGeometry)
+        self.on_unavailable_layer_style_changed(style_str, QgsWkbTypes.LineGeometry)
 
     # NOTE: I'm unsure about the typing here ... might only be valid for
     #       post-3.30, while I'm using the older types.
-    def update_unavailable_layer_style(self, style_str: str, geom_type: QgsWkbTypes.GeometryType) -> None:
+    def on_unavailable_layer_style_changed(self, style_str: str, geom_type: QgsWkbTypes.GeometryType) -> None:
         """
         Copy style from the style layer to all layers in the QIceRadar index
         with unavailable data that match the input geometry type.

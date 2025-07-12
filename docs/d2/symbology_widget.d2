@@ -1,0 +1,118 @@
+direction: right
+
+classes: {
+  signal: {
+    label: signal
+    style.stroke-dash: 2
+  }
+}
+
+read_settings_value: QSettings().value("...")
+read_settings_value -> SymbologyWidget.test.setup_layers: {label: read}
+read_settings_value -- SymbologyWidget.test: {style: {stroke-width: 0}}
+
+write_settings_value: QSettings().setValue("...", "...")
+SymbologyWidget -- write_settings_value: {style: {stroke-width: 0}}
+SymbologyWidget.test.update_xyz_layer_style -> write_settings_value: {label: write}
+
+style_changed_signal: {
+  shape: rectangle
+  label: |md
+    ### SymbologyWidget.{xyz}_style_changed
+    - trace_style_changed
+    - selected_style_changed
+    - segment_style_changed
+    - unavailable_point_style_changed
+    - unavailable_line_style_changed
+    - categorized_style_changed
+  |
+}
+SymbologyWidget -- style_changed_signal: {style: {stroke-width: 0}}
+SymbologyWidget.test.update_xyz_layer_style -> style_changed_signal: {class: signal}
+
+reset_button: {
+  shape: rectangle
+  label: |md
+    ### User Clicks Reset Button
+    QPushButton.clicked
+  |
+}
+reset_button -> SymbologyWidget.test.reset_styles_to_default: {class: signal}
+
+user_edits: {
+  shape: rectangle
+  label: |md
+    ### User Edits Layer Style
+    QgsVector Layer.styleChanged
+  |
+}
+user_edits -> SymbologyWidget.test.update_xyz_layer_style: {class: signal}
+
+SymbologyWidget: {
+  test: {
+    setup_layers
+    reset_styles_to_default
+    update_xyz_layer_style: "update_{xyz}_layer_style"
+  }
+  test.style.opacity: 0
+
+  make_xyz_symbol: "make_{xyz}_symbol"
+
+  test -- make_xyz_symbol: {style: {stroke-width: 0}}
+  test.setup_layers -> make_xyz_symbol: {label: "if style not in settings"}
+  test.reset_styles_to_default -> make_xyz_symbol
+  # Testing whether this will help with alignment
+  #   test.update_xyz_layer_style -> make_xyz_symbol {style: {stroke-width: 0}}
+  # Drawing this line immediately borks the layout.
+  test.reset_styles_to_default -> test.update_xyz_layer_style
+}
+
+QIceRadarPlugin: {
+  on_named_layer_style_changed: {
+    shape: rectangle
+    label: |md
+      #### on_named_layer_style_changed(name)
+      style layers that have:
+      - matching name
+    |
+  }
+  on_trace_style_changed
+  on_selected_style_changed
+  on_segment_style_changed
+
+  on_unavailable_layer_style_changed: {
+    shape: rectangle
+    label: |md
+      #### on_unavailable_layer_style_changed(geom)
+      style layers that have:
+      - attribute "available" set to 'u'
+      - matching geometry
+    |
+  }
+  on_unavailable_point_style_changed
+  on_unavailable_line_style_changed
+
+  on_categorized_style_changed: {
+    shape: rectangle
+    label: |md
+      #### on_categorized_style_changed
+      style layers that have:
+      - valid attributes for a granule
+      - a categorized renderer
+    |
+  }
+
+  on_trace_style_changed -> on_named_layer_style_changed
+  on_selected_style_changed -> on_named_layer_style_changed
+  on_segment_style_changed -> on_named_layer_style_changed
+
+  on_unavailable_point_style_changed -> on_unavailable_layer_style_changed
+  on_unavailable_line_style_changed -> on_unavailable_layer_style_changed
+}
+
+trace_style_changed -> QIceRadarPlugin.on_trace_style_changed: {class: signal}
+selected_style_changed -> QIceRadarPlugin.on_selected_style_changed: {class: signal}
+segment_style_changed -> QIceRadarPlugin.on_segment_style_changed: {class: signal}
+unavailable_point_style_changed -> QIceRadarPlugin.on_unavailable_point_style_changed: {class: signal}
+unavailable_line_style_changed -> QIceRadarPlugin.on_unavailable_line_style_changed: {class: signal}
+categorized_style_changed -> QIceRadarPlugin.on_categorized_style_changed: {class: signal}
