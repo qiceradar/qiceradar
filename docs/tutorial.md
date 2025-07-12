@@ -3,9 +3,13 @@
 ## Initial Configuration
 
 When you first click either of the QIceRadar plugin tooltips, you'll get an error mesage:
+
 ![](figures/invalid_config_root_data.png)
+
 Click "Update Config":
-![](figures/qiceradar_config.png)
+
+<img src="figures/qiceradar_config.png" alt="QIceRadar Configuration Dialog" width="600px"/>
+
 then fill in the root directory where you want QIceRadar to save radargrams.
 
 The other fields can stay empty for now; the first time you try to download data from NSIDC you will be prompted to update your config with that token. Click the "?" button for instructions on obtaining a token.
@@ -13,20 +17,30 @@ The other fields can stay empty for now; the first time you try to download data
 ## Download Radargrams
 
 Click the icon with the down arrow to activate the downloader tooltip:
-<img src="figures/qiceradar_download.png" alt="QIceRadar download icon" width="100"/>
+
+<img src="figures/qiceradar_download.png" alt="QIceRadar Download Icon" width="100px"/>
 
 
 To download a line, click on the line in the map.
 A dialog box will pop up, giving five options ordered by distance from the clicked point. QIceRadar will only display segments that are currently visible in the layers menu.
-![](figures/download_selection.png)
+
+<img src="figures/download_selection.png" alt="QIceRadar Download Selection Dialog" width="400px"/>
+
 Select the segment of interest and click OK.
 Info about the selected radargram will appear:
-![](figures/download_confirmation.png)
+
+<img src="figures/download_confirmation.png" alt="QIceRadar Download Confirmation Dialog" width="600px"/>
+
 After checking how much data you'll be downloading, click "Download" to start the download.
+
 ![](figures/download_panel.png)
+
 You can monitor download progress in the download panel, or cancel a download that’s taking too long.
 
-After a segment has been successfully downloaded, it will turn purple in the map.
+After a segment has been successfully downloaded, it will turn purple in the map:
+
+![](figures/downloaded_symbology.png)
+
 
 
 ## View Radargrams
@@ -54,6 +68,16 @@ Activate the "Crosshairs" checkbox to associate features between the radargram a
 ![](figures/viewer_cursor.png)
 
 Citation information is available by clicking the "Citation" button in the viewer.
+
+## Modify Annotation Appearance
+
+It is possible to change the appearance of the map layers created by QIceRadar.
+Find the "QIceRadar Controls" dock widget, and right click on the type of annotation whose styling you want to change. 
+This will change it for every map layer of that type. 
+(So use this with caution if you are manually changing the styling of individual layers created by QIceRadar)
+
+<img src="figures/qiceradar_controls.png" alt="QIceRadar Controls Widget" width="300"/>
+
 
 ## QGIS tips:
 
