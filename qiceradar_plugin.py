@@ -78,6 +78,7 @@ from .qiceradar_config import (
 )
 from .qiceradar_config_widget import QIceRadarConfigWidget
 from .qiceradar_controls_window import ControlsWindow
+from .qiceradar_dialogs import QIceRadarDialogs
 from .qiceradar_selection_widget import (
     QIceRadarSelectionTool,
     QIceRadarSelectionWidget,
@@ -543,105 +544,6 @@ class QIceRadarPlugin(QtCore.QObject):
                 except Exception as ex:
                     QgsMessageLog.logMessage(f"{repr(ex)}")
 
-    def display_unavailable_dialog(self, institution: str, campaign: str) -> None:
-        # TODO: Consider special case for BEDMAP1?
-        msg = (
-            "We have not found publicly-available radargrams for this transect."
-            "<br><br>"
-            f"Institution: {institution}"
-            "<br>"
-            f"Campaign: {campaign}"
-            "<br><br>"
-            "If these are now available, please let us know so we can update the database!"
-            "<br><br>"
-            'Submit an issue: <a href="https://github.com/qiceradar/qiceradar/issues/new">https://github.com/qiceradar/qiceradar/issues/new</a>'
-            "<br>"
-            'Or send us email: <a href="mailto:qiceradar@gmail.com">qiceradar@gmail.com</a>'
-            "<br><br>"
-            "If this is your data and you're thinking about releasing it, feel free to get in touch. We'd love to help if we can."
-        )
-        message_box = QtWidgets.QMessageBox()
-        message_box.setTextFormat(QtCore.Qt.RichText)
-        message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
-        message_box.setText(msg)
-        message_box.exec()
-
-    def display_unsupported_download_method_dialog(self, granule_name: str) -> None:
-        msg = (
-            "This radargram is available, but we are not able to assist with downloading it."
-            "<br><br>"
-            f"Granule: {granule_name}"
-            "<br><br>"
-            "If this campaign is particularly important to your work, let us know! "
-            "This feedback will help prioritize future development efforts. "
-            "<br><br>"
-            'Submit an issue: <a href="https://github.com/qiceradar/qiceradar/issues/new">https://github.com/qiceradar/qiceradar/issues/new</a>'
-            "<br>"
-        )
-        message_box = QtWidgets.QMessageBox()
-        message_box.setTextFormat(QtCore.Qt.RichText)
-        message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
-        message_box.setText(msg)
-        message_box.exec()
-
-    def display_unsupported_data_format_dialog(self, granule_name: str) -> None:
-        # TODO: Consider special case for information about Stanford's digitization efforts?
-        # TODO: This may also be a prompt to update the code itself / present
-        #   a link to the page documenting supported formats.
-        msg = (
-            "This radargram is available, but its format is not currently supported in the viewer "
-            "<br><br>"
-            f"Granule: {granule_name}"
-            "<br><br>"
-            "If this campaign is particularly important to your work, let us know! "
-            "This feedback will help prioritize future development efforts. "
-            "<br><br>"
-            'Submit an issue: <a href="https://github.com/qiceradar/qiceradar/issues/new">https://github.com/qiceradar/qiceradar/issues/new</a>'
-            "<br>"
-            'Or send us an email: <a href="mailto:qiceradar@gmail.com">qiceradar@gmail.com</a>'
-        )
-        message_box = QtWidgets.QMessageBox()
-        message_box.setTextFormat(QtCore.Qt.RichText)
-        message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
-        message_box.setText(msg)
-        message_box.exec()
-
-    def display_already_downloaded_dialog(
-        self, db_granule: db_utils.DatabaseGranule
-    ) -> None:
-        # TODO: Should make this impossible by filtering the selection
-        #   based on un-downloaded transects.
-        #   I *could* make the unavailable impossible, but I want to display info
-        #   about them, and a 3rd tooltip doesn't make sense.
-        msg = (
-            "Already downloaded requested data!"
-            "<br>"
-            f"Granule: {db_granule.granule_name}"
-            "<br>"
-        )
-        message_box = QtWidgets.QMessageBox()
-        message_box.setTextFormat(QtCore.Qt.RichText)
-        message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
-        message_box.setText(msg)
-        message_box.exec()
-
-    def display_must_download_dialog(
-        self, radargram_filepath: pathlib.Path, db_granule: db_utils.DatabaseGranule
-    ) -> None:
-        msg = (
-            "Must download radargram before viewing it"
-            "<br>"
-            f"Granule: {db_granule.granule_name}"
-            "<br>"
-            f"(Looking for data in: {radargram_filepath})"
-            "<br>"
-        )
-        message_box = QtWidgets.QMessageBox()
-        message_box.setTextFormat(QtCore.Qt.RichText)
-        message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
-        message_box.setText(msg)
-        message_box.exec()
-
     def view_selected_transect(
         self,
         rootdir: pathlib.Path,
@@ -663,11 +565,11 @@ class QIceRadarPlugin(QtCore.QObject):
                     db_campaign,
                 )
             else:
-                self.display_unsupported_data_format_dialog(
+                QIceRadarDialogs.display_unsupported_data_format_dialog(
                     db_granule.granule_name
                 )
         else:
-            self.display_must_download_dialog(transect_filepath, db_granule)
+            QIceRadarDialogs.display_must_download_dialog(transect_filepath, db_granule.granule_name)
 
     def download_selected_transect(
         self, rootdir: pathlib.Path, db_granule: db_utils.DatabaseGranule
@@ -685,9 +587,9 @@ class QIceRadarPlugin(QtCore.QObject):
             db_granule.relative_path != ""
         ) and transect_filepath.is_file()
         if already_downloaded:
-            self.display_already_downloaded_dialog(db_granule)
+            QIceRadarDialogs.display_already_downloaded_dialog(db_granule.granule_name)
         elif db_granule.download_method not in self.supported_download_methods:
-            self.display_unsupported_download_method_dialog(db_granule.granule_name)
+            QIceRadarDialogs.display_unsupported_download_method_dialog(db_granule.granule_name)
         else:
             self.launch_radar_downloader(transect_filepath, db_granule)
 
@@ -715,13 +617,13 @@ class QIceRadarPlugin(QtCore.QObject):
         layer: QgsMapLayer = root.findLayer(layer_id).layer()
         feature = layer.getFeature(feature_id)
 
-        # TODO: confirm this feature is a valid granule before operating on it;
+        # TODO: confirm this feature is a valid granule before trying to access attributes?
         # if it is not, we probably need to rebuild the index?
         availability = feature["availability"]
         if availability == "u":
             institution = feature["institution"]
             campaign = feature["campaign"]
-            self.display_unavailable_dialog(institution, campaign)
+            QIceRadarDialogs.display_unavailable_dialog(institution, campaign)
             return
 
         # mypy doesn't recognize the first option as doing the same check, so
@@ -779,9 +681,9 @@ class QIceRadarPlugin(QtCore.QObject):
             #  There are also cases where I expect to provide a link
             #  but direct the user to download it manually.
             if operation == QIceRadarPlugin.Operation.DOWNLOAD:
-                self.display_unsupported_download_method_dialog(granule_name)
+                QIceRadarDialogs.display_unsupported_download_method_dialog(granule_name)
             elif operation == QIceRadarPlugin.Operation.VIEW:
-                self.display_unsupported_data_format_dialog(granule_name)
+                QIceRadarDialogs.display_unsupported_data_format_dialog(granule_name)
         else:
             if operation == QIceRadarPlugin.Operation.DOWNLOAD:
                 self.download_selected_transect(self.config.rootdir, db_granule)
