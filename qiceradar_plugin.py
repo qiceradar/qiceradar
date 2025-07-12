@@ -715,6 +715,15 @@ class QIceRadarPlugin(QtCore.QObject):
         layer: QgsMapLayer = root.findLayer(layer_id).layer()
         feature = layer.getFeature(feature_id)
 
+        # TODO: confirm this feature is a valid granule before operating on it;
+        # if it is not, we probably need to rebuild the index?
+        availability = feature["availability"]
+        if availability == "u":
+            institution = feature["institution"]
+            campaign = feature["campaign"]
+            self.display_unavailable_dialog(institution, campaign)
+            return
+
         # mypy doesn't recognize the first option as doing the same check, so
         # flags get_granule_filepath as having incompatible arguments.
         # if not rootdir_is_valid(self.config):
@@ -762,23 +771,17 @@ class QIceRadarPlugin(QtCore.QObject):
         connection.close()
 
         if db_granule is None:
-            availability = feature["availability"]
-            if availability == "u":
-                institution = feature["institution"]
-                campaign = feature["campaign"]
-                self.display_unavailable_dialog(institution, campaign)
-            else:
-                # TODO: This is a bit confusing -- if db_granule is None,
-                #  we don't have any info about it in the database, so
-                #  I'm not sure splitting it out into download_method /
-                #  data_format is the fundamental thing, since we don't
-                #  even know what the method or format should be!
-                #  There are also cases where I expect to provide a link
-                #  but direct the user to download it manually.
-                if operation == QIceRadarPlugin.Operation.DOWNLOAD:
-                    self.display_unsupported_download_method_dialog(granule_name)
-                elif operation == QIceRadarPlugin.Operation.VIEW:
-                    self.display_unsupported_data_format_dialog(granule_name)
+            # TODO: This is a bit confusing -- if db_granule is None,
+            #  we don't have any info about it in the database, so
+            #  I'm not sure splitting it out into download_method /
+            #  data_format is the fundamental thing, since we don't
+            #  even know what the method or format should be!
+            #  There are also cases where I expect to provide a link
+            #  but direct the user to download it manually.
+            if operation == QIceRadarPlugin.Operation.DOWNLOAD:
+                self.display_unsupported_download_method_dialog(granule_name)
+            elif operation == QIceRadarPlugin.Operation.VIEW:
+                self.display_unsupported_data_format_dialog(granule_name)
         else:
             if operation == QIceRadarPlugin.Operation.DOWNLOAD:
                 self.download_selected_transect(self.config.rootdir, db_granule)
