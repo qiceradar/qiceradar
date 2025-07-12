@@ -692,7 +692,7 @@ class QIceRadarPlugin(QtCore.QObject):
             self.launch_radar_downloader(transect_filepath, db_granule)
 
     def selected_transect_callback(
-        self, operation: Operation, transect_name: str
+        self, operation: Operation, granule_name: str
     ) -> None:
         """
         Callback for the QIceRadarSelectionWidget that launches the appropriate
@@ -700,20 +700,20 @@ class QIceRadarPlugin(QtCore.QObject):
         They share a callback because there is a common set of checks before
         either QIceRadar widget can be run.
         """
-        QgsMessageLog.logMessage(f"selected_transect_callback: {transect_name}")
+        QgsMessageLog.logMessage(f"selected_transect_callback: {granule_name}")
         QgsMessageLog.logMessage(f"op = {operation} (download = {QIceRadarPlugin.Operation.DOWNLOAD}, view = {QIceRadarPlugin.Operation.VIEW})")
         QgsMessageLog.logMessage(f"rootdir = {self.config.rootdir}")
 
-        layer_id, feature_id = self.transect_name_lookup[transect_name]
-
-        root: QgsLayerTree = QgsProject.instance().layerTreeRoot()
         # QgsMapLayer is the abstract class; this will *actually* return
         # a QgsVectorLayer which has getFeature() and getFeatures() methods
         # So, add an assert to make mypy happy.
+        # TODO: cleanup type annotation handling -- should not use an assert here
+        # because user might have added different layer and we need to handle that gracefully
+        # assert isinstance(layer, QgsVectorLayer)
+        layer_id, feature_id = self.transect_name_lookup[granule_name]
+        root: QgsLayerTree = QgsProject.instance().layerTreeRoot()
         layer: QgsMapLayer = root.findLayer(layer_id).layer()
-        assert isinstance(layer, QgsVectorLayer)
         feature = layer.getFeature(feature_id)
-        granule_name = feature.attributeMap()["name"]
 
         # mypy doesn't recognize the first option as doing the same check, so
         # flags get_granule_filepath as having incompatible arguments.
