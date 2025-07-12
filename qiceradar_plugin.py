@@ -33,6 +33,7 @@ import inspect
 import os
 import pathlib
 import sqlite3
+import time
 
 # from db_utils import DatabaseGranule, DatabaseCampaign
 from typing import Dict, List, Optional, Tuple
@@ -40,6 +41,8 @@ from typing import Dict, List, Optional, Tuple
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
 import PyQt5.QtWidgets as QtWidgets
+import PyQt5.QtXml as QtXml
+
 import yaml
 from qgis.core import (
     edit,
@@ -61,8 +64,9 @@ from qgis.core import (
     QgsSpatialIndex,
     QgsSymbol,
     QgsVectorLayer,
+    QgsWkbTypes,
 )
-from qgis.gui import QgisInterface, QgsMapTool, QgsMapToolPan, QgsMessageBar
+from qgis.gui import QgisInterface, QgsDockWidget, QgsMapTool, QgsMapToolPan, QgsMessageBar
 
 from .datautils import db_utils
 from .download_widget import DownloadConfirmationDialog, DownloadWindow
@@ -73,10 +77,12 @@ from .qiceradar_config import (
     rootdir_is_valid,
 )
 from .qiceradar_config_widget import QIceRadarConfigWidget
+from .qiceradar_controls_window import ControlsWindow
 from .qiceradar_selection_widget import (
     QIceRadarSelectionTool,
     QIceRadarSelectionWidget,
 )
+from .qiceradar_symbology_widget import SymbologyWidget
 from .radar_viewer_window import RadarWindow
 
 
@@ -98,11 +104,15 @@ class QIceRadarPlugin(QtCore.QObject):
         self.supported_data_formats = ["awi_netcdf", "bas_netcdf", "utig_netcdf", "cresis_mat"]
         self.supported_download_methods = ["nsidc", "wget"]
 
+        # Create this here because we try to clean it up on unload
+        self.download_dock_widget: Optional[QtWidgets.QDockWidget] = None
         self.download_window: Optional[DownloadWindow] = None
+
         # The spatial index needs to be created for each new project
         # TODO: Consider whether to support user switching projects and
         #  thus needing to regenerate the spatial index. (e.g. Arctic / Antarctic switch?)
         self.spatial_index: Optional[QgsSpatialIndex] = None
+
         # The spatial index only returns the IDs of features.
         # So, if we insert features from multiple layers, it's up to us to do the
         # bookkeeping between spatial index ID and layer ID.
@@ -112,12 +122,10 @@ class QIceRadarPlugin(QtCore.QObject):
         # * "feature_id" is the int returned by feature.id(), and can be used
         #    to access the feature via layer.getFeature(feature_id)
         self.spatial_index_lookup: Dict[int, Tuple[str, int]] = {}
+
         # After presenting the transect names to the user to select among,
         # need to map back to a feature in the database that we can query.
         self.transect_name_lookup: Dict[str, Tuple[str, int]] = {}
-
-        # Cache this when starting the selection tool in order to reset state
-        self.prev_map_tool: Optional[QgsMapTool] = None
 
         # Try loading config when plugin initialized (before project has been selected)
         self.config = UserConfig()
@@ -134,9 +142,10 @@ class QIceRadarPlugin(QtCore.QObject):
 
         # Need to wait for project to be opened before actually creating layer group
         self.radar_viewer_group: Optional[QgsLayerTreeGroup] = None
-        # Similarly, need to wait for project with QIceRadar index to be loaded
+
+        # need to wait for project with QIceRadar index to be loaded
         # before we can modify the renderers to indicate downloaded transects
-        self.download_renderer_added = False
+        self.index_layers_categorized = False
 
         self.transect_groups: Dict[str, QgsLayerTreeGroup] = {}
         self.trace_features: Dict[str, QgsFeature] = {}
@@ -161,13 +170,36 @@ class QIceRadarPlugin(QtCore.QObject):
         else:
             cmd_folder = os.path.split(inspect.getfile(frame))[0]
             downloader_icon_path = os.path.join(
-                os.path.join(cmd_folder, "icons/qiceradar_download.png")
+                cmd_folder, "icons/qiceradar_download.png"
             )
             downloader_icon = QtGui.QIcon(downloader_icon_path)
             viewer_icon_path = os.path.join(
-                os.path.join(cmd_folder, "icons/qiceradar_view.png")
+                cmd_folder, "icons/qiceradar_view.png"
             )
             viewer_icon = QtGui.QIcon(viewer_icon_path)
+
+        # This symbology widget needs to be instantiated here, since its
+        # signals and slots are tied tightly to the plugin.
+        self.symbology_widget = SymbologyWidget(self.iface)
+
+        # hook up signals
+        self.symbology_widget.trace_style_changed.connect(self.on_trace_style_changed)
+        self.symbology_widget.selected_style_changed.connect(self.on_selected_style_changed)
+        self.symbology_widget.segment_style_changed.connect(self.on_segment_style_changed)
+        self.symbology_widget.unavailable_line_style_changed.connect(self.on_unavailable_line_style_changed)
+        self.symbology_widget.unavailable_point_style_changed.connect(self.on_unavailable_point_style_changed)
+        self.symbology_widget.categorized_style_changed.connect(self.on_categorized_style_changed)
+
+        self.controls_window = ControlsWindow(self.symbology_widget)
+        self.controls_dock_widget = QgsDockWidget("QIceRadar Controls")
+        self.controls_dock_widget.setWidget(self.controls_window)
+        self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.controls_dock_widget)
+        # If we make it tabified, it tends to get hidden immediately by the log messages
+        # self.iface.addTabifiedDockWidget(QtCore.Qt.BottomDockWidgetArea,
+        #                                  self.controls_dock_widget,
+        #                                  tabifyWith=["PythonConsole"],
+        #                                  raiseTab=True)
+
 
         # TODO: May want to support a different tooltip in the menu that
         #   launches a GUI where you can either type in a line or select
@@ -204,7 +236,7 @@ class QIceRadarPlugin(QtCore.QObject):
         Required method; called when plugin unloaded.
         """
         # If we don't deactivate the map tool explicitly, it will remain
-        # active and cause an error if the user tries to click
+        # active and cause an error if the user tries to click on the map
         curr_tool = self.iface.mapCanvas().mapTool()
         if isinstance(curr_tool, QIceRadarSelectionTool):
             self.iface.mapCanvas().unsetMapTool(curr_tool)
@@ -213,8 +245,13 @@ class QIceRadarPlugin(QtCore.QObject):
         self.iface.removeToolBarIcon(self.downloader_action)
         self.iface.removePluginMenu("&Radar Viewer", self.viewer_action)
         self.iface.removePluginMenu("&Radar Downloader", self.downloader_action)
+        self.iface.removeDockWidget(self.controls_dock_widget)
         del self.viewer_action
         del self.downloader_action
+        del self.controls_dock_widget
+        if self.download_dock_widget is not None:
+            self.iface.removeDockWidget(self.download_dock_widget)
+            del self.download_dock_widget
 
     def set_config(self, config: UserConfig) -> None:
         """
@@ -257,16 +294,155 @@ class QIceRadarPlugin(QtCore.QObject):
         else:
             self.radar_viewer_group = radar_group
 
-    def build_spatial_index(self) -> None:
+    def on_named_layer_style_changed(self, style_str: str, target_layer_name: str) -> None:
         """
-        This is slow on my MacBook Pro, but not impossibly so.
+        Change the style for every layer in the radar viewer group with name
+        matching the target name.
+
+        TODO: It might be more robust to explicitly keep a list of layers
+        that have been created, rather than filtering them on name (which the
+        users are able to change)
         """
-        QgsMessageLog.logMessage("Building spatial index.")
+        if self.radar_viewer_group is None:
+            self.create_radar_viewer_group()
+
+        doc = QtXml.QDomDocument()
+        doc.setContent(style_str)
+
+        for layer in self.radar_viewer_group.findLayers():
+            if layer.layer().name() != target_layer_name:
+                continue
+            # QgsMessageLog.logMessage(f"Updating style for {layer.parent().name()}")
+            result = layer.layer().importNamedStyle(doc)
+            layer.layer().triggerRepaint()
+
+    def on_trace_style_changed(self, style_str: str):
+        QgsMessageLog.logMessage(f"on_trace_style_changed")
+        self.on_named_layer_style_changed(style_str, "Highlighted Trace")
+
+    def on_selected_style_changed(self, style_str: str):
+        QgsMessageLog.logMessage(f"on_selected_style_changed")
+        self.on_named_layer_style_changed(style_str, "Selected Region")
+
+    def on_segment_style_changed(self, style_str: str):
+        QgsMessageLog.logMessage(f"on_segment_style_changed")
+        self.on_named_layer_style_changed(style_str, "Full Transect")
+
+    def on_categorized_style_changed(self, style_str: str):
+        QgsMessageLog.logMessage(f"on_categorized_style_changed")
+        # This update assumes that rule based renderers have already been created,
+        # so initialize them if necessary
+        if not self.index_layers_categorized:
+            self.update_index_layer_renderers()
+
+        doc = QtXml.QDomDocument()
+        doc.setContent(style_str)
+
+        index_group = self.find_index_group()
+        if index_group is None:
+            return
+        for layer in index_group.findLayers():
+            features = layer.layer().getFeatures()
+            try:
+                feature = next(features)
+            except StopIteration:
+                QgsMessageLog.logMessage(f"Could not find features for {layer}")
+                continue
+            if not self.is_valid_granule_feature(feature):
+                continue
+
+            # Only layers with available data will have a rule based renderer
+            dest_renderer = layer.layer().renderer()
+            if not isinstance(dest_renderer, QgsRuleBasedRenderer):
+                # QgsMessageLog.logMessage(f"...skipping {layer.layer().name()}")
+                continue
+
+            # Cache filter expressions for the categories.
+            # I couldn't figure out how to only grab symbol styles, so copy
+            # whole style then restore the filter rules for the renderer.
+            download_filter, supported_filter, else_filter = None, None, None
+            for rule in dest_renderer.rootRule().children():
+                if rule.label() == "Downloaded":
+                    download_filter = rule.filterExpression()
+                elif rule.label() == "Supported":
+                    supported_filter = rule.filterExpression()
+                elif rule.label() == "Available":
+                    else_filter = rule.filterExpression()
+
+            result = layer.layer().importNamedStyle(doc)
+
+            # Have to grab renderer again, since importing the style changed it.
+            dest_renderer = layer.layer().renderer()
+            for rule in dest_renderer.rootRule().children():
+                if rule.label() == "Downloaded":
+                    rule.setFilterExpression(download_filter)
+                elif rule.label() == "Supported":
+                    rule.setFilterExpression(supported_filter)
+                elif rule.label() == "Available":
+                    rule.setFilterExpression(else_filter)
+            layer.layer().setRenderer(dest_renderer)
+
+            self.iface.layerTreeView().refreshLayerSymbology(layer.layer().id())
+            layer.layer().triggerRepaint()
+
+
+    def on_unavailable_point_style_changed(self, style_str: str):
+        self.update_unavailable_layer_style(style_str, QgsWkbTypes.PointGeometry)
+
+    def on_unavailable_line_style_changed(self, style_str: str):
+        self.update_unavailable_layer_style(style_str, QgsWkbTypes.LineGeometry)
+
+    # NOTE: I'm unsure about the typing here ... might only be valid for
+    #       post-3.30, while I'm using the older types.
+    def update_unavailable_layer_style(self, style_str: str, geom_type: QgsWkbTypes.GeometryType) -> None:
+        """
+        Copy style from the style layer to all layers in the QIceRadar index
+        with unavailable data that match the input geometry type.
+
+        This takes a few seconds, but I don't think I can make it any faster
+        with the current layer organization, since the bulk of the time is spent
+        simply iterating through layers and grabbing the first feature.
+        """
+
+        index_group = self.find_index_group()
+        if index_group is None:
+            return
+
+        doc = QtXml.QDomDocument()
+        doc.setContent(style_str)
+
+        for layer in index_group.findLayers():
+            features = layer.layer().getFeatures()
+            try:
+                # All layers created by QIceRadar have a single type of features
+                feature = next(features)
+            except Exception as ex:
+                QgsMessageLog.logMessage(f"could not get layer features")
+                continue
+
+            # Check layer is marked unavailable
+            if feature.attributeMap()["availability"] != "u":
+                # QgsMessageLog.logMessage(f"data is available for {layer.name()}")
+                continue
+
+            if feature.geometry().type() == geom_type:
+                layer.layer().importNamedStyle(doc)
+                layer.layer().triggerRepaint()
+
+        # This also seems to be optional, though the cookbook says it should be done.
+        self.iface.mapCanvas().refresh()
+
+
+    def find_index_group(self) -> Optional[QgsLayerTreeGroup]:
+        # QgsMessageLog.logMessage("find_index_group")
         root = QgsProject.instance().layerTreeRoot()
-        qiceradar_group = root.findGroup("ANTARCTIC QIceRadar Index")
-        if qiceradar_group is None:
-            qiceradar_group = root.findGroup("ARCTIC QIceRadar Index")
-        if qiceradar_group is None:
+        layer_group = None
+        for layer_group in root.findGroups():
+            if "QIceRadar Index" in layer_group.name():
+                index_group = layer_group
+                break
+
+        if layer_group is None:
             errmsg = (
                 "Could not find index data. \n\n"
                 "You may need to drag the QIceRadar .qlr file into QGIS. \n\n"
@@ -276,13 +452,38 @@ class QIceRadarPlugin(QtCore.QObject):
             message_box = QtWidgets.QMessageBox()
             message_box.setText(errmsg)
             message_box.exec()
+        return layer_group
+
+
+    def is_valid_granule_feature(self, feature: QgsFeature):
+        attributes = feature.attributeMap()
+        for field in [
+            "availability",
+            "campaign",
+            "institution",
+            "granule",
+            "segment",
+            "region",
+        ]:
+            if field not in attributes:
+                return False
+        return True
+
+    def build_spatial_index(self) -> None:
+        """
+        This is slow on my MacBook Pro, but not impossibly so.
+        """
+        index_group = self.find_index_group()
+        if index_group is None:
             return
+
+        QgsMessageLog.logMessage("Building spatial index.")
 
         # We need to store geometries, otherwise nearest neighbor calculations are done
         # based on bounding boxes and the list of closest transects is nonsensical.
         self.spatial_index = QgsSpatialIndex(QgsSpatialIndex.FlagStoreFeatureGeometries)
         index_id = 0
-        for institution_group in qiceradar_group.children():
+        for institution_group in index_group.children():
             if not isinstance(institution_group, QgsLayerTreeGroup):
                 # Really, there shouldn't be any, but who knows what layers the user may have added.
                 QgsMessageLog.logMessage(
@@ -302,27 +503,27 @@ class QIceRadarPlugin(QtCore.QObject):
                     # happy with calling methods only defined by the subclass.
                     campaign_layer: QgsMapLayer = campaign.layer()
                     assert isinstance(campaign_layer, QgsVectorLayer)
-                    feat = next(campaign_layer.getFeatures())
-                    # TODO: Would be better to have a proper function for checking this.
-                    for field in [
-                        "availability",
-                        "campaign",
-                        "institution",
-                        "granule",
-                        "segment",
-                        "region",
-                    ]:
-                        if field not in feat.attributeMap():
-                            QgsMessageLog.logMessage(
-                                f"Layer in {campaign} missing expected field {field}; not adding features to index."
-                            )
-                            break
-                    for feature in campaign_layer.getFeatures():
+                    features = campaign_layer.getFeatures()
+                    campaign_layer_validated = False
+                    for feature in features:
+                        if not campaign_layer_validated:
+                            # I'm not sure how valuable this check is; we're assuming
+                            # that the first feature is all we need to check (has user
+                            # added spurious features to a layer accidentally? If so,
+                            # this won't help). The catch-all at the bottom may be enough.
+                            valid_layer = self.is_valid_granule_feature(feature)
+                            if not valid_layer:
+                                QgsMessageLog.logMessage(
+                                    f"Feature in layer {campaign} missing expected field; not adding to index."
+                                )
+                                break
+                            campaign_layer_validated = True
+
                         self.spatial_index_lookup[index_id] = (
                             campaign.layer().id(),
                             feature.id(),
                         )
-                        feature_name = feature.attributeMap()["name"]
+                        feature_name = feature["name"]
                         assert isinstance(feature_name, str)  # make mypy happy
                         if feature_name in self.transect_name_lookup:
                             # Don't die, but do log a message
@@ -680,67 +881,78 @@ class QIceRadarPlugin(QtCore.QObject):
         points = list(zip(rw.radar_data.lon, rw.radar_data.lat))
         self.update_segment_points(db_granule.granule_name, points)
 
+        # QUESTION: Is storing a dict of dock widgets all I need to do to
+        # allow multiple radargrams to be open at once? (In that case, both
+        # the quit and the ex button would need to remove and clean up the
+        # dock widget. And I would want to initialize them as tabs within
+        # the same area...)
         self.dw = QtWidgets.QDockWidget(db_granule.granule_name)
         self.dw.setWidget(rw)
         self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.dw)
 
-    def setup_qgis_layers(self, transect_name: str) -> None:
+    def setup_qgis_layers(self, granule_name: str) -> None:
         if self.radar_viewer_group is None:
             raise Exception(
                 "Error -- by the time setup_qgis_layers is called, radar_viewer_group should have been created!"
             )
 
-        transect_group = self.radar_viewer_group.findGroup(transect_name)
-        if transect_group is None:
-            QgsMessageLog.logMessage(f"Could not find existing group for granule: {transect_name}")
-            transect_group = self.radar_viewer_group.addGroup(transect_name)
+        granule_group = self.radar_viewer_group.findGroup(granule_name)
+        if granule_group is None:
+            QgsMessageLog.logMessage(f"Could not find existing group for granule: {granule_name}")
+            granule_group = self.radar_viewer_group.addGroup(granule_name)
         else:
-            QgsMessageLog.logMessage(f"Found existing group for granule: {transect_name}")
-        self.transect_groups[transect_name] = transect_group
+            QgsMessageLog.logMessage(f"Found existing group for granule: {granule_name}")
+        self.transect_groups[granule_name] = granule_group
+        self.add_trace_layer(granule_group, granule_name)
+        self.add_selected_layer(granule_group, granule_name)
+        self.add_segment_layer(granule_group, granule_name)
 
+
+    def add_trace_layer(self, granule_group: QgsLayerTreeGroup, granule_name: str) -> None:
         # QGIS layer & feature for the single-trace cursor
         trace_layer = None
-        for layer_node in transect_group.findLayers():
+        for layer_node in granule_group.findLayers():
             if layer_node.layer().name() == "Highlighted Trace":
                 trace_layer = layer_node.layer()
                 break
 
         if trace_layer is None:
             QgsMessageLog.logMessage(f"Could not find trace layer")
-            trace_symbol = QgsMarkerSymbol.createSimple(
-                {
-                    "name": "circle",
-                    "color": QtGui.QColor.fromRgb(255, 255, 0, 255),
-                    "size": "10",
-                    "size_unit": "Point",
-                }
-            )
             trace_uri = "point?crs=epsg:4326"
             trace_layer = QgsVectorLayer(trace_uri, "Highlighted Trace", "memory")
-            trace_layer.renderer().setSymbol(trace_symbol)
             QgsProject.instance().addMapLayer(trace_layer, False)
-            transect_group.addLayer(trace_layer)
+            granule_group.addLayer(trace_layer)
         else:
             QgsMessageLog.logMessage(f"Found existing trace layer.")
             # It is easiest to just delete all features and recreate what we need
             with edit(trace_layer):
                 trace_layer.deleteFeatures(trace_layer.allFeatureIds())
 
+        qs = QtCore.QSettings()
+        style_str = qs.value("qiceradar_config/trace_layer_style", None)
+        if style_str is None:
+            QgsMessageLog.logMessage(f"Could not find: qiceradar_config/trace_layer_style")
+        else:
+            doc = QtXml.QDomDocument()
+            doc.setContent(style_str)
+            result = trace_layer.importNamedStyle(doc)
+            if not result:
+                QgsMessageLog.logMessage(f"add_trace_layer: {result}")
+
         trace_feature = QgsFeature()
-        # Initialize to the pole, then expect the viewer to update it
-        # immediately.
+        # Initialize to the pole, then expect the RadarViewer to update it immediately
         trace_geometry = QgsPoint(0, -90)
         trace_feature.setGeometry(trace_geometry)
         trace_provider = trace_layer.dataProvider()
         trace_provider.addFeature(trace_feature)
         trace_layer.updateExtents()
-        self.trace_features[transect_name] = trace_feature
-        self.trace_layers[transect_name] = trace_layer
+        self.trace_features[granule_name] = trace_feature
+        self.trace_layers[granule_name] = trace_layer
 
+    def add_selected_layer(self, granule_group: QgsLayerTreeGroup, granule_name: str) -> None:
         # Features for the displayed segment.
-        # For my example, I just used all of them. Will probably need to downsample!
         selected_layer = None
-        for layer_node in transect_group.findLayers():
+        for layer_node in granule_group.findLayers():
             if layer_node.layer().name() == "Selected Region":
                 selected_layer = layer_node.layer()
                 break
@@ -749,20 +961,23 @@ class QIceRadarPlugin(QtCore.QObject):
             QgsMessageLog.logMessage(f"Could not find selection layer")
             selected_uri = "LineString?crs=epsg:4326"
             selected_layer = QgsVectorLayer(selected_uri, "Selected Region", "memory")
-            selected_symbol = QgsLineSymbol.createSimple(
-                {
-                    "color": QtGui.QColor.fromRgb(255, 128, 30, 255),
-                    "line_width": 2,
-                    "line_width_units": "Point",
-                }
-            )
-            selected_layer.renderer().setSymbol(selected_symbol)
             QgsProject.instance().addMapLayer(selected_layer, False)
-            transect_group.addLayer(selected_layer)
+            granule_group.addLayer(selected_layer)
         else:
             QgsMessageLog.logMessage(f"Found existing selection layer.")
             with edit(selected_layer):
                 selected_layer.deleteFeatures(selected_layer.allFeatureIds())
+
+        qs = QtCore.QSettings()
+        style_str = qs.value("qiceradar_config/selected_layer_style", None)
+        if style_str is None:
+            QgsMessageLog.logMessage(f"Could not find: qiceradar_config/selected_layer_style")
+        else:
+            doc = QtXml.QDomDocument()
+            doc.setContent(style_str)
+            result = selected_layer.importNamedStyle(doc)
+            if not result:
+                QgsMessageLog.logMessage(f"add_selected_layer: {result}")
 
         selected_feature = QgsFeature()
         selected_geometry = QgsLineString([QgsPoint(0, -90)])
@@ -770,15 +985,16 @@ class QIceRadarPlugin(QtCore.QObject):
         selected_provider = selected_layer.dataProvider()
         selected_provider.addFeature(selected_feature)
         selected_layer.updateExtents()
-        self.radar_xlim_features[transect_name] = selected_feature
-        self.radar_xlim_layers[transect_name] = selected_layer
+        self.radar_xlim_features[granule_name] = selected_feature
+        self.radar_xlim_layers[granule_name] = selected_layer
 
+    def add_segment_layer(self, granule_group: QgsLayerTreeGroup, granule_name: str) -> None:
         # Finally, feature for the entire transect
         # TODO: How to get the geometry _here_? We should know it
         # at this point, and it won't change. However, all other
         # geometry is provided in one of the callbacks...
         segment_layer = None
-        for layer_node in transect_group.findLayers():
+        for layer_node in granule_group.findLayers():
             if layer_node.layer().name() == "Full Transect":
                 segment_layer = layer_node.layer()
                 break
@@ -787,21 +1003,24 @@ class QIceRadarPlugin(QtCore.QObject):
             QgsMessageLog.logMessage(f"Could not find full transect layer")
             segment_uri = "LineString?crs=epsg:4326"
             segment_layer = QgsVectorLayer(segment_uri, "Full Transect", "memory")
-            segment_symbol = QgsLineSymbol.createSimple(
-                {
-                    "color": QtGui.QColor.fromRgb(255, 0, 0, 255),
-                    "line_width": 1,
-                    "line_width_units": "Point",
-                }
-            )
-            segment_layer.renderer().setSymbol(segment_symbol)
             QgsProject.instance().addMapLayer(segment_layer, False)
-            transect_group.addLayer(segment_layer)
+            granule_group.addLayer(segment_layer)
         else:
             QgsMessageLog.logMessage(f"Found existing full transect layer.")
             with edit(segment_layer):
                 segment_layer.deleteFeatures(segment_layer.allFeatureIds())
         segment_geometry = QgsLineString([QgsPoint(0, -90)])
+
+        qs = QtCore.QSettings()
+        style_str = qs.value("qiceradar_config/segment_layer_style", None)
+        if style_str is None:
+            QgsMessageLog.logMessage(f"Could not find: qiceradar_config/segment_layer_style")
+        else:
+            doc = QtXml.QDomDocument()
+            doc.setContent(style_str)
+            result = segment_layer.importNamedStyle(doc)
+            if not result:
+                QgsMessageLog.logMessage(f"add_segment_layer: {result}")
 
         segment_feature = QgsFeature()
         segment_geometry = QgsLineString([QgsPoint(0, -90)])
@@ -810,8 +1029,8 @@ class QIceRadarPlugin(QtCore.QObject):
         segment_provider.addFeature(segment_feature)
         segment_layer.updateExtents()
 
-        self.segment_features[transect_name] = segment_feature
-        self.segment_layers[transect_name] = segment_layer
+        self.segment_features[granule_name] = segment_feature
+        self.segment_layers[granule_name] = segment_layer
 
     def update_trace_callback(self, transect_name: str, lon: float, lat: float) -> None:
         """
@@ -820,24 +1039,23 @@ class QIceRadarPlugin(QtCore.QObject):
         """
         # QgsMessageLog.logMessage(f"update_trace_callback with position: {lon}, {lat}!")
         trace_layer = self.trace_layers[transect_name]
-        trace_layer.startEditing()
-        trace_feature = self.trace_features[transect_name]
-        trace_layer.changeGeometry(trace_feature.id(), QgsGeometry(QgsPoint(lon, lat)))
-        trace_layer.commitChanges()
+        with edit(trace_layer):
+            trace_feature = self.trace_features[transect_name]
+            trace_layer.changeGeometry(trace_feature.id(), QgsGeometry(QgsPoint(lon, lat)))
+            trace_layer.updateExtents()
 
     def update_radar_xlim_callback(
         self, transect_name: str, points: List[Tuple[float, float]]
     ) -> None:
         # QgsMessageLog.logMessage(f"update_selected_callback with {len(points)} points!")
-        # To change the location of the displayed feature:
         radar_xlim_geometry = QgsGeometry(
             QgsLineString([QgsPoint(lon, lat) for lon, lat in points])
         )
         radar_xlim_layer = self.radar_xlim_layers[transect_name]
-        radar_xlim_layer.startEditing()
-        radar_xlim_feature = self.radar_xlim_features[transect_name]
-        radar_xlim_layer.changeGeometry(radar_xlim_feature.id(), radar_xlim_geometry)
-        radar_xlim_layer.commitChanges()
+        with edit(radar_xlim_layer):
+            radar_xlim_feature = self.radar_xlim_features[transect_name]
+            radar_xlim_layer.changeGeometry(radar_xlim_feature.id(), radar_xlim_geometry)
+            radar_xlim_layer.updateExtents()
 
     def update_segment_points(
         self, transect_name: str, points: List[Tuple[float, float]]
@@ -855,10 +1073,10 @@ class QIceRadarPlugin(QtCore.QObject):
             QgsLineString([QgsPoint(lon, lat) for lon, lat in points])
         )
         segment_layer = self.segment_layers[transect_name]
-        segment_layer.startEditing()
-        segment_feature = self.segment_features[transect_name]
-        segment_layer.changeGeometry(segment_feature.id(), segment_geometry)
-        segment_layer.commitChanges()
+        with edit(segment_layer):
+            segment_feature = self.segment_features[transect_name]
+            segment_layer.changeGeometry(segment_feature.id(), segment_geometry)
+            segment_layer.updateExtents()
 
     def selected_download_point_callback(self, point: QgsPoint) -> None:
         op = QIceRadarPlugin.Operation.DOWNLOAD
@@ -898,7 +1116,7 @@ class QIceRadarPlugin(QtCore.QObject):
                 self.message_bar.pushMessage(msg, level=Qgis.Warning, duration=10)
                 # self.iface.mainWindow().repaint()
                 self.build_spatial_index()
-                self.update_download_renderer()
+                self.update_index_layer_renderers()
                 return
 
 
@@ -953,30 +1171,23 @@ class QIceRadarPlugin(QtCore.QObject):
         cw.config_saved.connect(self.set_config)
         cw.run()
 
-    def update_download_renderer(self) -> None:
+    def update_index_layer_renderers(self) -> None:
         """
         We indicate which data has been downloaded by changing the
         renderer to be rule-based, checking whether the file exists.
         """
-        # This is copied from building the spatial index
-        root = QgsProject.instance().layerTreeRoot()
-        qiceradar_group = root.findGroup("ANTARCTIC QIceRadar Index")
-        if qiceradar_group is None:
-            qiceradar_group = root.findGroup("ARCTIC QIceRadar Index")
-        if qiceradar_group is None:
-            errmsg = (
-                "Could not find index data. \n\n"
-                "You may need to drag the QIceRadar .qlr file into QGIS. \n\n"
-                "Or, if you renamed the index layer, please revert the name to either "
-                "'ANTARCTIC QIceRadarIndex' or 'ARCTIC QIceRadar Index'"
-            )
-            message_box = QtWidgets.QMessageBox()
-            message_box.setText(errmsg)
-            message_box.exec()
+        index_group = self.find_index_group()
+        if index_group is None:
             return
 
+        # Converting the Path object back to string in order to work on windows
+        # (Can't use path.join within the filter expression)
+        # Otherwise, we were getting D:\RadarData/ANTARCTIC, which doesn't work,
+        # while a string with only '/' does work on modern Windows.
+        rootdir = str(self.config.rootdir).replace('\\', '/')
+
         # Iterate through all layers in the group
-        for ll in qiceradar_group.findLayers():
+        for ll in index_group.findLayers():
             # get the QgsMapLayer from the QgsLayerTreeLayer
             layer: QgsMapLayer = ll.layer()
             assert isinstance(layer, QgsVectorLayer)
@@ -998,42 +1209,22 @@ class QIceRadarPlugin(QtCore.QObject):
 
             root_rule = renderer.rootRule()
 
-            # TODO: For now, this will only work for BAS data! making
-            #  it work for everybody will require having relative filepaths
-            #  in the campaign tables (otherwise, I'd be reconstructing it
-            #  here in a campaign-specific way. Ugh.)
             dl_rule = root_rule.children()[0].clone()
             dl_rule.setLabel("Downloaded")
-            region = f0.attributeMap()["region"]
-            assert isinstance(region, str)  # Make mypy happy; region is an Optional
-            region = region.upper()
-            institution = f0.attributeMap()["institution"]
-            campaign = f0.attributeMap()["campaign"]
-
-            # Converting the Path object back to string in order to work on windows
-            # (Can't use path.join within the filter expression)
-            # Otherwise, we were getting D:\RadarData/ANTARCTIC, which doesn't work,
-            # while a string with only '/' does work on modern Windows.
-            rootdir = str(self.config.rootdir).replace('\\', '/')
             dl_rule.setFilterExpression(
                 f"""length("relative_path") > 0 and file_exists('{rootdir}/' + "relative_path")"""
             )
-            dl_rule.symbol().setWidth(0.35) # Make them more visible
-            dl_rule.symbol().setColor(QtGui.QColor(133, 54, 229, 255))
             root_rule.appendChild(dl_rule)
 
-            # TODO: add additional "supported" rule here, and remove the
             #  distinction between "a" and "s" in the geopackage database
             supported_rule = root_rule.children()[0].clone()
             supported_rule.setLabel("Supported")
             supported_rule.setFilterExpression(f"""length("relative_path") > 0 and not file_exists('{self.config.rootdir}/' + "relative_path")""")
-            supported_rule.symbol().setColor(QtGui.QColor(31, 120, 180, 255))
             root_rule.appendChild(supported_rule)
 
             else_rule = root_rule.children()[0].clone()
             else_rule.setLabel("Available")
             else_rule.setFilterExpression("ELSE")
-            else_rule.symbol().setColor(QtGui.QColor(68, 68, 68, 255))
             root_rule.appendChild(else_rule)
 
             root_rule.removeChildAt(0)
@@ -1042,7 +1233,13 @@ class QIceRadarPlugin(QtCore.QObject):
             layer.triggerRepaint()  # This causes it to apply + redraw
             ll.setExpanded(False)
 
-        self.download_renderer_added = True
+        self.index_layers_categorized = True
+
+        # Hacky way to force styles to be updated from the config
+        qs = QtCore.QSettings()
+        style_str = qs.value("qiceradar_config/categorized_layer_style", None)
+        if style_str is not None:
+            self.on_categorized_style_changed(style_str)
 
     def run_downloader(self) -> None:
         QgsMessageLog.logMessage("User clicked run_downloader")
@@ -1051,8 +1248,8 @@ class QIceRadarPlugin(QtCore.QObject):
             return
         if self.spatial_index is None:
             self.build_spatial_index()
-        if not self.download_renderer_added:
-            self.update_download_renderer()
+        if not self.index_layers_categorized:
+            self.update_index_layer_renderers()
 
         download_selection_tool = QIceRadarSelectionTool(self.iface.mapCanvas())
         download_selection_tool.selected_point.connect(
@@ -1088,8 +1285,8 @@ class QIceRadarPlugin(QtCore.QObject):
         if self.spatial_index is None:
             self.build_spatial_index()
 
-        if not self.download_renderer_added:
-            self.update_download_renderer()
+        if not self.index_layers_categorized:
+            self.update_index_layer_renderers()
 
         # Create a MapTool to select point on map. After this point, it is callback driven.
         viewer_selection_tool = QIceRadarSelectionTool(self.iface.mapCanvas())
@@ -1119,8 +1316,6 @@ class QIceRadarPlugin(QtCore.QObject):
         except AttributeError:
             QgsMessageLog.logMessage("could not uncheck action")
 
-
-
     def start_download(
         self, granule: str, url: str, destination_filepath: pathlib.Path, filesize: int, headers: Dict[str, str]
     ) -> None:
@@ -1128,14 +1323,19 @@ class QIceRadarPlugin(QtCore.QObject):
         After the confirmation dialog has finished, this section
         actually kicks off the download
         """
-        if self.download_window is None:
+        if self.download_dock_widget is None:
             self.download_window = DownloadWindow(self.iface)
             self.download_window.download_finished.connect(
-                self.update_download_renderer
+                self.update_index_layer_renderers
             )
-            self.dock_widget = QtWidgets.QDockWidget("QIceRadar Downloader")
-            self.dock_widget.setWidget(self.download_window)
-            # TODO: Figure out how to handle the user closing the dock widget
-            self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.dock_widget)
+            self.download_dock_widget = QgsDockWidget("QIceRadar Downloader")
+            self.download_dock_widget.setWidget(self.download_window)
+            # self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.download_dock_widget)
+            self.iface.addTabifiedDockWidget(QtCore.Qt.BottomDockWidgetArea,
+                                         self.download_dock_widget,
+                                         tabifyWith=["PythonConsole","MessageLog"],
+                                         raiseTab=True)
         # TODO: add downloadTransectWidget to the download window!
         self.download_window.download(granule, url, destination_filepath, filesize, headers)
+        # Bring to front again, in case user closed it
+        self.download_dock_widget.setUserVisible(True)
