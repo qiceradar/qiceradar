@@ -153,14 +153,21 @@ class GranuleMetadata():
 
     def can_view_radargram(self) -> bool:
         valid_path = len(self.relative_path()) >= 0
+        if not valid_path:
+            QgsMessageLog.logMessage(f"cannot view radargram, invalid relative path: {self.relative_path()}")
 
         try:
             data_format = self.db_granule.data_format
         except Exception as ex:
             data_format = None
         valid_data_format = data_format in radar_utils.RadarData.supported_data_formats
+        if not valid_data_format:
+            QgsMessageLog.logMessage(f"cannot view radargram, data format not supported: {data_format}")
+            QgsMessageLog.logMessage(f"supported formats are: {radar_utils.RadarData.supported_data_formats}")
 
         valid_campaign = self.db_campaign is not None
+        if  not valid_campaign:
+            QgsMessageLog.logMessage(f"cannot view radargram, no campaign in database")
 
         return valid_path and valid_data_format and valid_campaign
 
@@ -199,8 +206,14 @@ class GranuleMetadata():
         except Exception as ex:
             QgsMessageLog.logMessage(f"Invalid response {rows} from command {sql_cmd}")
 
+        # Need information from the granules table to look up campaign information
+        if self.db_granule is None:
+            return
+
+        # The colloquial campaign used in the layer may not match the campaign
+        # used in the database (UTIG's split between HiCARS and HiCARS2)
         sql_cmd = (
-            f"SELECT * FROM campaigns where name is '{self.campaign()}'"
+            f"SELECT * FROM campaigns where name is '{self.db_granule.db_campaign}'"
         )
         result = cursor.execute(sql_cmd)
         rows = result.fetchall()
@@ -736,6 +749,7 @@ class QIceRadarPlugin(QtCore.QObject):
 
         if not granule_metadata.can_view_radargram():
             QIceRadarDialogs.display_cannot_view_dialog(granule_name)
+            return
 
         transect_filepath = pathlib.Path(self.config.rootdir, granule_metadata.relative_path())
         already_downloaded = transect_filepath.is_file()
