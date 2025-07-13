@@ -61,11 +61,11 @@ def load_radargram(filepath: pathlib.Path) -> Tuple[Any, Any, Any, Any, Any]:
     # in microseconds
     fast_time_us = None
     if "fast-time" in dd.variables:
-        fast_time_us = dd.variables["fast-time"][:].data  # AGASEA
+        # AGASEA
+        fast_time_us = dd.variables["fast-time"][:].data
     elif "fasttime" in dd.variables:
-        fast_time_us = dd.variables["fasttime"][
-            :
-        ].data  # EAGLE, OIA, ICECAP, GIMBLE, COLDEX
+        # EAGLE, OIA, ICECAP, GIMBLE, COLDEX
+        fast_time_us = dd.variables["fasttime"][:].data
     else:
         raise Exception(
             f"Could not find fast time data in {filepath}. Vars are: {dd.variables.keys()}"
@@ -79,13 +79,14 @@ def load_radargram(filepath: pathlib.Path) -> Tuple[Any, Any, Any, Any, Any]:
     # AGASEA: 'data_hi_gain', 'fast-time' (no UTC time?)
     radargram = None
     if "data_hi_gain" in dd.variables:
-        radargram = dd.variables["data_hi_gain"][:].data  # AGASEA
+        # AGASEA
+        radargram = dd.variables["data_hi_gain"][:].data
     elif "amplitude_hi_gain" in dd.variables:
-        radargram = dd.variables["amplitude_hi_gain"][:].data  # EAGLE
+        # EAGLE
+        radargram = dd.variables["amplitude_hi_gain"][:].data
     elif "amplitude_high_gain" in dd.variables:
-        radargram = dd.variables["amplitude_high_gain"][
-            :
-        ].data  # OIA, ICECAP, GIMBLE, COLDEX
+        # OIA, ICECAP, GIMBLE, COLDEX
+        radargram = dd.variables["amplitude_high_gain"][:].data
     else:
         raise Exception(
             f"Could not find radar data in {filepath}. Vars are: {dd.variables.keys()}"
