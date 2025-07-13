@@ -720,17 +720,12 @@ class QIceRadarPlugin(QtCore.QObject):
         else:
             self.launch_radar_downloader(transect_filepath, db_granule)
 
-    def selected_transect_callback(
-        self, operation: Operation, granule_name: str
-    ) -> None:
+    def selected_transect_download_callback(self, granule_name: str) -> None:
         """
-        Callback for the QIceRadarSelectionWidget that launches the appropriate
-        widget (download, viewer) for the chosen transect.
-        They share a callback because there is a common set of checks before
-        either QIceRadar widget can be run.
+        Callback for the QIceRadarSelectionWidget that launches the download
+        widget for the chosen transect.
         """
-        QgsMessageLog.logMessage(f"selected_transect_callback: {granule_name}")
-        QgsMessageLog.logMessage(f"op = {operation} (download = {QIceRadarPlugin.Operation.DOWNLOAD}, view = {QIceRadarPlugin.Operation.VIEW})")
+        QgsMessageLog.logMessage(f"selected_transect_download_callback: {granule_name}")
         QgsMessageLog.logMessage(f"rootdir = {self.config.rootdir}")
 
         layer_id, feature_id = self.transect_name_lookup[granule_name]
@@ -749,16 +744,40 @@ class QIceRadarPlugin(QtCore.QObject):
 
         # TODO: refactor to not reach in and directly use db_granule and db_campaign
 
-        if operation == QIceRadarPlugin.Operation.DOWNLOAD:
-            if granule_metadata.can_download_radargram():
-                self.download_selected_transect(self.config.rootdir, granule_metadata.db_granule)
-            else:
-                QIceRadarDialogs.display_cannot_download_dialog(granule_name)
-        elif operation == QIceRadarPlugin.Operation.VIEW:
-            if granule_metadata.can_view_radargram():
-                self.view_selected_transect(self.config.rootdir, granule_metadata.db_granule, granule_metadata.db_campaign)
-            else:
-                QIceRadarDialogs.display_cannot_view_dialog(granule_name)
+        if granule_metadata.can_download_radargram():
+            self.download_selected_transect(self.config.rootdir, granule_metadata.db_granule)
+        else:
+            QIceRadarDialogs.display_cannot_download_dialog(granule_name)
+
+
+    def selected_transect_view_callback(self, granule_name: str) -> None:
+        """
+        Callback for the QIceRadarSelectionWidget that launches the viewer
+        widget for the chosen transect.
+        """
+        QgsMessageLog.logMessage(f"selected_transect_view_callback: {granule_name}")
+        QgsMessageLog.logMessage(f"rootdir = {self.config.rootdir}")
+
+        layer_id, feature_id = self.transect_name_lookup[granule_name]
+        granule_metadata = GranuleMetadata(granule_name, layer_id, feature_id)
+
+        if not granule_metadata.radargram_is_available():
+            institution = granule_metadata.institution()
+            campaign = granule_metadata.campaign()
+            QIceRadarDialogs.display_unavailable_dialog(institution, campaign)
+            return
+
+        # Can't download or view radargrams without a valid root data directory
+        if not rootdir_is_valid(self.config):
+            self.request_user_update_config()
+            return
+
+        # TODO: refactor to not reach in and directly use db_granule and db_campaign
+
+        if granule_metadata.can_view_radargram():
+            self.view_selected_transect(self.config.rootdir, granule_metadata.db_granule, granule_metadata.db_campaign)
+        else:
+            QIceRadarDialogs.display_cannot_view_dialog(granule_name)
 
     def launch_radar_downloader(
         self, dest_filepath: pathlib.Path, db_granule: db_utils.DatabaseGranule
@@ -1114,9 +1133,11 @@ class QIceRadarPlugin(QtCore.QObject):
             self.message_bar.pushMessage("QIceRadar", msg, level=Qgis.Warning, duration=5)
         else:
             selection_widget = QIceRadarSelectionWidget(self.iface, neighbor_names)
-            selection_widget.selected_radargram.connect(
-                lambda transect, op=operation: self.selected_transect_callback(op, transect)
-            )
+            if operation is QIceRadarPlugin.Operation.DOWNLOAD:
+                selection_widget.selected_radargram.connect(self.selected_transect_download_callback)
+            else:  # operation is QIceRadarPlugin.Operation.VIEW:
+                selection_widget.selected_radargram.connect(self.selected_transect_view_callback)
+
             # Chosen transect is set via callback, rather than direct return value
             selection_widget.run()
 
