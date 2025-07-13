@@ -65,7 +65,7 @@ class QIceRadarDialogs():
         message_box.exec()
 
     @classmethod
-    def display_unsupported_download_method_dialog(cls, granule_name: str) -> None:
+    def display_cannot_download_dialog(cls, granule_name: str) -> None:
         msg = (
             "This radargram is available, but we are not able to assist with downloading it."
             "<br><br>"
@@ -86,7 +86,7 @@ class QIceRadarDialogs():
         message_box.exec()
 
     @classmethod
-    def display_unsupported_data_format_dialog(cls, granule_name: str) -> None:
+    def display_cannot_view_dialog(cls, granule_name: str) -> None:
         # TODO: Consider special case for information about Stanford's digitization efforts?
         # TODO: This may also be a prompt to update the code itself / present
         #   a link to the page documenting supported formats.

@@ -84,13 +84,144 @@ from .qiceradar_selection_widget import (
     QIceRadarSelectionWidget,
 )
 from .qiceradar_symbology_widget import SymbologyWidget
+from .datautils import radar_utils
 from .radar_viewer_window import RadarWindow
+
+
+class GranuleMetadata():
+    """
+    Grab all data about this granule from the layer and the database
+    1. layer attributes
+    2. granules table
+    3. campaign table
+    Any logic that requires digging into the layer or the database belongs
+    in this class.
+    """
+    def __init__(self, granule_name, layer_id, feature_id):
+        """
+        It is too slow to iterate through the whole layer tree looking for
+        the matching granule name, so the plugin maintains that mapping
+        and provides it as a parameter
+        """
+        self.granule_name = granule_name
+
+        # dict returned by attributeMap()
+        self.layer_attributes = None
+        self.db_granule: Optional[db_utils.DatabaseGranule] = None
+        self.db_campaign: Optional[db_utils.DatabaseCampaign] = None
+
+        # this includes finding the database file needed for the next call
+        self.load_data_from_layer(self.granule_name, layer_id, feature_id)
+
+        # this populates self.db_granule and self.db_campaign
+        self.load_data_from_database(self.granule_name, self.database_filepath)
+
+        # TODO: check consistency between layer and databases?
+        # TODO: check minimal set a fields have been populated?
+        # TODO: confirm this feature is a valid granule before trying to access attributes?
+        # if it is not, we probably need to rebuild the index?
+
+    def campaign(self) -> str:
+        return self.layer_attributes["campaign"]
+
+    def institution(self) -> str:
+        return self.layer_attributes["institution"]
+
+    def radargram_is_available(self) -> bool:
+        availability = self.layer_attributes["availability"]
+        # Older database versions used u/a/s, rather than just u/a
+        return availability != "u"
+
+    def can_download_radargram(self) -> bool:
+        try:
+            relative_path = feature["relative_path"]
+        except Exception as ex:
+            relative_path = ""
+
+        try:
+            download_method = self.db_granule.download_method
+        except Exception as ex:
+            download_method = None
+
+        return len(relative_path) >= 0 and download_method in QIceRadarPlugin.supported_download_methods
+
+    def can_view_radargram(self) -> bool:
+        try:
+            relative_path = feature["relative_path"]
+        except Exception as ex:
+            relative_path = ""
+        valid_path = len(relative_path) >= 0
+
+        try:
+            data_format = self.db_granule.data_format
+        except Exception as ex:
+            data_format = None
+        valid_data_format = data_format in radar_utils.RadarData.supported_data_formats
+
+        valid_campaign = self.db_campaign is not None
+
+        return valid_path and valid_data_format and valid_campaign
+
+
+    @profile
+    def load_data_from_layer(self, granule_name: str, layer_id, feature_id):
+
+        # QgsMapLayer is the abstract class; this will *actually* return
+        # a QgsVectorLayer which has getFeature() and getFeatures() methods
+        # So, add an assert to make mypy happy.
+        # TODO: cleanup type annotation handling -- should not use an assert here
+        # because user might have added different layer and we need to handle that gracefully
+
+        # assert isinstance(layer, QgsVectorLayer)
+
+        root: QgsLayerTree = QgsProject.instance().layerTreeRoot()
+        layer: QgsMapLayer = root.findLayer(layer_id).layer()
+        feature = layer.getFeature(feature_id)
+        self.layer_attributes = feature.attributeMap()
+        self.database_filepath = layer.source().split("|")[0]
+
+    @profile
+    def load_data_from_database(self, granule_name: str, database_filepath: str):
+        connection = sqlite3.connect(database_filepath)
+        cursor = connection.cursor()
+
+        sql_cmd = f"SELECT * FROM granules where name is '{granule_name}'"
+        result = cursor.execute(sql_cmd)
+        rows = result.fetchall()
+        try:
+            self.db_granule = db_utils.DatabaseGranule(*rows[0])
+        except IndexError as ex:
+            QgsMessageLog.logMessage(
+                f"Cannot select {granule_name}. Invalid response {rows} from command {sql_cmd}"
+            )
+        except Exception as ex:
+            QgsMessageLog.logMessage(f"Invalid response {rows} from command {sql_cmd}")
+
+
+        sql_cmd = (
+            f"SELECT * FROM campaigns where name is '{self.campaign()}'"
+        )
+        result = cursor.execute(sql_cmd)
+        rows = result.fetchall()
+        try:
+            self.db_campaign = db_utils.DatabaseCampaign(*rows[0])
+        except Exception as ex:
+            QgsMessageLog.logMessage(
+                f"Invalid response {rows} from command {sql_cmd}"
+            )
+
 
 
 class QIceRadarPlugin(QtCore.QObject):
     class Operation(enum.IntEnum):
         DOWNLOAD = enum.auto()
         VIEW = enum.auto()
+
+    # TODO: Probably better to get this from the radar_downloader,
+    # though right now, they filtering on download methods happens in
+    # launch_radar_downloader
+    supported_download_methods = ["nsidc", "wget"]
+
 
     def __init__(self, iface: QgisInterface) -> None:
         """
@@ -100,10 +231,6 @@ class QIceRadarPlugin(QtCore.QObject):
         super(QIceRadarPlugin, self).__init__()
         self.iface = iface
         self.message_bar = self.iface.messageBar()
-
-        # TODO: Probably better to get this from the radar_viewer / radar_downloader
-        self.supported_data_formats = ["awi_netcdf", "bas_netcdf", "utig_netcdf", "cresis_mat"]
-        self.supported_download_methods = ["nsidc", "wget"]
 
         # Create this here because we try to clean it up on unload
         self.download_dock_widget: Optional[QtWidgets.QDockWidget] = None
@@ -558,14 +685,14 @@ class QIceRadarPlugin(QtCore.QObject):
         if already_downloaded:
             # It would probably be more pythonic to just try creating the viewer
             # and catching an error if it's "unsupported"...
-            if db_granule.data_format in self.supported_data_formats:
+            if db_granule.data_format in radar_utils.RadarData.supported_data_formats:
                 self.launch_radar_viewer(
                     transect_filepath,
                     db_granule,
                     db_campaign,
                 )
             else:
-                QIceRadarDialogs.display_unsupported_data_format_dialog(
+                QIceRadarDialogs.display_cannot_view_dialog(
                     db_granule.granule_name
                 )
         else:
@@ -589,7 +716,7 @@ class QIceRadarPlugin(QtCore.QObject):
         if already_downloaded:
             QIceRadarDialogs.display_already_downloaded_dialog(db_granule.granule_name)
         elif db_granule.download_method not in self.supported_download_methods:
-            QIceRadarDialogs.display_unsupported_download_method_dialog(db_granule.granule_name)
+            QIceRadarDialogs.display_cannot_download_dialog(db_granule.granule_name)
         else:
             self.launch_radar_downloader(transect_filepath, db_granule)
 
@@ -606,95 +733,32 @@ class QIceRadarPlugin(QtCore.QObject):
         QgsMessageLog.logMessage(f"op = {operation} (download = {QIceRadarPlugin.Operation.DOWNLOAD}, view = {QIceRadarPlugin.Operation.VIEW})")
         QgsMessageLog.logMessage(f"rootdir = {self.config.rootdir}")
 
-        # QgsMapLayer is the abstract class; this will *actually* return
-        # a QgsVectorLayer which has getFeature() and getFeatures() methods
-        # So, add an assert to make mypy happy.
-        # TODO: cleanup type annotation handling -- should not use an assert here
-        # because user might have added different layer and we need to handle that gracefully
-        # assert isinstance(layer, QgsVectorLayer)
         layer_id, feature_id = self.transect_name_lookup[granule_name]
-        root: QgsLayerTree = QgsProject.instance().layerTreeRoot()
-        layer: QgsMapLayer = root.findLayer(layer_id).layer()
-        feature = layer.getFeature(feature_id)
+        granule_metadata = GranuleMetadata(granule_name, layer_id, feature_id)
 
-        # TODO: confirm this feature is a valid granule before trying to access attributes?
-        # if it is not, we probably need to rebuild the index?
-        availability = feature["availability"]
-        if availability == "u":
-            institution = feature["institution"]
-            campaign = feature["campaign"]
+        if not granule_metadata.radargram_is_available():
+            institution = granule_metadata.institution()
+            campaign = granule_metadata.campaign()
             QIceRadarDialogs.display_unavailable_dialog(institution, campaign)
             return
 
-        # mypy doesn't recognize the first option as doing the same check, so
-        # flags get_granule_filepath as having incompatible arguments.
-        # if not rootdir_is_valid(self.config):
-        if self.config.rootdir is None:
-            QgsMessageLog.logMessage(
-                "Invalid config. Can't download or view radargrams."
-            )
+        # Can't download or view radargrams without a valid root data directory
+        if not rootdir_is_valid(self.config):
+            self.request_user_update_config()
             return
 
-        # The viewer/downloader widgets need information from the gpkg
-        # database that also provided the geometry information for this
-        # layer.
-        database_file = layer.source().split("|")[0]
-        connection = sqlite3.connect(database_file)
-        cursor = connection.cursor()
+        # TODO: refactor to not reach in and directly use db_granule and db_campaign
 
-        sql_cmd = f"SELECT * FROM granules where name is '{granule_name}'"
-        result = cursor.execute(sql_cmd)
-        rows = result.fetchall()
-        try:
-            db_granule = db_utils.DatabaseGranule(*rows[0])
-        except IndexError as ex:
-            QgsMessageLog.logMessage(
-                f"Cannot select {granule_name}. Invalid response {rows} from command {sql_cmd}"
-            )
-            db_granule = None
-        except Exception as ex:
-            QgsMessageLog.logMessage(f"Invalid response {rows} from command {sql_cmd}")
-            db_granule = None
-
-        if db_granule is not None:
-            sql_cmd = (
-                f"SELECT * FROM campaigns where name is '{db_granule.db_campaign}'"
-            )
-            result = cursor.execute(sql_cmd)
-            rows = result.fetchall()
-            try:
-                db_campaign = db_utils.DatabaseCampaign(*rows[0])
-            except Exception as ex:
-                QgsMessageLog.logMessage(
-                    f"Invalid response {rows} from command {sql_cmd}"
-                )
-                db_campaign = None
-
-        connection.close()
-
-        if db_granule is None:
-            # TODO: This is a bit confusing -- if db_granule is None,
-            #  we don't have any info about it in the database, so
-            #  I'm not sure splitting it out into download_method /
-            #  data_format is the fundamental thing, since we don't
-            #  even know what the method or format should be!
-            #  There are also cases where I expect to provide a link
-            #  but direct the user to download it manually.
-            if operation == QIceRadarPlugin.Operation.DOWNLOAD:
-                QIceRadarDialogs.display_unsupported_download_method_dialog(granule_name)
-            elif operation == QIceRadarPlugin.Operation.VIEW:
-                QIceRadarDialogs.display_unsupported_data_format_dialog(granule_name)
-        else:
-            if operation == QIceRadarPlugin.Operation.DOWNLOAD:
-                self.download_selected_transect(self.config.rootdir, db_granule)
-            elif operation == QIceRadarPlugin.Operation.VIEW:
-                if db_campaign is None:
-                    raise Exception(
-                        f"Unable to look up campaign data for {granule_name}"
-                    )
-                self.view_selected_transect(
-                    self.config.rootdir, db_granule, db_campaign
-                )
+        if operation == QIceRadarPlugin.Operation.DOWNLOAD:
+            if granule_metadata.can_download_radargram():
+                self.download_selected_transect(self.config.rootdir, granule_metadata.db_granule)
+            else:
+                QIceRadarDialogs.display_cannot_download_dialog(granule_name)
+        elif operation == QIceRadarPlugin.Operation.VIEW:
+            if granule_metadata.can_view_radargram():
+                self.view_selected_transect(self.config.rootdir, granule_metadata.db_granule, granule_metadata.db_campaign)
+            else:
+                QIceRadarDialogs.display_cannot_view_dialog(granule_name)
 
     def launch_radar_downloader(
         self, dest_filepath: pathlib.Path, db_granule: db_utils.DatabaseGranule
