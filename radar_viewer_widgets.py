@@ -708,14 +708,16 @@ class RadioCheckInterface(QtWidgets.QWidget):
         # TODO: come up with a better set of default colors?
         # TODO: Generate better initial colors than random ...
         # color = '#%06x' % np.random.randint(0xFFFFFF)
-        self.pick_color_gen = itertools.cycle([
-            "green",
-            "red",
-            "blue",
-            "magenta",
-            "cyan",
-            "purple",
-        ])
+        self.pick_color_gen = itertools.cycle(
+            [
+                "green",
+                "red",
+                "blue",
+                "magenta",
+                "cyan",
+                "purple",
+            ]
+        )
 
     def get_color(self, label: str) -> QtGui.QColor:
         return self.colors[label]
