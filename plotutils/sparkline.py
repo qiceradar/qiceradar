@@ -235,10 +235,12 @@ class Sparkline(object):
                 self.elements["min_text"].set_position(
                     [x_plot[min_data_idx[0]], y_plot[min_data_idx[0]]] - 0.03 * dy
                 )
-                self.elements["max_text"].set_position([
-                    x_plot[max_data_idx[0]],
-                    y_plot[max_data_idx[0]] + 0.01 * dy,
-                ])
+                self.elements["max_text"].set_position(
+                    [
+                        x_plot[max_data_idx[0]],
+                        y_plot[max_data_idx[0]] + 0.01 * dy,
+                    ]
+                )
                 self.elements["min_text"].set_text(
                     "%0.1f %s" % (y_in[min_data_idx[0]], self.units)
                 )
@@ -247,14 +249,18 @@ class Sparkline(object):
                 )
 
             elif self.data_axis == "y":
-                self.elements["min_text"].set_position([
-                    x_plot[min_data_idx[0]] + 0.01 * dx,
-                    y_plot[min_data_idx[0]],
-                ])
-                self.elements["max_text"].set_position([
-                    x_plot[max_data_idx[0]] + 0.01 * dx,
-                    y_plot[max_data_idx[0]],
-                ])
+                self.elements["min_text"].set_position(
+                    [
+                        x_plot[min_data_idx[0]] + 0.01 * dx,
+                        y_plot[min_data_idx[0]],
+                    ]
+                )
+                self.elements["max_text"].set_position(
+                    [
+                        x_plot[max_data_idx[0]] + 0.01 * dx,
+                        y_plot[max_data_idx[0]],
+                    ]
+                )
                 self.elements["min_text"].set_text(
                     "%0.1f %s" % (x_in[min_data_idx[0]], self.units)
                 )
@@ -274,19 +280,23 @@ class Sparkline(object):
                     [scale_x, scale_x],
                     [scale_y, scale_y + self.scalebar_len * data_scale * np.sign(dy)],
                 )
-                self.elements["scale_text"].set_position([
-                    scale_x + 0.015 * dx,
-                    scale_y + 0.25 * self.scalebar_len * data_scale * np.sign(dy),
-                ])
+                self.elements["scale_text"].set_position(
+                    [
+                        scale_x + 0.015 * dx,
+                        scale_y + 0.25 * self.scalebar_len * data_scale * np.sign(dy),
+                    ]
+                )
             elif self.data_axis == "y":
                 self.elements["scale"].set_data(
                     [scale_x, scale_x + self.scalebar_len * data_scale * np.sign(dx)],
                     [scale_y, scale_y],
                 )
-                self.elements["scale_text"].set_position([
-                    scale_x,
-                    scale_y + 0.015 * dy,
-                ])
+                self.elements["scale_text"].set_position(
+                    [
+                        scale_x,
+                        scale_y + 0.015 * dy,
+                    ]
+                )
 
     def set_major_color(self, color):
         # type: (str) -> None

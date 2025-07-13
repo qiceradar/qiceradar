@@ -485,7 +485,7 @@ class QIceRadarPlugin(QtCore.QObject):
             if layer.layer().name() != target_layer_name:
                 continue
             # QgsMessageLog.logMessage(f"Updating style for {layer.parent().name()}")
-            result = layer.layer().importNamedStyle(doc)
+            layer.layer().importNamedStyle(doc)
             layer.layer().triggerRepaint()
 
     def on_trace_style_changed(self, style_str: str):
@@ -541,7 +541,7 @@ class QIceRadarPlugin(QtCore.QObject):
                 elif rule.label() == "Available":
                     else_filter = rule.filterExpression()
 
-            result = layer.layer().importNamedStyle(doc)
+            layer.layer().importNamedStyle(doc)
 
             # Have to grab renderer again, since importing the style changed it.
             dest_renderer = layer.layer().renderer()

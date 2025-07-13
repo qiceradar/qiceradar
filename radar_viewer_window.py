@@ -524,10 +524,12 @@ class RadarWindow(QtWidgets.QMainWindow):
         # It's OK, this isn't infinitely circular ...
         # update_selection doesn't trigger any cbs.
         num_traces = self.radar_data.num_traces
-        self.plot_objects.xevas_horiz.update_selection((
-            1.0 * new_xlim[0] / (num_traces - 1),
-            1.0 * new_xlim[1] / (num_traces - 1),
-        ))
+        self.plot_objects.xevas_horiz.update_selection(
+            (
+                1.0 * new_xlim[0] / (num_traces - 1),
+                1.0 * new_xlim[1] / (num_traces - 1),
+            )
+        )
 
     def update_ylim(self, new_ylim: Tuple[int, int]) -> None:
         if not isinstance(new_ylim[0], int) or not isinstance(new_ylim[1], int):
@@ -540,10 +542,12 @@ class RadarWindow(QtWidgets.QMainWindow):
         # It's OK, this isn't infinitely circular ...
         # update_selection doesn't trigger any cbs.
         num_samples = self.radar_data.num_samples
-        self.plot_objects.xevas_vert.update_selection((
-            1 - 1.0 * new_ylim[0] / (num_samples - 1),
-            1 - 1.0 * new_ylim[1] / (num_samples - 1),
-        ))
+        self.plot_objects.xevas_vert.update_selection(
+            (
+                1 - 1.0 * new_ylim[0] / (num_samples - 1),
+                1 - 1.0 * new_ylim[1] / (num_samples - 1),
+            )
+        )
 
     def full_redraw(self) -> None:
         """

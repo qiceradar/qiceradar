@@ -218,12 +218,14 @@ class SymbologyWidget(QtWidgets.QWidget):
 
     @staticmethod
     def make_trace_symbol() -> QgsMarkerSymbol:
-        symbol = QgsMarkerSymbol.createSimple({
-            "name": "circle",
-            "color": QtGui.QColor.fromRgb(255, 255, 0, 255),
-            "size": "8",
-            "outline_style": "no",
-        })
+        symbol = QgsMarkerSymbol.createSimple(
+            {
+                "name": "circle",
+                "color": QtGui.QColor.fromRgb(255, 255, 0, 255),
+                "size": "8",
+                "outline_style": "no",
+            }
+        )
         try:
             symbol.setOutputUnit(Qgis.RenderUnit.Points)
         except Exception:
@@ -251,10 +253,12 @@ class SymbologyWidget(QtWidgets.QWidget):
 
     @staticmethod
     def make_selected_symbol() -> QgsLineSymbol:
-        symbol = QgsLineSymbol.createSimple({
-            "color": QtGui.QColor.fromRgb(255, 128, 30, 255),
-            "line_width": 2,
-        })
+        symbol = QgsLineSymbol.createSimple(
+            {
+                "color": QtGui.QColor.fromRgb(255, 128, 30, 255),
+                "line_width": 2,
+            }
+        )
         try:
             symbol.setOutputUnit(Qgis.RenderUnit.Points)
         except Exception:
@@ -282,10 +286,12 @@ class SymbologyWidget(QtWidgets.QWidget):
 
     @staticmethod
     def make_segment_symbol() -> QgsLineSymbol:
-        symbol = QgsLineSymbol.createSimple({
-            "color": QtGui.QColor.fromRgb(255, 0, 0, 255),
-            "line_width": 1,
-        })
+        symbol = QgsLineSymbol.createSimple(
+            {
+                "color": QtGui.QColor.fromRgb(255, 0, 0, 255),
+                "line_width": 1,
+            }
+        )
         try:
             symbol.setOutputUnit(Qgis.RenderUnit.Points)
         except Exception:
@@ -313,12 +319,14 @@ class SymbologyWidget(QtWidgets.QWidget):
 
     @staticmethod
     def make_unavailable_point_symbol() -> QgsMarkerSymbol:
-        symbol = QgsMarkerSymbol.createSimple({
-            "name": "circle",
-            "color": QtGui.QColor.fromRgb(251, 154, 153, 255),
-            "size": "1",
-            "outline_style": "no",
-        })
+        symbol = QgsMarkerSymbol.createSimple(
+            {
+                "name": "circle",
+                "color": QtGui.QColor.fromRgb(251, 154, 153, 255),
+                "size": "1",
+                "outline_style": "no",
+            }
+        )
         try:
             symbol.setOutputUnit(Qgis.RenderUnit.Points)
         except Exception:
@@ -348,10 +356,12 @@ class SymbologyWidget(QtWidgets.QWidget):
 
     @staticmethod
     def make_unavailable_line_symbol() -> QgsLineSymbol:
-        symbol = QgsLineSymbol.createSimple({
-            "color": QtGui.QColor.fromRgb(251, 154, 153, 255),
-            "line_width": 1,
-        })
+        symbol = QgsLineSymbol.createSimple(
+            {
+                "color": QtGui.QColor.fromRgb(251, 154, 153, 255),
+                "line_width": 1,
+            }
+        )
         try:
             symbol.setOutputUnit(Qgis.RenderUnit.Points)
         except Exception:

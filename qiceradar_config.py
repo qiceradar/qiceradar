@@ -70,7 +70,7 @@ def nsidc_token_is_valid(config: UserConfig) -> bool:
     headers = {"Authorization": f"Bearer {config.nsidc_token}"}
     try:
         req = requests.get(test_url, stream=True, headers=headers)
-    except:
+    except Exception:
         # We expect this to fail if there's no valid internet connection.
         return False
     return req.status_code == 200
