@@ -67,7 +67,7 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
 
         datadir_row = 0
         nsidc_row = 1
-        aad_row = 2
+        # aad_row = 2
         button_row = 3
 
         self.datadir_label = QtWidgets.QLabel("Root data directory")

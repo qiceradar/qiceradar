@@ -673,12 +673,12 @@ class Scalebar(object):
                 xleft = xlim[0] + dx_ax * self.x0
                 dx_bar_raw = dx_ax * self.length
                 # This figures out if max sig fig is ones, tens, hundreds, etc ...
-                max_pow_10 = np.floor(np.log(np.abs(dx_bar_raw)) / np.log(10.0))
+                # max_pow_10 = np.floor(np.log(np.abs(dx_bar_raw)) / np.log(10.0))
                 # We need an even length for the scalebar (so the fancy plot's
                 # scalebar can have an integer middle tick), and want its dimension
                 # to have at most two significant figures.
-                round_units = 2 * 10 ** (max_pow_10 - 1)
-                dx_bar_round = round_units * np.round(dx_bar_raw / round_units)
+                # round_units = 2 * 10 ** (max_pow_10 - 1)
+                # dx_bar_round = round_units * np.round(dx_bar_raw / round_units)
                 # TODO: This was rounding into plot units, not data units ...
                 xright = xleft + dx_bar_raw  # _round
                 xcen = 0.5 * (xleft + xright)
@@ -691,12 +691,12 @@ class Scalebar(object):
                 ybottom = ylim[0] + dy_ax * self.y0
                 dy_bar_raw = dy_ax * self.length
                 # This figures out if max sig fig is ones, tens, hundreds, etc ...
-                max_pow_10 = np.floor(np.log(np.abs(dy_bar_raw)) / np.log(10.0))
+                # max_pow_10 = np.floor(np.log(np.abs(dy_bar_raw)) / np.log(10.0))
                 # We need an even length for the scalebar (so the fancy plot's
                 # scalebar can have an integer middle tick), and want its dimension
                 # to have at most two significant figures.
-                round_units = 2 * 10 ** (max_pow_10 - 1)
-                dy_bar_round = round_units * np.round(dy_bar_raw / round_units)
+                # round_units = 2 * 10 ** (max_pow_10 - 1)
+                # dy_bar_round = round_units * np.round(dy_bar_raw / round_units)
                 ytop = ybottom + dy_bar_raw  # round
                 ycen = 0.5 * (ybottom + ytop)
 
