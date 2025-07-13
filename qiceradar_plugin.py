@@ -870,16 +870,12 @@ class QIceRadarPlugin(QtCore.QObject):
         # TODO: (So does the widget! I just tested, and it leaves layers when it is closed!)
         self.setup_qgis_layers(db_granule.granule_name)
 
-        trace_cb = (
-            lambda lon, lat, tt=db_granule.granule_name: self.update_trace_callback(
-                tt, lon, lat
-            )
-        )
-        selection_cb = (
-            lambda pts, tt=db_granule.granule_name: self.update_radar_xlim_callback(
-                tt, pts
-            )
-        )
+        def trace_cb(lon, lat):
+            return self.update_trace_callback(db_granule.granule_name, lon, lat)
+
+        def selection_cb(pts):
+            return self.update_radar_xlim_callback(db_granule.granule_name, pts)
+
         rw = RadarWindow(
             transect_filepath,
             db_granule,

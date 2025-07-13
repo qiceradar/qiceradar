@@ -149,9 +149,8 @@ class Scalebar(object):
             raise KeyError(msg)
 
         if self.autoupdate:
-            update_lambda = lambda x: self.update()
-            self.ax.callbacks.connect("xlim_changed", update_lambda)
-            self.ax.callbacks.connect("ylim_changed", update_lambda)
+            self.ax.callbacks.connect("xlim_changed", self.update)
+            self.ax.callbacks.connect("ylim_changed", self.update)
 
     def __repr__(self):
         repr = (
@@ -243,7 +242,7 @@ class Scalebar(object):
         else:
             raise Exception("Invalid orientation")
 
-    def update(self) -> None:
+    def update(self, _=None) -> None:
         """
         Call this when the axis bounds change.
         """

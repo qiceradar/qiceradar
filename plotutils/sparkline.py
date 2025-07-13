@@ -98,9 +98,8 @@ class Sparkline(object):
 
         self.plot(major_color, minor_color)
 
-        update_lambda = lambda x: self.update()
-        self.ax.callbacks.connect("xlim_changed", update_lambda)
-        self.ax.callbacks.connect("ylim_changed", update_lambda)
+        self.ax.callbacks.connect("xlim_changed", self.update)
+        self.ax.callbacks.connect("ylim_changed", self.update)
 
     def plot(self, major_color: str, minor_color: str) -> None:
         """
@@ -311,7 +310,7 @@ class Sparkline(object):
         for elem in self.elements.values():
             elem.set_visible(visible)
 
-    def update(self) -> None:
+    def update(self, _=None) -> None:
         """
         Called when the axis bounds change.
         Yeah, this is hacky, but there would have been a ton of repeated
