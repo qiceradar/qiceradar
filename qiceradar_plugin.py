@@ -608,13 +608,13 @@ class QIceRadarPlugin(QtCore.QObject):
     def find_index_group(self) -> Optional[QgsLayerTreeGroup]:
         # QgsMessageLog.logMessage("find_index_group")
         root = QgsProject.instance().layerTreeRoot()
-        layer_group = None
+        index_group = None
         for layer_group in root.findGroups():
             if "QIceRadar Index" in layer_group.name():
                 index_group = layer_group
                 break
 
-        if layer_group is None:
+        if index_group is None:
             errmsg = (
                 "Could not find index data. \n\n"
                 "You may need to drag the QIceRadar .qlr file into QGIS. \n\n"
@@ -624,7 +624,7 @@ class QIceRadarPlugin(QtCore.QObject):
             message_box = QtWidgets.QMessageBox()
             message_box.setText(errmsg)
             message_box.exec()
-        return layer_group
+        return index_group
 
     def is_valid_granule_feature(self, feature: QgsFeature):
         attributes = feature.attributeMap()
