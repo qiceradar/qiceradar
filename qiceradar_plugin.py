@@ -107,6 +107,7 @@ class GranuleMetadata():
 
         # dict returned by attributeMap()
         self.layer_attributes = None
+        # dataclasses that map to data from a row in the corresponding database
         self.db_granule: Optional[db_utils.DatabaseGranule] = None
         self.db_campaign: Optional[db_utils.DatabaseCampaign] = None
 
@@ -122,6 +123,10 @@ class GranuleMetadata():
         # if it is not, we probably need to rebuild the index?
 
     def campaign(self) -> str:
+        """
+        Return the campaign name that should be displayed to the user.
+        This is not necessarily equivalent to the key for the campaign table.
+        """
         return self.layer_attributes["campaign"]
 
     def institution(self) -> str:
@@ -142,12 +147,17 @@ class GranuleMetadata():
 
     def can_download_radargram(self) -> bool:
         valid_path = len(self.relative_path()) >= 0
+        if not valid_path:
+            QgsMessageLog.logMessage(f"cannot download radargram, invalid relative path: {self.relative_path()}")
 
         try:
             download_method = self.db_granule.download_method
         except Exception as ex:
             download_method = None
         valid_download_method = download_method in QIceRadarPlugin.supported_download_methods
+        if not valid_download_method:
+            QgsMessageLog.logMessage(f"cannot download radargram, download method not supported: {download_method}")
+            QgsMessageLog.logMessage(f"supported methods are: {QIceRadarPlugin.supported_download_methods}")
 
         return valid_path and valid_download_method
 
@@ -174,7 +184,9 @@ class GranuleMetadata():
 
     @profile
     def load_data_from_layer(self, granule_name: str, layer_id, feature_id):
-
+        """
+        Load attributes and a database file path from the map layer
+        """
         # QgsMapLayer is the abstract class; this will *actually* return
         # a QgsVectorLayer which has getFeature() and getFeatures() methods
         # So, add an assert to make mypy happy.
@@ -191,6 +203,9 @@ class GranuleMetadata():
 
     @profile
     def load_data_from_database(self, granule_name: str, database_filepath: str):
+        """
+        Load granule and campaign data from the database
+        """
         connection = sqlite3.connect(database_filepath)
         cursor = connection.cursor()
 
