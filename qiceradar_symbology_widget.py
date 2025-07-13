@@ -28,6 +28,7 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import functools
 import time
 from typing import Tuple
 
@@ -82,6 +83,7 @@ def deduplicate_updates(func):
     and should be used to wrap any callback connected to styleChanged.
     """
 
+    @functools.wraps(func)
     def wrapper(self: "SymbologyWidget", *args, **kwargs):
         try:
             force_update = kwargs["force_update"]
