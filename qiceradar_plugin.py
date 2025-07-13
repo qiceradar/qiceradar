@@ -128,12 +128,12 @@ class GranuleMetadata():
         return self.layer_attributes["institution"]
 
     def relative_path(self) -> str:
+        # Not all layers have this attribute set
         try:
             relative_path = self.layer_attributes["relative_path"]
         except Exception as ex:
             relative_path = ""
         return relative_path
-
 
     def radargram_is_available(self) -> bool:
         availability = self.layer_attributes["availability"]
@@ -199,7 +199,6 @@ class GranuleMetadata():
         except Exception as ex:
             QgsMessageLog.logMessage(f"Invalid response {rows} from command {sql_cmd}")
 
-
         sql_cmd = (
             f"SELECT * FROM campaigns where name is '{self.campaign()}'"
         )
@@ -213,7 +212,6 @@ class GranuleMetadata():
             )
 
 
-
 class QIceRadarPlugin(QtCore.QObject):
     class Operation(enum.IntEnum):
         DOWNLOAD = enum.auto()
@@ -223,7 +221,6 @@ class QIceRadarPlugin(QtCore.QObject):
     # though right now, they filtering on download methods happens in
     # launch_radar_downloader
     supported_download_methods = ["nsidc", "wget"]
-
 
     def __init__(self, iface: QgisInterface) -> None:
         """
