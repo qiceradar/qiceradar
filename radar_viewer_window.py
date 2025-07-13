@@ -51,12 +51,8 @@ export QT_QPA_PLATFORM_PLUGIN_PATH=/Applications/$QGIS_VERSION.app/Contents/Plug
 export DYLD_INSERT_LIBRARIES=/Applications/$QGIS_VERSION.app/Contents/MacOS/lib/libsqlite3.dylib
 """
 
-import argparse
-import datetime
 import pathlib
-import sqlite3
-import sys
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import matplotlib as mpl
 import matplotlib.backend_bases
@@ -82,7 +78,7 @@ from .plotutils.matplotlib_utils import (
     SaveToolbar,
     get_ax_shape,
 )
-from .plotutils.pyqt_utils import HLine, VLine, show_error_message_box
+from .plotutils.pyqt_utils import HLine
 from .radar_viewer_widgets import DoubleSlider, ScalebarControls
 
 # TODO: These need to be renamed. it's currently really confusing ...
@@ -409,7 +405,7 @@ class RadarWindow(QtWidgets.QMainWindow):
     # However, it only works if the focus is on the frame, not the canvas.
     # So, I made the canvas unfocusable...
     def keyPressEvent(self, event: QtGui.QKeyEvent) -> None:
-        if type(event) == QtGui.QKeyEvent:
+        if type(event) is QtGui.QKeyEvent:
             self._on_qt_key_press(event)
             # By doing this here, we don't let anybody downstream of this
             # catch 'em. If I wanted to allow that, move event.accept()
@@ -477,7 +473,7 @@ class RadarWindow(QtWidgets.QMainWindow):
         # TODO(lindzey): consider calculating a reasonable scale + offset
         # from the data itself?
         # offset = radarAnalysis.channel_offsets[self.plot_params.channel]
-        offset = 0
+        # offset = 0
         # trace_dB = self.radar_data.data[trace_num, :] / 1000.0 + offset
         trace_dB = self.radar_data.data[trace_num, :]
         yy = np.arange(0, self.radar_data.num_samples)
@@ -1013,7 +1009,7 @@ class RadarWindow(QtWidgets.QMainWindow):
         """
         TODO
         """
-        old_product = self.plot_params.product
+        # old_product = self.plot_params.product
         for new_product, button in self.plot_objects.product_buttons.items():
             if button.isDown():
                 if self.plot_params.product != new_product:
@@ -1761,7 +1757,7 @@ class RadarWindow(QtWidgets.QMainWindow):
             #     f"Requested trace {trace}: closest valid is {int_trace}"
             #     f"along-track dist is: {dist}, and time for {t1} is {time_str}"
             # )
-        except Exception as ex:
+        except Exception:
             raise Exception(
                 f"Trying to format label. input trace = {trace}, type is {type(trace)}. Rounds to {int_trace} for radargram with {self.radar_data.num_traces} traces and {self.radar_data.num_samples} samples"
             )

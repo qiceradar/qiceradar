@@ -226,7 +226,7 @@ class SymbologyWidget(QtWidgets.QWidget):
         })
         try:
             symbol.setOutputUnit(Qgis.RenderUnit.Points)
-        except Exception as ex:
+        except Exception:
             # Prior to QGIS 3.30, these enums were organized differently
             symbol.setOutputUnit(QgsUnitTypes.RenderPoints)
         return symbol
@@ -244,7 +244,7 @@ class SymbologyWidget(QtWidgets.QWidget):
         else:
             doc = QtXml.QDomDocument()
             doc.setContent(style_str)
-            result = trace_layer.importNamedStyle(doc)
+            trace_layer.importNamedStyle(doc)
 
         root.addLayer(trace_layer)
         return trace_layer
@@ -257,7 +257,7 @@ class SymbologyWidget(QtWidgets.QWidget):
         })
         try:
             symbol.setOutputUnit(Qgis.RenderUnit.Points)
-        except Exception as ex:
+        except Exception:
             # Prior to QGIS 3.30, these enums were organized differently
             symbol.setOutputUnit(QgsUnitTypes.RenderPoints)
         return symbol
@@ -275,7 +275,7 @@ class SymbologyWidget(QtWidgets.QWidget):
         else:
             doc = QtXml.QDomDocument()
             doc.setContent(style_str)
-            result = selected_layer.importNamedStyle(doc)
+            selected_layer.importNamedStyle(doc)
 
         root.addLayer(selected_layer)
         return selected_layer
@@ -288,7 +288,7 @@ class SymbologyWidget(QtWidgets.QWidget):
         })
         try:
             symbol.setOutputUnit(Qgis.RenderUnit.Points)
-        except Exception as ex:
+        except Exception:
             # Prior to QGIS 3.30, these enums were organized differently
             symbol.setOutputUnit(QgsUnitTypes.RenderPoints)
         return symbol
@@ -306,7 +306,7 @@ class SymbologyWidget(QtWidgets.QWidget):
         else:
             doc = QtXml.QDomDocument()
             doc.setContent(style_str)
-            result = segment_layer.importNamedStyle(doc)
+            segment_layer.importNamedStyle(doc)
 
         root.addLayer(segment_layer)
         return segment_layer
@@ -321,7 +321,7 @@ class SymbologyWidget(QtWidgets.QWidget):
         })
         try:
             symbol.setOutputUnit(Qgis.RenderUnit.Points)
-        except Exception as ex:
+        except Exception:
             # Prior to QGIS 3.30, these enums were organized differently
             symbol.setOutputUnit(QgsUnitTypes.RenderPoints)
         return symbol
@@ -341,7 +341,7 @@ class SymbologyWidget(QtWidgets.QWidget):
         else:
             doc = QtXml.QDomDocument()
             doc.setContent(style_str)
-            result = multipoint_layer.importNamedStyle(doc)
+            multipoint_layer.importNamedStyle(doc)
 
         root.addLayer(multipoint_layer)
         return multipoint_layer
@@ -354,7 +354,7 @@ class SymbologyWidget(QtWidgets.QWidget):
         })
         try:
             symbol.setOutputUnit(Qgis.RenderUnit.Points)
-        except Exception as ex:
+        except Exception:
             # Prior to QGIS 3.30, these enums were organized differently
             symbol.setOutputUnit(QgsUnitTypes.RenderPoints)
         return symbol
@@ -374,7 +374,7 @@ class SymbologyWidget(QtWidgets.QWidget):
         else:
             doc = QtXml.QDomDocument()
             doc.setContent(style_str)
-            result = linestring_layer.importNamedStyle(doc)
+            linestring_layer.importNamedStyle(doc)
 
         root.addLayer(linestring_layer)
         return linestring_layer
@@ -424,7 +424,7 @@ class SymbologyWidget(QtWidgets.QWidget):
         else:
             doc = QtXml.QDomDocument()
             doc.setContent(style_str)
-            result = categorized_layer.importNamedStyle(doc)
+            categorized_layer.importNamedStyle(doc)
 
         root.addLayer(categorized_layer)
         return categorized_layer
@@ -433,12 +433,12 @@ class SymbologyWidget(QtWidgets.QWidget):
         def wrapper(self, *args, **kwargs):
             try:
                 force_update = kwargs["force_update"]
-            except Exception as ex:
+            except Exception:
                 force_update = False
 
             dt = time.time() - self.style_changed_time
             if dt < 1.0 and not force_update:
-                QgsMessageLog.logMessage(f"...repeated call, skipping (decorator!)")
+                QgsMessageLog.logMessage("...repeated call, skipping (decorator!)")
                 return
             fun(self, *args, **kwargs)
             self.style_changed_time = time.time()
@@ -447,7 +447,7 @@ class SymbologyWidget(QtWidgets.QWidget):
 
     @deduplicate_updates
     def update_trace_layer_style(self, force_update=False):
-        QgsMessageLog.logMessage(f"update_trace_layer_style")
+        QgsMessageLog.logMessage("update_trace_layer_style")
         doc = QtXml.QDomDocument()
         self.trace_layer.exportNamedStyle(doc)
         style_str = doc.toString()
@@ -457,7 +457,7 @@ class SymbologyWidget(QtWidgets.QWidget):
 
     @deduplicate_updates
     def update_selected_layer_style(self, force_update=False):
-        QgsMessageLog.logMessage(f"update_selected_layer_style")
+        QgsMessageLog.logMessage("update_selected_layer_style")
         doc = QtXml.QDomDocument()
         self.selected_layer.exportNamedStyle(doc)
         style_str = doc.toString()
@@ -467,7 +467,7 @@ class SymbologyWidget(QtWidgets.QWidget):
 
     @deduplicate_updates
     def update_segment_layer_style(self, force_update=False):
-        QgsMessageLog.logMessage(f"update_segment_layer_style")
+        QgsMessageLog.logMessage("update_segment_layer_style")
         doc = QtXml.QDomDocument()
         self.segment_layer.exportNamedStyle(doc)
         style_str = doc.toString()
@@ -477,7 +477,7 @@ class SymbologyWidget(QtWidgets.QWidget):
 
     @deduplicate_updates
     def update_unavailable_point_layer_style(self, force_update=False):
-        QgsMessageLog.logMessage(f"update_unavailable_point_layer_style")
+        QgsMessageLog.logMessage("update_unavailable_point_layer_style")
         doc = QtXml.QDomDocument()
         self.point_layer.exportNamedStyle(doc)
         style_str = doc.toString()
@@ -487,7 +487,7 @@ class SymbologyWidget(QtWidgets.QWidget):
 
     @deduplicate_updates
     def update_unavailable_line_layer_style(self, force_update=False):
-        QgsMessageLog.logMessage(f"update_unavailable_line_layer_style")
+        QgsMessageLog.logMessage("update_unavailable_line_layer_style")
         doc = QtXml.QDomDocument()
         self.line_layer.exportNamedStyle(doc)
         style_str = doc.toString()
@@ -497,7 +497,7 @@ class SymbologyWidget(QtWidgets.QWidget):
 
     @deduplicate_updates
     def update_categorized_layer_style(self, force_update=False):
-        QgsMessageLog.logMessage(f"update_categorized_layer_style")
+        QgsMessageLog.logMessage("update_categorized_layer_style")
         doc = QtXml.QDomDocument()
         self.categorized_layer.exportNamedStyle(doc)
         style_str = doc.toString()

@@ -133,7 +133,7 @@ class GranuleMetadata:
         # Not all layers have this attribute set
         try:
             relative_path = self.layer_attributes["relative_path"]
-        except Exception as ex:
+        except Exception:
             relative_path = ""
         return relative_path
 
@@ -151,7 +151,7 @@ class GranuleMetadata:
 
         try:
             download_method = self.db_granule.download_method
-        except Exception as ex:
+        except Exception:
             download_method = None
         valid_download_method = (
             download_method in QIceRadarPlugin.supported_download_methods
@@ -175,7 +175,7 @@ class GranuleMetadata:
 
         try:
             data_format = self.db_granule.data_format
-        except Exception as ex:
+        except Exception:
             data_format = None
         valid_data_format = data_format in radar_utils.RadarData.supported_data_formats
         if not valid_data_format:
@@ -188,7 +188,7 @@ class GranuleMetadata:
 
         valid_campaign = self.db_campaign is not None
         if not valid_campaign:
-            QgsMessageLog.logMessage(f"cannot view radargram, no campaign in database")
+            QgsMessageLog.logMessage("cannot view radargram, no campaign in database")
 
         return valid_path and valid_data_format and valid_campaign
 
@@ -222,11 +222,11 @@ class GranuleMetadata:
         rows = result.fetchall()
         try:
             self.db_granule = db_utils.DatabaseGranule(*rows[0])
-        except IndexError as ex:
+        except IndexError:
             QgsMessageLog.logMessage(
                 f"Cannot select {granule_name}. Invalid response {rows} from command {sql_cmd}"
             )
-        except Exception as ex:
+        except Exception:
             QgsMessageLog.logMessage(f"Invalid response {rows} from command {sql_cmd}")
 
         # Need information from the granules table to look up campaign information
@@ -242,7 +242,7 @@ class GranuleMetadata:
         rows = result.fetchall()
         try:
             self.db_campaign = db_utils.DatabaseCampaign(*rows[0])
-        except Exception as ex:
+        except Exception:
             QgsMessageLog.logMessage(f"Invalid response {rows} from command {sql_cmd}")
 
 
@@ -489,19 +489,19 @@ class QIceRadarPlugin(QtCore.QObject):
             layer.layer().triggerRepaint()
 
     def on_trace_style_changed(self, style_str: str):
-        QgsMessageLog.logMessage(f"on_trace_style_changed")
+        QgsMessageLog.logMessage("on_trace_style_changed")
         self.on_named_layer_style_changed(style_str, "Highlighted Trace")
 
     def on_selected_style_changed(self, style_str: str):
-        QgsMessageLog.logMessage(f"on_selected_style_changed")
+        QgsMessageLog.logMessage("on_selected_style_changed")
         self.on_named_layer_style_changed(style_str, "Selected Region")
 
     def on_segment_style_changed(self, style_str: str):
-        QgsMessageLog.logMessage(f"on_segment_style_changed")
+        QgsMessageLog.logMessage("on_segment_style_changed")
         self.on_named_layer_style_changed(style_str, "Full Transect")
 
     def on_categorized_style_changed(self, style_str: str):
-        QgsMessageLog.logMessage(f"on_categorized_style_changed")
+        QgsMessageLog.logMessage("on_categorized_style_changed")
         # This update assumes that rule based renderers have already been created,
         # so initialize them if necessary
         if not self.index_layers_categorized:
@@ -589,8 +589,8 @@ class QIceRadarPlugin(QtCore.QObject):
             try:
                 # All layers created by QIceRadar have a single type of features
                 feature = next(features)
-            except Exception as ex:
-                QgsMessageLog.logMessage(f"could not get layer features")
+            except Exception:
+                QgsMessageLog.logMessage("could not get layer features")
                 continue
 
             # Check layer is marked unavailable
@@ -931,13 +931,13 @@ class QIceRadarPlugin(QtCore.QObject):
                 break
 
         if trace_layer is None:
-            QgsMessageLog.logMessage(f"Could not find trace layer")
+            QgsMessageLog.logMessage("Could not find trace layer")
             trace_uri = "point?crs=epsg:4326"
             trace_layer = QgsVectorLayer(trace_uri, "Highlighted Trace", "memory")
             QgsProject.instance().addMapLayer(trace_layer, False)
             granule_group.addLayer(trace_layer)
         else:
-            QgsMessageLog.logMessage(f"Found existing trace layer.")
+            QgsMessageLog.logMessage("Found existing trace layer.")
             # It is easiest to just delete all features and recreate what we need
             with edit(trace_layer):
                 trace_layer.deleteFeatures(trace_layer.allFeatureIds())
@@ -946,7 +946,7 @@ class QIceRadarPlugin(QtCore.QObject):
         style_str = qs.value("qiceradar_config/trace_layer_style", None)
         if style_str is None:
             QgsMessageLog.logMessage(
-                f"Could not find: qiceradar_config/trace_layer_style"
+                "Could not find: qiceradar_config/trace_layer_style"
             )
         else:
             doc = QtXml.QDomDocument()
@@ -976,13 +976,13 @@ class QIceRadarPlugin(QtCore.QObject):
                 break
 
         if selected_layer is None:
-            QgsMessageLog.logMessage(f"Could not find selection layer")
+            QgsMessageLog.logMessage("Could not find selection layer")
             selected_uri = "LineString?crs=epsg:4326"
             selected_layer = QgsVectorLayer(selected_uri, "Selected Region", "memory")
             QgsProject.instance().addMapLayer(selected_layer, False)
             granule_group.addLayer(selected_layer)
         else:
-            QgsMessageLog.logMessage(f"Found existing selection layer.")
+            QgsMessageLog.logMessage("Found existing selection layer.")
             with edit(selected_layer):
                 selected_layer.deleteFeatures(selected_layer.allFeatureIds())
 
@@ -990,7 +990,7 @@ class QIceRadarPlugin(QtCore.QObject):
         style_str = qs.value("qiceradar_config/selected_layer_style", None)
         if style_str is None:
             QgsMessageLog.logMessage(
-                f"Could not find: qiceradar_config/selected_layer_style"
+                "Could not find: qiceradar_config/selected_layer_style"
             )
         else:
             doc = QtXml.QDomDocument()
@@ -1022,13 +1022,13 @@ class QIceRadarPlugin(QtCore.QObject):
                 break
 
         if segment_layer is None:
-            QgsMessageLog.logMessage(f"Could not find full transect layer")
+            QgsMessageLog.logMessage("Could not find full transect layer")
             segment_uri = "LineString?crs=epsg:4326"
             segment_layer = QgsVectorLayer(segment_uri, "Full Transect", "memory")
             QgsProject.instance().addMapLayer(segment_layer, False)
             granule_group.addLayer(segment_layer)
         else:
-            QgsMessageLog.logMessage(f"Found existing full transect layer.")
+            QgsMessageLog.logMessage("Found existing full transect layer.")
             with edit(segment_layer):
                 segment_layer.deleteFeatures(segment_layer.allFeatureIds())
         segment_geometry = QgsLineString([QgsPoint(0, -90)])
@@ -1037,7 +1037,7 @@ class QIceRadarPlugin(QtCore.QObject):
         style_str = qs.value("qiceradar_config/segment_layer_style", None)
         if style_str is None:
             QgsMessageLog.logMessage(
-                f"Could not find: qiceradar_config/segment_layer_style"
+                "Could not find: qiceradar_config/segment_layer_style"
             )
         else:
             doc = QtXml.QDomDocument()

@@ -28,15 +28,13 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from typing import Any, Tuple
+from typing import Tuple
 
 import matplotlib
-import matplotlib.widgets as mpw
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT
 
 
-def get_ax_shape(fig, ax):
-    # type: (Any, Any) -> Tuple[int, int]
+def get_ax_shape(fig, ax) -> Tuple[int, int]:
     """
     returns axis width in pixels; used for being a bit clever about how much
     of the image we draw.
@@ -70,8 +68,7 @@ class NavigationToolbar(NavigationToolbar2QT):
         t for t in NavigationToolbar2QT.toolitems if t[0] in ["Pan", "Zoom", "Save"]
     ]
 
-    def __init__(self, *args, **kwargs):
-        # type: (*Any, **Any) -> None
+    def __init__(self, *args, **kwargs) -> None:
         super(NavigationToolbar, self).__init__(*args, **kwargs)
         # get rid of the one with the green checkbox
         self.layout().takeAt(3)
@@ -82,8 +79,7 @@ class SaveToolbar(NavigationToolbar2QT):
 
     toolitems = [t for t in NavigationToolbar2QT.toolitems if t[0] in ["Save"]]
 
-    def __init__(self, *args, **kwargs):
-        # type: (*Any, **Any) -> None
+    def __init__(self, *args, **kwargs) -> None:
         super(SaveToolbar, self).__init__(*args, **kwargs)
         # get rid of the one with the green checkbox
         self.layout().takeAt(1)

@@ -42,8 +42,6 @@ from PyQt5.QtCore import Qt
 from qgis.core import QgsMessageLog
 from qgis.gui import QgisInterface
 
-from .qiceradar_config import UserConfig
-
 
 def format_bytes(filesize: int) -> str:
     filesize_kb = filesize / (1024)

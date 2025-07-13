@@ -33,7 +33,6 @@ import itertools
 from typing import Any, Optional, Tuple
 
 import matplotlib
-import numpy as np
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
 import PyQt5.QtWidgets as QtWidgets
@@ -543,7 +542,7 @@ class TextColorInterface(QtWidgets.QWidget):
         try:
             val1 = float(self.first_textboxes[label].text())
             self.val1[label] = val1
-        except:
+        except Exception:
             msg = "unable to cast textbox to float!"
             show_error_message_box(msg)
             self.first_textboxes[label].setText(str(self.val1[label]))
@@ -551,7 +550,7 @@ class TextColorInterface(QtWidgets.QWidget):
         try:
             val2 = float(self.second_textboxes[label].text())
             self.val2[label] = val2
-        except:
+        except Exception:
             msg = "unable to cast textbox to float!"
             show_error_message_box(msg)
             self.first_textboxes[label].setText(str(self.val2[label]))
