@@ -183,9 +183,10 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
         nsidc_info = (
             "Credentials for downloading data from NSIDC."
             "<br><br>"
-            "A free NASA EarthData login is necessary to download radargrams hosted at NSIDC. "
+            "A free NASA EarthData login is necessary to download radargrams hosted at NSIDC; "
+            "tokens expire after 2 months and must be re-generated."
             "<br><br>"
-            "To obtain a token, go to "
+            "To generate a token, go to "
             '<a href="https://urs.earthdata.nasa.gov/profile">https://urs.earthdata.nasa.gov/profile</a>'
             ". Log in, click 'Generate Token', and copy the result into this dialog"
             "<br><br>"
