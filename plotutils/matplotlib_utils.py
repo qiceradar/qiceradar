@@ -87,4 +87,3 @@ class SaveToolbar(NavigationToolbar2QT):
         super(SaveToolbar, self).__init__(*args, **kwargs)
         # get rid of the one with the green checkbox
         self.layout().takeAt(1)
-

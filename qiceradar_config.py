@@ -57,14 +57,13 @@ def parse_config(config_dict: Dict[str, str]) -> UserConfig:
     if "aad_secret_key" in config_dict:
         aad_secret_key = config_dict["aad_secret_key"]
 
-    config = UserConfig(
-        rootdir, nsidc_token, aad_access_key, aad_secret_key
-    )
+    config = UserConfig(rootdir, nsidc_token, aad_access_key, aad_secret_key)
     return config
 
 
 def rootdir_is_valid(config: UserConfig) -> bool:
     return config.rootdir is not None and config.rootdir.is_dir()
+
 
 def nsidc_token_is_valid(config: UserConfig) -> bool:
     test_url = "https://n5eil01u.ecs.nsidc.org/ICEBRIDGE/IR1HI1B.001/2009.01.02/IR1HI1B_2009002_MCM_JKB1a_DGC02a_000.nc"
@@ -75,4 +74,3 @@ def nsidc_token_is_valid(config: UserConfig) -> bool:
         # We expect this to fail if there's no valid internet connection.
         return False
     return req.status_code == 200
-

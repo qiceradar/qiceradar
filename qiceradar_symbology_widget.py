@@ -34,7 +34,6 @@ import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
 import PyQt5.QtWidgets as QtWidgets
 import PyQt5.QtXml as QtXml
-
 from qgis.core import (
     Qgis,
     QgsLayerTree,
@@ -42,17 +41,14 @@ from qgis.core import (
     QgsLineSymbol,
     QgsMarkerSymbol,
     QgsMessageLog,
-    QgsProject,
     QgsRuleBasedRenderer,
-    QgsSettings,
-    QgsSymbol,
     QgsVectorLayer,
 )
 
 try:
     # Needed pre-3.30
     from qgis.core import QgsUnitTypes
-except Exception as ex:
+except Exception:
     pass
 from qgis.gui import (
     QgsLayerTreeView,
@@ -66,6 +62,7 @@ class SymbologyMenuProvider(QgsLayerTreeViewMenuProvider):
     symbols. I did not find a straightforward way to pop up only the edit
     symbol dialogue, so this pops up the entire layer properties dialog.
     """
+
     def __init__(self, view, iface):
         super().__init__()
         self.view = view
@@ -82,7 +79,7 @@ class SymbologyMenuProvider(QgsLayerTreeViewMenuProvider):
         return menu
 
     def open_layer_properties(self):
-        self.iface.showLayerProperties(self.view.currentLayer(), 'mOptsPage_Symbology')
+        self.iface.showLayerProperties(self.view.currentLayer(), "mOptsPage_Symbology")
 
 
 class SymbologyWidget(QtWidgets.QWidget):
@@ -93,6 +90,7 @@ class SymbologyWidget(QtWidgets.QWidget):
     Attach callbacks to these dummy layers that then emit a signal indicating
     that the corresponding layer styles should be updated.
     """
+
     trace_style_changed = QtCore.pyqtSignal(str)
     selected_style_changed = QtCore.pyqtSignal(str)
     segment_style_changed = QtCore.pyqtSignal(str)
@@ -104,7 +102,9 @@ class SymbologyWidget(QtWidgets.QWidget):
     trace_style_config_key = "qiceradar_config/trace_layer_style"
     selected_style_config_key = "qiceradar_config/selected_layer_style"
     segment_style_config_key = "qiceradar_config/segment_layer_style"
-    unavailable_point_style_config_key = "qiceradar_config/unavailable_point_layer_style"
+    unavailable_point_style_config_key = (
+        "qiceradar_config/unavailable_point_layer_style"
+    )
     unavailable_line_style_config_key = "qiceradar_config/unavailable_line_layer_style"
     categorized_style_config_key = "qiceradar_config/categorized_layer_style"
 
@@ -116,7 +116,9 @@ class SymbologyWidget(QtWidgets.QWidget):
         # calls and only update on the first.
         self.style_changed_time = 0.0
 
-        self.tree_root, self.view, self.model = SymbologyWidget.setup_tree_view(self.iface)
+        self.tree_root, self.view, self.model = SymbologyWidget.setup_tree_view(
+            self.iface
+        )
         self.setup_layers(self.tree_root)
         self.setup_ui()
 
@@ -192,7 +194,14 @@ class SymbologyWidget(QtWidgets.QWidget):
         categorized_renderer = SymbologyWidget.make_categorized_renderer()
         self.categorized_layer.setRenderer(categorized_renderer)
 
-        for layer in [self.trace_layer, self.selected_layer, self.segment_layer, self.point_layer, self.line_layer, self.categorized_layer]:
+        for layer in [
+            self.trace_layer,
+            self.selected_layer,
+            self.segment_layer,
+            self.point_layer,
+            self.line_layer,
+            self.categorized_layer,
+        ]:
             self.view.refreshLayerSymbology(layer.id())
 
         # Every style might have changed, so go ahead and trigger updates for all.
@@ -209,14 +218,12 @@ class SymbologyWidget(QtWidgets.QWidget):
 
     @staticmethod
     def make_trace_symbol() -> QgsMarkerSymbol:
-        symbol = QgsMarkerSymbol.createSimple(
-            {
-                "name": "circle",
-                "color": QtGui.QColor.fromRgb(255, 255, 0, 255),
-                "size": "8",
-                "outline_style": "no"
-            }
-        )
+        symbol = QgsMarkerSymbol.createSimple({
+            "name": "circle",
+            "color": QtGui.QColor.fromRgb(255, 255, 0, 255),
+            "size": "8",
+            "outline_style": "no",
+        })
         try:
             symbol.setOutputUnit(Qgis.RenderUnit.Points)
         except Exception as ex:
@@ -244,12 +251,10 @@ class SymbologyWidget(QtWidgets.QWidget):
 
     @staticmethod
     def make_selected_symbol() -> QgsLineSymbol:
-        symbol = QgsLineSymbol.createSimple(
-            {
-                "color": QtGui.QColor.fromRgb(255, 128, 30, 255),
-                "line_width": 2,
-            }
-        )
+        symbol = QgsLineSymbol.createSimple({
+            "color": QtGui.QColor.fromRgb(255, 128, 30, 255),
+            "line_width": 2,
+        })
         try:
             symbol.setOutputUnit(Qgis.RenderUnit.Points)
         except Exception as ex:
@@ -277,12 +282,10 @@ class SymbologyWidget(QtWidgets.QWidget):
 
     @staticmethod
     def make_segment_symbol() -> QgsLineSymbol:
-        symbol = QgsLineSymbol.createSimple(
-            {
-                "color": QtGui.QColor.fromRgb(255, 0, 0, 255),
-                "line_width": 1,
-            }
-        )
+        symbol = QgsLineSymbol.createSimple({
+            "color": QtGui.QColor.fromRgb(255, 0, 0, 255),
+            "line_width": 1,
+        })
         try:
             symbol.setOutputUnit(Qgis.RenderUnit.Points)
         except Exception as ex:
@@ -310,14 +313,12 @@ class SymbologyWidget(QtWidgets.QWidget):
 
     @staticmethod
     def make_unavailable_point_symbol() -> QgsMarkerSymbol:
-        symbol = QgsMarkerSymbol.createSimple(
-            {
-                "name": "circle",
-                "color": QtGui.QColor.fromRgb(251, 154, 153, 255),
-                "size": "1",
-                "outline_style": "no"
-            }
-        )
+        symbol = QgsMarkerSymbol.createSimple({
+            "name": "circle",
+            "color": QtGui.QColor.fromRgb(251, 154, 153, 255),
+            "size": "1",
+            "outline_style": "no",
+        })
         try:
             symbol.setOutputUnit(Qgis.RenderUnit.Points)
         except Exception as ex:
@@ -328,7 +329,9 @@ class SymbologyWidget(QtWidgets.QWidget):
     @staticmethod
     def add_unavailable_multipoint_layer(root: QgsLayerTree) -> QgsVectorLayer:
         multipoint_uri = "point?crs=epsg:4326"
-        multipoint_layer = QgsVectorLayer(multipoint_uri, "Unavailable (Points)", "memory")
+        multipoint_layer = QgsVectorLayer(
+            multipoint_uri, "Unavailable (Points)", "memory"
+        )
 
         qs = QtCore.QSettings()
         style_str = qs.value(SymbologyWidget.unavailable_point_style_config_key, None)
@@ -345,12 +348,10 @@ class SymbologyWidget(QtWidgets.QWidget):
 
     @staticmethod
     def make_unavailable_line_symbol() -> QgsLineSymbol:
-        symbol = QgsLineSymbol.createSimple(
-            {
-                "color": QtGui.QColor.fromRgb(251, 154, 153, 255),
-                "line_width": 1,
-            }
-        )
+        symbol = QgsLineSymbol.createSimple({
+            "color": QtGui.QColor.fromRgb(251, 154, 153, 255),
+            "line_width": 1,
+        })
         try:
             symbol.setOutputUnit(Qgis.RenderUnit.Points)
         except Exception as ex:
@@ -361,7 +362,9 @@ class SymbologyWidget(QtWidgets.QWidget):
     @staticmethod
     def add_unavailable_linestring_layer(root: QgsLayerTree) -> QgsVectorLayer:
         linestring_uri = "LineString?crs=epsg:4326"
-        linestring_layer = QgsVectorLayer(linestring_uri, "Unavailable (Lines)", "memory")
+        linestring_layer = QgsVectorLayer(
+            linestring_uri, "Unavailable (Lines)", "memory"
+        )
 
         qs = QtCore.QSettings()
         style_str = qs.value(SymbologyWidget.unavailable_line_style_config_key, None)
@@ -389,7 +392,7 @@ class SymbologyWidget(QtWidgets.QWidget):
 
         dl_rule = root_rule.children()[0].clone()
         dl_rule.setLabel("Downloaded")
-        dl_rule.symbol().setWidth(0.35) # Make them more visible
+        dl_rule.symbol().setWidth(0.35)  # Make them more visible
         dl_rule.symbol().setColor(QtGui.QColor(133, 54, 229, 255))
         root_rule.appendChild(dl_rule)
 
@@ -409,7 +412,9 @@ class SymbologyWidget(QtWidgets.QWidget):
     @staticmethod
     def add_categorized_layer(root: QgsLayerTree) -> QgsVectorLayer:
         categorized_uri = "LineString?crs=epsg:4326"
-        categorized_layer = QgsVectorLayer(categorized_uri, "Radargram Availability", "memory")
+        categorized_layer = QgsVectorLayer(
+            categorized_uri, "Radargram Availability", "memory"
+        )
 
         qs = QtCore.QSettings()
         style_str = qs.value(SymbologyWidget.categorized_style_config_key, None)
@@ -437,6 +442,7 @@ class SymbologyWidget(QtWidgets.QWidget):
                 return
             fun(self, *args, **kwargs)
             self.style_changed_time = time.time()
+
         return wrapper
 
     @deduplicate_updates

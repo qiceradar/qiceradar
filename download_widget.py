@@ -127,12 +127,10 @@ class DownloadConfirmationDialog(QtWidgets.QDialog):
         """
 
         self.intro_text = QtWidgets.QLabel(
-            "".join(
-                [
-                    "You requested download of: \n\n",
-                    f"{self.granule_name}",
-                ]
-            )
+            "".join([
+                "You requested download of: \n\n",
+                f"{self.granule_name}",
+            ])
         )
 
         self.text_scroll = QtWidgets.QScrollArea()
@@ -140,16 +138,14 @@ class DownloadConfirmationDialog(QtWidgets.QDialog):
         self.text_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOn)
         filesize_str = format_bytes(self.filesize)
         self.info_label = QtWidgets.QLabel(
-            "".join(
-                [
-                    f"The requested segment is {filesize_str}.\n\n",
-                    "It can be downloaded from: \n",
-                    self.url,
-                    "\n\n And will be saved to: \n",
-                    str(self.dest_filepath),
-                    "\n",
-                ]
-            )
+            "".join([
+                f"The requested segment is {filesize_str}.\n\n",
+                "It can be downloaded from: \n",
+                self.url,
+                "\n\n And will be saved to: \n",
+                str(self.dest_filepath),
+                "\n",
+            ])
         )
         self.info_label.setTextInteractionFlags(
             QtCore.Qt.TextInteractionFlag.TextSelectableByMouse
@@ -237,7 +233,12 @@ class DownloadWindow(QtWidgets.QMainWindow):
         self.setCentralWidget(central_widget)
 
     def download(
-        self, granule: str, url: str, destination_filepath: pathlib.Path, filesize: int, headers: Dict[str, str]
+        self,
+        granule: str,
+        url: str,
+        destination_filepath: pathlib.Path,
+        filesize: int,
+        headers: Dict[str, str],
     ) -> None:
         # TODO: This means that once a download has been canceled, you won't
         #   be able to retry it until the plugin is reloaded.
@@ -276,7 +277,12 @@ class DownloadWidget(QtWidgets.QWidget):
     request_cancel = QtCore.pyqtSignal()
 
     def __init__(
-        self, granule: str, url: str, filesize: int, destination_filepath: pathlib.Path, headers: Dict[str, str]
+        self,
+        granule: str,
+        url: str,
+        filesize: int,
+        destination_filepath: pathlib.Path,
+        headers: Dict[str, str],
     ) -> None:
         super().__init__()
         self.granule = granule
@@ -421,10 +427,11 @@ class DownloadWidget(QtWidgets.QWidget):
         pp.setColor(self.backgroundRole(), QtGui.QColor(0, 0, 0, 25))
         self.setPalette(pp)
         # TODO: Update help button text with the information? Will probably need a scroll bar...
-        self.help_msg = "".join([self.help_msg,
-                                 "\n\n\n ------------- DOWNLOAD FAILED -----------\n\n\n",
-                                 err_msg])
-
+        self.help_msg = "".join([
+            self.help_msg,
+            "\n\n\n ------------- DOWNLOAD FAILED -----------\n\n\n",
+            err_msg,
+        ])
 
     def handle_canceled(self) -> None:
         self.canceled = True
@@ -511,7 +518,9 @@ class DownloadWorker(QtCore.QObject):
     # Qt's signals use an int32 if I specify "int" here, so use "object"
     progress = QtCore.pyqtSignal(object)
 
-    def __init__(self, url: str, headers: Dict[str, str], destination_filepath: pathlib.Path) -> None:
+    def __init__(
+        self, url: str, headers: Dict[str, str], destination_filepath: pathlib.Path
+    ) -> None:
         super().__init__()
         self.url = url
         self.headers = headers

@@ -65,8 +65,6 @@ def load_netcdf(filepath: pathlib.Path) -> Tuple[Any, Any, Any, Any, Any]:
     # In microseconds
     fast_time = dd.variables["TWT"][:]
 
-    print(
-        f"Loaded AWI radargram. shape = {data.shape}"
-    )
+    print(f"Loaded AWI radargram. shape = {data.shape}")
 
     return (data, lat, lon, utc, fast_time)

@@ -30,7 +30,7 @@
 
 
 import itertools
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Optional, Tuple
 
 import matplotlib
 import numpy as np
@@ -44,9 +44,11 @@ from matplotlib.figure import Figure
 # is shipping with matplotlib 3.3 (Ubuntu debs + Windows install have updated)
 try:
     from matplotlib.widgets import RangeSlider
+
     RANGE_SLIDER_SUPPORTED = True
 except ImportError:
     from matplotlib.widgets import Slider
+
     RANGE_SLIDER_SUPPORTED = False
 
 from .plotutils.pyqt_utils import show_error_message_box
@@ -57,6 +59,7 @@ class ScalebarControls(QtWidgets.QWidget):
     Widget that provides checkbox to enable/disable scalebar,
     along with controls setting its length and position.
     """
+
     # Emitted when the checkbox changes; argument is enabled / not
     checked = QtCore.pyqtSignal(bool)
     # Emitted when user updates length; argument is length in meters
@@ -66,11 +69,11 @@ class ScalebarControls(QtWidgets.QWidget):
 
     def __init__(
         self,
-        initial_value: float, # Initial value for the scalebar length
-        label: str, # Label for the checkbox. Usually "Horizontal" or "Vertical"
-        unit_label: str, # Label for length units
-        x0: float, # Initial X position for scalebar (in fraction of axis)
-        y0: float, # Initial Y position for scalebar (in fraction of axis)
+        initial_value: float,  # Initial value for the scalebar length
+        label: str,  # Label for the checkbox. Usually "Horizontal" or "Vertical"
+        unit_label: str,  # Label for length units
+        x0: float,  # Initial X position for scalebar (in fraction of axis)
+        y0: float,  # Initial Y position for scalebar (in fraction of axis)
     ) -> None:
         # ConfigWidget doesnt' ahve parent, but DoubleSlider does.
         # Do we need to?
@@ -84,11 +87,8 @@ class ScalebarControls(QtWidgets.QWidget):
         self.setup_ui()
 
     def setup_ui(self) -> None:
-
         self.checkbox = QtWidgets.QCheckBox(f"{self.label}")
-        self.checkbox.clicked.connect(
-            lambda val: self.checked.emit(val)
-        )
+        self.checkbox.clicked.connect(lambda val: self.checked.emit(val))
 
         self.length_label = QtWidgets.QLabel(f"Length: ({self.unit_label})")
 
@@ -100,16 +100,12 @@ class ScalebarControls(QtWidgets.QWidget):
         # TODO: Originally, this was editingFinished, but I wanted a
         #  signal that has an argument with the current text. Confirm
         #  that this works as intended (only fires for valid input)
-        self.length_lineedit.editingFinished.connect(
-            self.send_new_length
-        )
+        self.length_lineedit.editingFinished.connect(self.send_new_length)
         self.length_lineedit.setText(f"{self.initial_value:.2f}")
         self.length_lineedit.setMinimumWidth(50)
         self.length_lineedit.setMaximumWidth(60)
 
-        self.origin_label = QtWidgets.QLabel(
-            "origin (x, y):"
-        )
+        self.origin_label = QtWidgets.QLabel("origin (x, y):")
 
         self.x0_lineedit = QtWidgets.QLineEdit()
         self.origin_validator = QtGui.QDoubleValidator()
@@ -129,12 +125,8 @@ class ScalebarControls(QtWidgets.QWidget):
         self.y0_lineedit.setMaximumWidth(40)
 
         # Must happen after setting the text ...
-        self.x0_lineedit.editingFinished.connect(
-            self.send_new_origin
-        )
-        self.y0_lineedit.editingFinished.connect(
-            self.send_new_origin
-        )
+        self.x0_lineedit.editingFinished.connect(self.send_new_origin)
+        self.y0_lineedit.editingFinished.connect(self.send_new_origin)
 
         self.length_hbox = QtWidgets.QHBoxLayout()
         self.length_hbox.addWidget(self.length_label)
@@ -162,7 +154,6 @@ class ScalebarControls(QtWidgets.QWidget):
     def send_new_length(self):
         length = float(self.length_lineedit.text())
         self.new_length.emit(length)
-
 
 
 class DoubleSlider(QtWidgets.QWidget):
@@ -198,7 +189,6 @@ class DoubleSlider(QtWidgets.QWidget):
         # otherwise it may try to redraw the image tons.
         # (In practice, doesn't seem terrible)
 
-
         self.slider_fig = Figure((1, 1))
         self.slider_canvas = FigureCanvas(self.slider_fig)
         self.slider_canvas.setParent(self)
@@ -207,7 +197,12 @@ class DoubleSlider(QtWidgets.QWidget):
         # than standing out with a white background
         palette = QtGui.QGuiApplication.palette()
         qt_color = palette.window().color()
-        mpl_color = [qt_color.redF(), qt_color.greenF(), qt_color.blueF(), qt_color.alphaF()]
+        mpl_color = [
+            qt_color.redF(),
+            qt_color.greenF(),
+            qt_color.blueF(),
+            qt_color.alphaF(),
+        ]
         self.slider_fig.patch.set_facecolor(mpl_color)  # This is what did it
 
         # Unfortunately, the on_changed events don't only fire when the mouse
@@ -230,9 +225,23 @@ class DoubleSlider(QtWidgets.QWidget):
             self.slider_ax1 = self.slider_fig.add_axes([0.03, 0.5, 0.94, 1])
             self.slider_ax2 = self.slider_fig.add_axes([0.03, 0.0, 0.94, 0.5])
 
-            self.min_range_slider = Slider(self.slider_ax1, slider_label, curr_lim[0], curr_lim[1], valinit=curr_lim[0], valfmt=None)
+            self.min_range_slider = Slider(
+                self.slider_ax1,
+                slider_label,
+                curr_lim[0],
+                curr_lim[1],
+                valinit=curr_lim[0],
+                valfmt=None,
+            )
             self.min_range_slider.on_changed(self._on_min_range_slider_changed)
-            self.max_range_slider = Slider(self.slider_ax2, slider_label, curr_lim[0], curr_lim[1], valinit=curr_lim[1], valfmt=None)
+            self.max_range_slider = Slider(
+                self.slider_ax2,
+                slider_label,
+                curr_lim[0],
+                curr_lim[1],
+                valinit=curr_lim[1],
+                valfmt=None,
+            )
             self.max_range_slider.on_changed(self._on_max_range_slider_changed)
             self.slider_canvas.setFixedHeight(30)
 
@@ -240,7 +249,9 @@ class DoubleSlider(QtWidgets.QWidget):
         self.slider_layout = QtWidgets.QHBoxLayout()
         self.slider_layout.addWidget(self.slider_canvas)
         self.slider_widget.setLayout(self.slider_layout)
-        self.slider_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
+        self.slider_widget.setSizePolicy(
+            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed
+        )
 
         # These labels are for min/max val in image
         self.slider_min_label = QtWidgets.QLabel(f"{self.curr_lim[0]:.2f}")
@@ -297,11 +308,21 @@ class DoubleSlider(QtWidgets.QWidget):
             self.range_slider.on_changed(self._on_range_slider_changed)
         else:
             self.min_range_slider = Slider(
-                self.slider_ax1, slider_label, lim[0], lim[1], valinit=lim[0], valfmt=None
+                self.slider_ax1,
+                slider_label,
+                lim[0],
+                lim[1],
+                valinit=lim[0],
+                valfmt=None,
             )
             self.min_range_slider.on_changed(self._on_min_range_slider_changed)
             self.max_range_slider = Slider(
-                self.slider_ax2, slider_label, lim[0], lim[1], valinit=lim[1], valfmt=None
+                self.slider_ax2,
+                slider_label,
+                lim[0],
+                lim[1],
+                valinit=lim[1],
+                valfmt=None,
             )
             self.max_range_slider.on_changed(self._on_max_range_slider_changed)
         self.slider_min_label.setText(f"{rmin:.2f}")
@@ -699,9 +720,14 @@ class RadioCheckInterface(QtWidgets.QWidget):
         # TODO: come up with a better set of default colors?
         # TODO: Generate better initial colors than random ...
         # color = '#%06x' % np.random.randint(0xFFFFFF)
-        self.pick_color_gen = itertools.cycle(
-            ["green", "red", "blue", "magenta", "cyan", "purple"]
-        )
+        self.pick_color_gen = itertools.cycle([
+            "green",
+            "red",
+            "blue",
+            "magenta",
+            "cyan",
+            "purple",
+        ])
 
     def get_color(self, label):
         # type: (str) -> QtGui.QColor

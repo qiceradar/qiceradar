@@ -33,10 +33,11 @@ import PyQt5.QtCore as QtCore
 import PyQt5.QtWidgets as QtWidgets
 
 
-class QIceRadarDialogs():
+class QIceRadarDialogs:
     """
     Various messages that we may need to display to the user.
     """
+
     issue_url = "https://github.com/qiceradar/qiceradar/issues/new"
     email_address = "qiceradar@gmail.com"
 
@@ -110,19 +111,12 @@ class QIceRadarDialogs():
         message_box.exec()
 
     @classmethod
-    def display_already_downloaded_dialog(
-        cls, granule_name: str
-    ) -> None:
+    def display_already_downloaded_dialog(cls, granule_name: str) -> None:
         # TODO: Should make this impossible by filtering the selection
         #   based on un-downloaded transects.
         #   I *could* make the unavailable impossible, but I want to display info
         #   about them, and a 3rd tooltip doesn't make sense.
-        msg = (
-            "Already downloaded requested data!"
-            "<br>"
-            f"Granule: {granule_name}"
-            "<br>"
-        )
+        msg = f"Already downloaded requested data!<br>Granule: {granule_name}<br>"
         message_box = QtWidgets.QMessageBox()
         message_box.setTextFormat(QtCore.Qt.RichText)
         message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)

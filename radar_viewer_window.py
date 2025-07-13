@@ -528,9 +528,10 @@ class RadarWindow(QtWidgets.QMainWindow):
         # It's OK, this isn't infinitely circular ...
         # update_selection doesn't trigger any cbs.
         num_traces = self.radar_data.num_traces
-        self.plot_objects.xevas_horiz.update_selection(
-            (1.0 * new_xlim[0] / (num_traces - 1), 1.0 * new_xlim[1] / (num_traces - 1))
-        )
+        self.plot_objects.xevas_horiz.update_selection((
+            1.0 * new_xlim[0] / (num_traces - 1),
+            1.0 * new_xlim[1] / (num_traces - 1),
+        ))
 
     def update_ylim(self, new_ylim: Tuple[int, int]) -> None:
         if not isinstance(new_ylim[0], int) or not isinstance(new_ylim[1], int):
@@ -543,12 +544,10 @@ class RadarWindow(QtWidgets.QMainWindow):
         # It's OK, this isn't infinitely circular ...
         # update_selection doesn't trigger any cbs.
         num_samples = self.radar_data.num_samples
-        self.plot_objects.xevas_vert.update_selection(
-            (
-                1 - 1.0 * new_ylim[0] / (num_samples - 1),
-                1 - 1.0 * new_ylim[1] / (num_samples - 1),
-            )
-        )
+        self.plot_objects.xevas_vert.update_selection((
+            1 - 1.0 * new_ylim[0] / (num_samples - 1),
+            1 - 1.0 * new_ylim[1] / (num_samples - 1),
+        ))
 
     def full_redraw(self) -> None:
         """
@@ -1734,7 +1733,7 @@ class RadarWindow(QtWidgets.QMainWindow):
             # dist = self.transect_data.rpc.along_track_dist([0, xx], "traces")
             all_dists = self.radar_data.along_track_dist()
             dist = all_dists[int_trace]
-            label = f"{dist/1000.0:0.1f} km"
+            label = f"{dist / 1000.0:0.1f} km"
 
             # It appears that the BAS data's utc data isn't what I expected,
             # so I can't convert to minutes or date.

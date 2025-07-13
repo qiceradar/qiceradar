@@ -33,19 +33,14 @@ import inspect
 import os
 import pathlib
 import sqlite3
-import time
-
-# from db_utils import DatabaseGranule, DatabaseCampaign
 from typing import Dict, List, Optional, Tuple
 
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
 import PyQt5.QtWidgets as QtWidgets
 import PyQt5.QtXml as QtXml
-
 import yaml
 from qgis.core import (
-    edit,
     Qgis,  # Used for warning levels in the message bar
     QgsFeature,
     QgsGeometry,
@@ -53,9 +48,7 @@ from qgis.core import (
     QgsLayerTreeGroup,
     QgsLayerTreeLayer,
     QgsLineString,
-    QgsLineSymbol,
     QgsMapLayer,
-    QgsMarkerSymbol,
     QgsMessageLog,
     QgsPoint,
     QgsPointXY,
@@ -65,10 +58,14 @@ from qgis.core import (
     QgsSymbol,
     QgsVectorLayer,
     QgsWkbTypes,
+    edit,
 )
-from qgis.gui import QgisInterface, QgsDockWidget, QgsMapTool, QgsMapToolPan, QgsMessageBar
+from qgis.gui import (
+    QgisInterface,
+    QgsDockWidget,
+)
 
-from .datautils import db_utils
+from .datautils import db_utils, radar_utils
 from .download_widget import DownloadConfirmationDialog, DownloadWindow
 from .qiceradar_config import (
     UserConfig,
@@ -84,11 +81,10 @@ from .qiceradar_selection_widget import (
     QIceRadarSelectionWidget,
 )
 from .qiceradar_symbology_widget import SymbologyWidget
-from .datautils import radar_utils
 from .radar_viewer_window import RadarWindow
 
 
-class GranuleMetadata():
+class GranuleMetadata:
     """
     Grab all data about this granule from the layer and the database
     1. layer attributes
@@ -97,6 +93,7 @@ class GranuleMetadata():
     Any logic that requires digging into the layer or the database belongs
     in this class.
     """
+
     def __init__(self, granule_name, layer_id, feature_id):
         """
         It is too slow to iterate through the whole layer tree looking for
@@ -148,23 +145,33 @@ class GranuleMetadata():
     def can_download_radargram(self) -> bool:
         valid_path = len(self.relative_path()) >= 0
         if not valid_path:
-            QgsMessageLog.logMessage(f"cannot download radargram, invalid relative path: {self.relative_path()}")
+            QgsMessageLog.logMessage(
+                f"cannot download radargram, invalid relative path: {self.relative_path()}"
+            )
 
         try:
             download_method = self.db_granule.download_method
         except Exception as ex:
             download_method = None
-        valid_download_method = download_method in QIceRadarPlugin.supported_download_methods
+        valid_download_method = (
+            download_method in QIceRadarPlugin.supported_download_methods
+        )
         if not valid_download_method:
-            QgsMessageLog.logMessage(f"cannot download radargram, download method not supported: {download_method}")
-            QgsMessageLog.logMessage(f"supported methods are: {QIceRadarPlugin.supported_download_methods}")
+            QgsMessageLog.logMessage(
+                f"cannot download radargram, download method not supported: {download_method}"
+            )
+            QgsMessageLog.logMessage(
+                f"supported methods are: {QIceRadarPlugin.supported_download_methods}"
+            )
 
         return valid_path and valid_download_method
 
     def can_view_radargram(self) -> bool:
         valid_path = len(self.relative_path()) >= 0
         if not valid_path:
-            QgsMessageLog.logMessage(f"cannot view radargram, invalid relative path: {self.relative_path()}")
+            QgsMessageLog.logMessage(
+                f"cannot view radargram, invalid relative path: {self.relative_path()}"
+            )
 
         try:
             data_format = self.db_granule.data_format
@@ -172,15 +179,18 @@ class GranuleMetadata():
             data_format = None
         valid_data_format = data_format in radar_utils.RadarData.supported_data_formats
         if not valid_data_format:
-            QgsMessageLog.logMessage(f"cannot view radargram, data format not supported: {data_format}")
-            QgsMessageLog.logMessage(f"supported formats are: {radar_utils.RadarData.supported_data_formats}")
+            QgsMessageLog.logMessage(
+                f"cannot view radargram, data format not supported: {data_format}"
+            )
+            QgsMessageLog.logMessage(
+                f"supported formats are: {radar_utils.RadarData.supported_data_formats}"
+            )
 
         valid_campaign = self.db_campaign is not None
-        if  not valid_campaign:
+        if not valid_campaign:
             QgsMessageLog.logMessage(f"cannot view radargram, no campaign in database")
 
         return valid_path and valid_data_format and valid_campaign
-
 
     def load_data_from_layer(self, granule_name: str, layer_id, feature_id):
         """
@@ -233,9 +243,7 @@ class GranuleMetadata():
         try:
             self.db_campaign = db_utils.DatabaseCampaign(*rows[0])
         except Exception as ex:
-            QgsMessageLog.logMessage(
-                f"Invalid response {rows} from command {sql_cmd}"
-            )
+            QgsMessageLog.logMessage(f"Invalid response {rows} from command {sql_cmd}")
 
 
 class QIceRadarPlugin(QtCore.QObject):
@@ -326,9 +334,7 @@ class QIceRadarPlugin(QtCore.QObject):
                 cmd_folder, "icons/qiceradar_download.png"
             )
             downloader_icon = QtGui.QIcon(downloader_icon_path)
-            viewer_icon_path = os.path.join(
-                cmd_folder, "icons/qiceradar_view.png"
-            )
+            viewer_icon_path = os.path.join(cmd_folder, "icons/qiceradar_view.png")
             viewer_icon = QtGui.QIcon(viewer_icon_path)
 
         # This symbology widget needs to be instantiated here, since its
@@ -337,22 +343,33 @@ class QIceRadarPlugin(QtCore.QObject):
 
         # hook up signals
         self.symbology_widget.trace_style_changed.connect(self.on_trace_style_changed)
-        self.symbology_widget.selected_style_changed.connect(self.on_selected_style_changed)
-        self.symbology_widget.segment_style_changed.connect(self.on_segment_style_changed)
-        self.symbology_widget.unavailable_line_style_changed.connect(self.on_unavailable_line_style_changed)
-        self.symbology_widget.unavailable_point_style_changed.connect(self.on_unavailable_point_style_changed)
-        self.symbology_widget.categorized_style_changed.connect(self.on_categorized_style_changed)
+        self.symbology_widget.selected_style_changed.connect(
+            self.on_selected_style_changed
+        )
+        self.symbology_widget.segment_style_changed.connect(
+            self.on_segment_style_changed
+        )
+        self.symbology_widget.unavailable_line_style_changed.connect(
+            self.on_unavailable_line_style_changed
+        )
+        self.symbology_widget.unavailable_point_style_changed.connect(
+            self.on_unavailable_point_style_changed
+        )
+        self.symbology_widget.categorized_style_changed.connect(
+            self.on_categorized_style_changed
+        )
 
         self.controls_window = ControlsWindow(self.symbology_widget)
         self.controls_dock_widget = QgsDockWidget("QIceRadar Controls")
         self.controls_dock_widget.setWidget(self.controls_window)
-        self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.controls_dock_widget)
+        self.iface.addDockWidget(
+            QtCore.Qt.BottomDockWidgetArea, self.controls_dock_widget
+        )
         # If we make it tabified, it tends to get hidden immediately by the log messages
         # self.iface.addTabifiedDockWidget(QtCore.Qt.BottomDockWidgetArea,
         #                                  self.controls_dock_widget,
         #                                  tabifyWith=["PythonConsole"],
         #                                  raiseTab=True)
-
 
         # TODO: May want to support a different tooltip in the menu that
         #   launches a GUI where you can either type in a line or select
@@ -447,7 +464,9 @@ class QIceRadarPlugin(QtCore.QObject):
         else:
             self.radar_viewer_group = radar_group
 
-    def on_named_layer_style_changed(self, style_str: str, target_layer_name: str) -> None:
+    def on_named_layer_style_changed(
+        self, style_str: str, target_layer_name: str
+    ) -> None:
         """
         Change the style for every layer in the radar viewer group with name
         matching the target name.
@@ -538,7 +557,6 @@ class QIceRadarPlugin(QtCore.QObject):
             self.iface.layerTreeView().refreshLayerSymbology(layer.layer().id())
             layer.layer().triggerRepaint()
 
-
     def on_unavailable_point_style_changed(self, style_str: str):
         self.on_unavailable_layer_style_changed(style_str, QgsWkbTypes.PointGeometry)
 
@@ -547,7 +565,9 @@ class QIceRadarPlugin(QtCore.QObject):
 
     # NOTE: I'm unsure about the typing here ... might only be valid for
     #       post-3.30, while I'm using the older types.
-    def on_unavailable_layer_style_changed(self, style_str: str, geom_type: QgsWkbTypes.GeometryType) -> None:
+    def on_unavailable_layer_style_changed(
+        self, style_str: str, geom_type: QgsWkbTypes.GeometryType
+    ) -> None:
         """
         Copy style from the style layer to all layers in the QIceRadar index
         with unavailable data that match the input geometry type.
@@ -585,7 +605,6 @@ class QIceRadarPlugin(QtCore.QObject):
         # This also seems to be optional, though the cookbook says it should be done.
         self.iface.mapCanvas().refresh()
 
-
     def find_index_group(self) -> Optional[QgsLayerTreeGroup]:
         # QgsMessageLog.logMessage("find_index_group")
         root = QgsProject.instance().layerTreeRoot()
@@ -606,7 +625,6 @@ class QIceRadarPlugin(QtCore.QObject):
             message_box.setText(errmsg)
             message_box.exec()
         return layer_group
-
 
     def is_valid_granule_feature(self, feature: QgsFeature):
         attributes = feature.attributeMap()
@@ -726,7 +744,9 @@ class QIceRadarPlugin(QtCore.QObject):
             return
 
         # can_download_radargram already checked for a non-null relative_path
-        transect_filepath = pathlib.Path(self.config.rootdir, granule_metadata.relative_path())
+        transect_filepath = pathlib.Path(
+            self.config.rootdir, granule_metadata.relative_path()
+        )
         already_downloaded = transect_filepath.is_file()
         if already_downloaded:
             QIceRadarDialogs.display_already_downloaded_dialog(granule_name)
@@ -734,7 +754,6 @@ class QIceRadarPlugin(QtCore.QObject):
 
         # TODO: refactor to not reach in and directly use db_granule
         self.launch_radar_downloader(transect_filepath, granule_metadata.db_granule)
-
 
     def selected_transect_view_callback(self, granule_name: str) -> None:
         """
@@ -764,14 +783,20 @@ class QIceRadarPlugin(QtCore.QObject):
             QIceRadarDialogs.display_cannot_view_dialog(granule_name)
             return
 
-        transect_filepath = pathlib.Path(self.config.rootdir, granule_metadata.relative_path())
+        transect_filepath = pathlib.Path(
+            self.config.rootdir, granule_metadata.relative_path()
+        )
         already_downloaded = transect_filepath.is_file()
         if not already_downloaded:
-            QIceRadarDialogs.display_must_download_dialog(transect_filepath, granule_name)
+            QIceRadarDialogs.display_must_download_dialog(
+                transect_filepath, granule_name
+            )
             return
 
         # TODO: Rather than just assuming the user will fix it in the
-        self.launch_radar_viewer(transect_filepath, granule_metadata.db_granule, granule_metadata.db_campaign)
+        self.launch_radar_viewer(
+            transect_filepath, granule_metadata.db_granule, granule_metadata.db_campaign
+        )
 
     def launch_radar_downloader(
         self, dest_filepath: pathlib.Path, db_granule: db_utils.DatabaseGranule
@@ -827,9 +852,11 @@ class QIceRadarPlugin(QtCore.QObject):
         dcd.configure.connect(self.handle_configure_signal)
 
         dcd.download_confirmed.connect(
-            lambda gg=db_granule.granule_name, url=db_granule.url, fp=dest_filepath, fs=db_granule.filesize, hh=headers: self.start_download(
-                gg, url, fp, fs, hh
-            )
+            lambda gg=db_granule.granule_name,
+            url=db_granule.url,
+            fp=dest_filepath,
+            fs=db_granule.filesize,
+            hh=headers: self.start_download(gg, url, fp, fs, hh)
         )
         dcd.run()
 
@@ -880,17 +907,22 @@ class QIceRadarPlugin(QtCore.QObject):
 
         granule_group = self.radar_viewer_group.findGroup(granule_name)
         if granule_group is None:
-            QgsMessageLog.logMessage(f"Could not find existing group for granule: {granule_name}")
+            QgsMessageLog.logMessage(
+                f"Could not find existing group for granule: {granule_name}"
+            )
             granule_group = self.radar_viewer_group.addGroup(granule_name)
         else:
-            QgsMessageLog.logMessage(f"Found existing group for granule: {granule_name}")
+            QgsMessageLog.logMessage(
+                f"Found existing group for granule: {granule_name}"
+            )
         self.transect_groups[granule_name] = granule_group
         self.add_trace_layer(granule_group, granule_name)
         self.add_selected_layer(granule_group, granule_name)
         self.add_segment_layer(granule_group, granule_name)
 
-
-    def add_trace_layer(self, granule_group: QgsLayerTreeGroup, granule_name: str) -> None:
+    def add_trace_layer(
+        self, granule_group: QgsLayerTreeGroup, granule_name: str
+    ) -> None:
         # QGIS layer & feature for the single-trace cursor
         trace_layer = None
         for layer_node in granule_group.findLayers():
@@ -913,7 +945,9 @@ class QIceRadarPlugin(QtCore.QObject):
         qs = QtCore.QSettings()
         style_str = qs.value("qiceradar_config/trace_layer_style", None)
         if style_str is None:
-            QgsMessageLog.logMessage(f"Could not find: qiceradar_config/trace_layer_style")
+            QgsMessageLog.logMessage(
+                f"Could not find: qiceradar_config/trace_layer_style"
+            )
         else:
             doc = QtXml.QDomDocument()
             doc.setContent(style_str)
@@ -931,7 +965,9 @@ class QIceRadarPlugin(QtCore.QObject):
         self.trace_features[granule_name] = trace_feature
         self.trace_layers[granule_name] = trace_layer
 
-    def add_selected_layer(self, granule_group: QgsLayerTreeGroup, granule_name: str) -> None:
+    def add_selected_layer(
+        self, granule_group: QgsLayerTreeGroup, granule_name: str
+    ) -> None:
         # Features for the displayed segment.
         selected_layer = None
         for layer_node in granule_group.findLayers():
@@ -953,7 +989,9 @@ class QIceRadarPlugin(QtCore.QObject):
         qs = QtCore.QSettings()
         style_str = qs.value("qiceradar_config/selected_layer_style", None)
         if style_str is None:
-            QgsMessageLog.logMessage(f"Could not find: qiceradar_config/selected_layer_style")
+            QgsMessageLog.logMessage(
+                f"Could not find: qiceradar_config/selected_layer_style"
+            )
         else:
             doc = QtXml.QDomDocument()
             doc.setContent(style_str)
@@ -970,7 +1008,9 @@ class QIceRadarPlugin(QtCore.QObject):
         self.radar_xlim_features[granule_name] = selected_feature
         self.radar_xlim_layers[granule_name] = selected_layer
 
-    def add_segment_layer(self, granule_group: QgsLayerTreeGroup, granule_name: str) -> None:
+    def add_segment_layer(
+        self, granule_group: QgsLayerTreeGroup, granule_name: str
+    ) -> None:
         # Finally, feature for the entire transect
         # TODO: How to get the geometry _here_? We should know it
         # at this point, and it won't change. However, all other
@@ -996,7 +1036,9 @@ class QIceRadarPlugin(QtCore.QObject):
         qs = QtCore.QSettings()
         style_str = qs.value("qiceradar_config/segment_layer_style", None)
         if style_str is None:
-            QgsMessageLog.logMessage(f"Could not find: qiceradar_config/segment_layer_style")
+            QgsMessageLog.logMessage(
+                f"Could not find: qiceradar_config/segment_layer_style"
+            )
         else:
             doc = QtXml.QDomDocument()
             doc.setContent(style_str)
@@ -1023,7 +1065,9 @@ class QIceRadarPlugin(QtCore.QObject):
         trace_layer = self.trace_layers[transect_name]
         with edit(trace_layer):
             trace_feature = self.trace_features[transect_name]
-            trace_layer.changeGeometry(trace_feature.id(), QgsGeometry(QgsPoint(lon, lat)))
+            trace_layer.changeGeometry(
+                trace_feature.id(), QgsGeometry(QgsPoint(lon, lat))
+            )
             trace_layer.updateExtents()
 
     def update_radar_xlim_callback(
@@ -1036,7 +1080,9 @@ class QIceRadarPlugin(QtCore.QObject):
         radar_xlim_layer = self.radar_xlim_layers[transect_name]
         with edit(radar_xlim_layer):
             radar_xlim_feature = self.radar_xlim_features[transect_name]
-            radar_xlim_layer.changeGeometry(radar_xlim_feature.id(), radar_xlim_geometry)
+            radar_xlim_layer.changeGeometry(
+                radar_xlim_feature.id(), radar_xlim_geometry
+            )
             radar_xlim_layer.updateExtents()
 
     def update_segment_points(
@@ -1071,7 +1117,9 @@ class QIceRadarPlugin(QtCore.QObject):
     # TODO: This works, but only for one radargram. If we want to support more, should probably keep a list of dock widgets!
     def selected_point_callback(self, operation: Operation, point: QgsPointXY) -> None:
         QgsMessageLog.logMessage(f"selected_point_callback: {point.x()}, {point.y()}")
-        QgsMessageLog.logMessage(f"op = {operation} (download = {QIceRadarPlugin.Operation.DOWNLOAD}, view = {QIceRadarPlugin.Operation.VIEW})")
+        QgsMessageLog.logMessage(
+            f"op = {operation} (download = {QIceRadarPlugin.Operation.DOWNLOAD}, view = {QIceRadarPlugin.Operation.VIEW})"
+        )
 
         if self.spatial_index is None:
             errmsg = "Spatial index not created -- bug!!"
@@ -1101,7 +1149,6 @@ class QIceRadarPlugin(QtCore.QObject):
                 self.update_index_layer_renderers()
                 return
 
-
             # Only offer visible layers to the user
             if not tree_layer.isVisible():
                 continue
@@ -1124,13 +1171,19 @@ class QIceRadarPlugin(QtCore.QObject):
 
         if len(neighbor_names) == 0:
             msg = "Could not find transect near mouse click."
-            self.message_bar.pushMessage("QIceRadar", msg, level=Qgis.Warning, duration=5)
+            self.message_bar.pushMessage(
+                "QIceRadar", msg, level=Qgis.Warning, duration=5
+            )
         else:
             selection_widget = QIceRadarSelectionWidget(self.iface, neighbor_names)
             if operation is QIceRadarPlugin.Operation.DOWNLOAD:
-                selection_widget.selected_radargram.connect(self.selected_transect_download_callback)
+                selection_widget.selected_radargram.connect(
+                    self.selected_transect_download_callback
+                )
             else:  # operation is QIceRadarPlugin.Operation.VIEW:
-                selection_widget.selected_radargram.connect(self.selected_transect_view_callback)
+                selection_widget.selected_radargram.connect(
+                    self.selected_transect_view_callback
+                )
 
             # Chosen transect is set via callback, rather than direct return value
             selection_widget.run()
@@ -1162,7 +1215,7 @@ class QIceRadarPlugin(QtCore.QObject):
         # (Can't use path.join within the filter expression)
         # Otherwise, we were getting D:\RadarData/ANTARCTIC, which doesn't work,
         # while a string with only '/' does work on modern Windows.
-        rootdir = str(self.config.rootdir).replace('\\', '/')
+        rootdir = str(self.config.rootdir).replace("\\", "/")
 
         # Iterate through all layers in the group
         for ll in index_group.findLayers():
@@ -1197,7 +1250,9 @@ class QIceRadarPlugin(QtCore.QObject):
             #  distinction between "a" and "s" in the geopackage database
             supported_rule = root_rule.children()[0].clone()
             supported_rule.setLabel("Supported")
-            supported_rule.setFilterExpression(f"""length("relative_path") > 0 and not file_exists('{self.config.rootdir}/' + "relative_path")""")
+            supported_rule.setFilterExpression(
+                f"""length("relative_path") > 0 and not file_exists('{self.config.rootdir}/' + "relative_path")"""
+            )
             root_rule.appendChild(supported_rule)
 
             else_rule = root_rule.children()[0].clone()
@@ -1237,18 +1292,21 @@ class QIceRadarPlugin(QtCore.QObject):
         # The toolbar icon isn't automatically unchecked when the
         # corresponding action is deactivated.
         download_selection_tool.deactivated.connect(
-            lambda ac=self.downloader_action, ch=False: self.maybe_set_action_checked(ac, ch)
+            lambda ac=self.downloader_action, ch=False: self.maybe_set_action_checked(
+                ac, ch
+            )
         )
         # Repeatedly clicking the toolbar icon will toggle its checked
         # state without deactivating the tooltip. For consistency with
         # the built-in QGIS tools, repeated clicking should have no effect
         # and the tool will remain active.
         download_selection_tool.activated.connect(
-            lambda ac=self.downloader_action, ch=True: self.maybe_set_action_checked(ac, ch)
+            lambda ac=self.downloader_action, ch=True: self.maybe_set_action_checked(
+                ac, ch
+            )
         )
 
         self.iface.mapCanvas().setMapTool(download_selection_tool)
-
 
     def run_viewer(self) -> None:
         QgsMessageLog.logMessage("User clicked run_viewer")
@@ -1276,13 +1334,17 @@ class QIceRadarPlugin(QtCore.QObject):
         self.iface.mapCanvas().setMapTool(viewer_selection_tool)
 
         viewer_selection_tool.deactivated.connect(
-            lambda ac=self.viewer_action, ch=False: self.maybe_set_action_checked(ac, ch)
+            lambda ac=self.viewer_action, ch=False: self.maybe_set_action_checked(
+                ac, ch
+            )
         )
         viewer_selection_tool.activated.connect(
             lambda ac=self.viewer_action, ch=True: self.maybe_set_action_checked(ac, ch)
         )
 
-    def maybe_set_action_checked(self, action: QtWidgets.QAction, checked: bool) -> None:
+    def maybe_set_action_checked(
+        self, action: QtWidgets.QAction, checked: bool
+    ) -> None:
         """
         This is only wrapped in a function so we can catch exceptions
         when it is called in response to a signal.
@@ -1296,7 +1358,12 @@ class QIceRadarPlugin(QtCore.QObject):
             QgsMessageLog.logMessage("could not uncheck action")
 
     def start_download(
-        self, granule: str, url: str, destination_filepath: pathlib.Path, filesize: int, headers: Dict[str, str]
+        self,
+        granule: str,
+        url: str,
+        destination_filepath: pathlib.Path,
+        filesize: int,
+        headers: Dict[str, str],
     ) -> None:
         """
         After the confirmation dialog has finished, this section
@@ -1310,11 +1377,15 @@ class QIceRadarPlugin(QtCore.QObject):
             self.download_dock_widget = QgsDockWidget("QIceRadar Downloader")
             self.download_dock_widget.setWidget(self.download_window)
             # self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.download_dock_widget)
-            self.iface.addTabifiedDockWidget(QtCore.Qt.BottomDockWidgetArea,
-                                         self.download_dock_widget,
-                                         tabifyWith=["PythonConsole","MessageLog"],
-                                         raiseTab=True)
+            self.iface.addTabifiedDockWidget(
+                QtCore.Qt.BottomDockWidgetArea,
+                self.download_dock_widget,
+                tabifyWith=["PythonConsole", "MessageLog"],
+                raiseTab=True,
+            )
         # TODO: add downloadTransectWidget to the download window!
-        self.download_window.download(granule, url, destination_filepath, filesize, headers)
+        self.download_window.download(
+            granule, url, destination_filepath, filesize, headers
+        )
         # Bring to front again, in case user closed it
         self.download_dock_widget.setUserVisible(True)
