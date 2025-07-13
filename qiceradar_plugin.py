@@ -127,30 +127,32 @@ class GranuleMetadata():
     def institution(self) -> str:
         return self.layer_attributes["institution"]
 
+    def relative_path(self) -> str:
+        try:
+            relative_path = self.layer_attributes["relative_path"]
+        except Exception as ex:
+            relative_path = ""
+        return relative_path
+
+
     def radargram_is_available(self) -> bool:
         availability = self.layer_attributes["availability"]
         # Older database versions used u/a/s, rather than just u/a
         return availability != "u"
 
     def can_download_radargram(self) -> bool:
-        try:
-            relative_path = feature["relative_path"]
-        except Exception as ex:
-            relative_path = ""
+        valid_path = len(self.relative_path()) >= 0
 
         try:
             download_method = self.db_granule.download_method
         except Exception as ex:
             download_method = None
+        valid_download_method = download_method in QIceRadarPlugin.supported_download_methods
 
-        return len(relative_path) >= 0 and download_method in QIceRadarPlugin.supported_download_methods
+        return valid_path and valid_download_method
 
     def can_view_radargram(self) -> bool:
-        try:
-            relative_path = feature["relative_path"]
-        except Exception as ex:
-            relative_path = ""
-        valid_path = len(relative_path) >= 0
+        valid_path = len(self.relative_path()) >= 0
 
         try:
             data_format = self.db_granule.data_format
@@ -585,6 +587,9 @@ class QIceRadarPlugin(QtCore.QObject):
 
     def is_valid_granule_feature(self, feature: QgsFeature):
         attributes = feature.attributeMap()
+        # TODO: this should include relative_path, but early
+        # versions of the index did not always have that set.
+        # So, leave it out until I implement a "download new index layer" dialog
         for field in [
             "availability",
             "campaign",
@@ -671,55 +676,6 @@ class QIceRadarPlugin(QtCore.QObject):
                 except Exception as ex:
                     QgsMessageLog.logMessage(f"{repr(ex)}")
 
-    def view_selected_transect(
-        self,
-        rootdir: pathlib.Path,
-        db_granule: db_utils.DatabaseGranule,
-        db_campaign: db_utils.DatabaseCampaign,
-    ) -> None:
-        transect_filepath = pathlib.Path(rootdir, db_granule.relative_path)
-        already_downloaded = (
-            db_granule.relative_path != ""
-        ) and transect_filepath.is_file()
-
-        if already_downloaded:
-            # It would probably be more pythonic to just try creating the viewer
-            # and catching an error if it's "unsupported"...
-            if db_granule.data_format in radar_utils.RadarData.supported_data_formats:
-                self.launch_radar_viewer(
-                    transect_filepath,
-                    db_granule,
-                    db_campaign,
-                )
-            else:
-                QIceRadarDialogs.display_cannot_view_dialog(
-                    db_granule.granule_name
-                )
-        else:
-            QIceRadarDialogs.display_must_download_dialog(transect_filepath, db_granule.granule_name)
-
-    def download_selected_transect(
-        self, rootdir: pathlib.Path, db_granule: db_utils.DatabaseGranule
-    ) -> None:
-        """
-        Actually download selected transect.
-
-        Explicitly passes the root directory because anybody
-        calling this method needs to have already confirmed that
-        self.user_config is valid and self.user_config.rootdir
-        is not None.
-        """
-        transect_filepath = pathlib.Path(rootdir, db_granule.relative_path)
-        already_downloaded = (
-            db_granule.relative_path != ""
-        ) and transect_filepath.is_file()
-        if already_downloaded:
-            QIceRadarDialogs.display_already_downloaded_dialog(db_granule.granule_name)
-        elif db_granule.download_method not in self.supported_download_methods:
-            QIceRadarDialogs.display_cannot_download_dialog(db_granule.granule_name)
-        else:
-            self.launch_radar_downloader(transect_filepath, db_granule)
-
     def selected_transect_download_callback(self, granule_name: str) -> None:
         """
         Callback for the QIceRadarSelectionWidget that launches the download
@@ -742,12 +698,19 @@ class QIceRadarPlugin(QtCore.QObject):
             self.request_user_update_config()
             return
 
-        # TODO: refactor to not reach in and directly use db_granule and db_campaign
-
-        if granule_metadata.can_download_radargram():
-            self.download_selected_transect(self.config.rootdir, granule_metadata.db_granule)
-        else:
+        if not granule_metadata.can_download_radargram():
             QIceRadarDialogs.display_cannot_download_dialog(granule_name)
+            return
+
+        # can_download_radargram already checked for a non-null relative_path
+        transect_filepath = pathlib.Path(self.config.rootdir, granule_metadata.relative_path())
+        already_downloaded = transect_filepath.is_file()
+        if already_downloaded:
+            QIceRadarDialogs.display_already_downloaded_dialog(granule_name)
+            return
+
+        # TODO: refactor to not reach in and directly use db_granule
+        self.launch_radar_downloader(transect_filepath, granule_metadata.db_granule)
 
 
     def selected_transect_view_callback(self, granule_name: str) -> None:
@@ -774,10 +737,17 @@ class QIceRadarPlugin(QtCore.QObject):
 
         # TODO: refactor to not reach in and directly use db_granule and db_campaign
 
-        if granule_metadata.can_view_radargram():
-            self.view_selected_transect(self.config.rootdir, granule_metadata.db_granule, granule_metadata.db_campaign)
-        else:
+        if not granule_metadata.can_view_radargram():
             QIceRadarDialogs.display_cannot_view_dialog(granule_name)
+
+        transect_filepath = pathlib.Path(self.config.rootdir, granule_metadata.relative_path())
+        already_downloaded = transect_filepath.is_file()
+        if not already_downloaded:
+            QIceRadarDialogs.display_must_download_dialog(transect_filepath, granule_name)
+            return
+
+        # TODO: Rather than just assuming the user will fix it in the
+        self.launch_radar_viewer(transect_filepath, granule_metadata.db_granule, granule_metadata.db_campaign)
 
     def launch_radar_downloader(
         self, dest_filepath: pathlib.Path, db_granule: db_utils.DatabaseGranule
