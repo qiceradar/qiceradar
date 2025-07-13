@@ -33,7 +33,6 @@ import itertools
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import matplotlib
-import numpy as np
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
 import PyQt5.QtWidgets as QtWidgets
@@ -44,9 +43,11 @@ from matplotlib.figure import Figure
 # is shipping with matplotlib 3.3 (Ubuntu debs + Windows install have updated)
 try:
     from matplotlib.widgets import RangeSlider
+
     RANGE_SLIDER_SUPPORTED = True
 except ImportError:
     from matplotlib.widgets import Slider
+
     RANGE_SLIDER_SUPPORTED = False
 
 from .plotutils.pyqt_utils import show_error_message_box
@@ -57,6 +58,7 @@ class ScalebarControls(QtWidgets.QWidget):
     Widget that provides checkbox to enable/disable scalebar,
     along with controls setting its length and position.
     """
+
     # Emitted when the checkbox changes; argument is enabled / not
     checked = QtCore.pyqtSignal(bool)
     # Emitted when user updates length; argument is length in meters
@@ -66,11 +68,11 @@ class ScalebarControls(QtWidgets.QWidget):
 
     def __init__(
         self,
-        initial_value: float, # Initial value for the scalebar length
-        label: str, # Label for the checkbox. Usually "Horizontal" or "Vertical"
-        unit_label: str, # Label for length units
-        x0: float, # Initial X position for scalebar (in fraction of axis)
-        y0: float, # Initial Y position for scalebar (in fraction of axis)
+        initial_value: float,  # Initial value for the scalebar length
+        label: str,  # Label for the checkbox. Usually "Horizontal" or "Vertical"
+        unit_label: str,  # Label for length units
+        x0: float,  # Initial X position for scalebar (in fraction of axis)
+        y0: float,  # Initial Y position for scalebar (in fraction of axis)
     ) -> None:
         # ConfigWidget doesnt' ahve parent, but DoubleSlider does.
         # Do we need to?
@@ -84,11 +86,8 @@ class ScalebarControls(QtWidgets.QWidget):
         self.setup_ui()
 
     def setup_ui(self) -> None:
-
         self.checkbox = QtWidgets.QCheckBox(f"{self.label}")
-        self.checkbox.clicked.connect(
-            lambda val: self.checked.emit(val)
-        )
+        self.checkbox.clicked.connect(lambda val: self.checked.emit(val))
 
         self.length_label = QtWidgets.QLabel(f"Length: ({self.unit_label})")
 
@@ -100,16 +99,12 @@ class ScalebarControls(QtWidgets.QWidget):
         # TODO: Originally, this was editingFinished, but I wanted a
         #  signal that has an argument with the current text. Confirm
         #  that this works as intended (only fires for valid input)
-        self.length_lineedit.editingFinished.connect(
-            self.send_new_length
-        )
+        self.length_lineedit.editingFinished.connect(self.send_new_length)
         self.length_lineedit.setText(f"{self.initial_value:.2f}")
         self.length_lineedit.setMinimumWidth(50)
         self.length_lineedit.setMaximumWidth(60)
 
-        self.origin_label = QtWidgets.QLabel(
-            "origin (x, y):"
-        )
+        self.origin_label = QtWidgets.QLabel("origin (x, y):")
 
         self.x0_lineedit = QtWidgets.QLineEdit()
         self.origin_validator = QtGui.QDoubleValidator()
@@ -129,12 +124,8 @@ class ScalebarControls(QtWidgets.QWidget):
         self.y0_lineedit.setMaximumWidth(40)
 
         # Must happen after setting the text ...
-        self.x0_lineedit.editingFinished.connect(
-            self.send_new_origin
-        )
-        self.y0_lineedit.editingFinished.connect(
-            self.send_new_origin
-        )
+        self.x0_lineedit.editingFinished.connect(self.send_new_origin)
+        self.y0_lineedit.editingFinished.connect(self.send_new_origin)
 
         self.length_hbox = QtWidgets.QHBoxLayout()
         self.length_hbox.addWidget(self.length_label)
@@ -162,7 +153,6 @@ class ScalebarControls(QtWidgets.QWidget):
     def send_new_length(self):
         length = float(self.length_lineedit.text())
         self.new_length.emit(length)
-
 
 
 class DoubleSlider(QtWidgets.QWidget):
@@ -198,7 +188,6 @@ class DoubleSlider(QtWidgets.QWidget):
         # otherwise it may try to redraw the image tons.
         # (In practice, doesn't seem terrible)
 
-
         self.slider_fig = Figure((1, 1))
         self.slider_canvas = FigureCanvas(self.slider_fig)
         self.slider_canvas.setParent(self)
@@ -207,7 +196,12 @@ class DoubleSlider(QtWidgets.QWidget):
         # than standing out with a white background
         palette = QtGui.QGuiApplication.palette()
         qt_color = palette.window().color()
-        mpl_color = [qt_color.redF(), qt_color.greenF(), qt_color.blueF(), qt_color.alphaF()]
+        mpl_color = [
+            qt_color.redF(),
+            qt_color.greenF(),
+            qt_color.blueF(),
+            qt_color.alphaF(),
+        ]
         self.slider_fig.patch.set_facecolor(mpl_color)  # This is what did it
 
         # Unfortunately, the on_changed events don't only fire when the mouse
@@ -230,9 +224,23 @@ class DoubleSlider(QtWidgets.QWidget):
             self.slider_ax1 = self.slider_fig.add_axes([0.03, 0.5, 0.94, 1])
             self.slider_ax2 = self.slider_fig.add_axes([0.03, 0.0, 0.94, 0.5])
 
-            self.min_range_slider = Slider(self.slider_ax1, slider_label, curr_lim[0], curr_lim[1], valinit=curr_lim[0], valfmt=None)
+            self.min_range_slider = Slider(
+                self.slider_ax1,
+                slider_label,
+                curr_lim[0],
+                curr_lim[1],
+                valinit=curr_lim[0],
+                valfmt=None,
+            )
             self.min_range_slider.on_changed(self._on_min_range_slider_changed)
-            self.max_range_slider = Slider(self.slider_ax2, slider_label, curr_lim[0], curr_lim[1], valinit=curr_lim[1], valfmt=None)
+            self.max_range_slider = Slider(
+                self.slider_ax2,
+                slider_label,
+                curr_lim[0],
+                curr_lim[1],
+                valinit=curr_lim[1],
+                valfmt=None,
+            )
             self.max_range_slider.on_changed(self._on_max_range_slider_changed)
             self.slider_canvas.setFixedHeight(30)
 
@@ -240,7 +248,9 @@ class DoubleSlider(QtWidgets.QWidget):
         self.slider_layout = QtWidgets.QHBoxLayout()
         self.slider_layout.addWidget(self.slider_canvas)
         self.slider_widget.setLayout(self.slider_layout)
-        self.slider_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
+        self.slider_widget.setSizePolicy(
+            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed
+        )
 
         # These labels are for min/max val in image
         self.slider_min_label = QtWidgets.QLabel(f"{self.curr_lim[0]:.2f}")
@@ -297,11 +307,21 @@ class DoubleSlider(QtWidgets.QWidget):
             self.range_slider.on_changed(self._on_range_slider_changed)
         else:
             self.min_range_slider = Slider(
-                self.slider_ax1, slider_label, lim[0], lim[1], valinit=lim[0], valfmt=None
+                self.slider_ax1,
+                slider_label,
+                lim[0],
+                lim[1],
+                valinit=lim[0],
+                valfmt=None,
             )
             self.min_range_slider.on_changed(self._on_min_range_slider_changed)
             self.max_range_slider = Slider(
-                self.slider_ax2, slider_label, lim[0], lim[1], valinit=lim[1], valfmt=None
+                self.slider_ax2,
+                slider_label,
+                lim[0],
+                lim[1],
+                valinit=lim[1],
+                valfmt=None,
             )
             self.max_range_slider.on_changed(self._on_max_range_slider_changed)
         self.slider_min_label.setText(f"{rmin:.2f}")
@@ -393,10 +413,9 @@ class ColorKeyInterface(QtWidgets.QWidget):
 
     def __init__(
         self,
-        parent=None,  # type: Optional[Any]
-        color_cb=None,  # type: Optional[Callable[str, QtGui.QColor]]
-    ):
-        # type: (...) -> None
+        parent: Optional[Any] = None,
+        color_cb: Optional[Callable[str, QtGui.QColor]] = None,
+    ) -> None:
         """
         * color_cb(label, color) - callback to call when color is changed.
         """
@@ -407,13 +426,12 @@ class ColorKeyInterface(QtWidgets.QWidget):
         self.layout = QtWidgets.QVBoxLayout()
         self.setLayout(self.layout)
 
-        self.labels = []  # type: List[str]
-        self.textlabels = {}  # type: Dict[str, QtGui.QColor]
-        self.colorbuttons = {}  # type: Dict[str, QtWidgets.QPushButton]
-        self.row_hboxes = {}  # type: Dict[str, QtWidgets.QHBoxLayout]
+        self.labels: List[str] = []
+        self.textlabels: Dict[str, QtGui.QColor] = {}
+        self.colorbuttons: Dict[str, QtWidgets.QPushButton] = {}
+        self.row_hboxes: Dict[str, QtWidgets.QHBoxLayout] = {}
 
-    def on_color_button_clicked(self, label):
-        # type: (str) -> None
+    def on_color_button_clicked(self, label: str) -> None:
         # Pop up color dialog
         # if color not none, change button color AND call self.color_cb(color)
         color = QtWidgets.QColorDialog.getColor()
@@ -424,8 +442,7 @@ class ColorKeyInterface(QtWidgets.QWidget):
             )
             self.color_cb(label, str(color.name()))
 
-    def add_row(self, label, color):
-        # type: (str, QtGui.QColor) -> None
+    def add_row(self, label: str, color: QtGui.QColor) -> None:
         """
         The label here will be used when calling color_cb.
         """
@@ -446,8 +463,7 @@ class ColorKeyInterface(QtWidgets.QWidget):
         self.row_hboxes[label].addWidget(self.textlabels[label])
         self.layout.addLayout(self.row_hboxes[label])
 
-    def remove_row(self, label):
-        # type: (str) -> None
+    def remove_row(self, label: str) -> None:
         self.labels.remove(label)
         self.layout.removeItem(self.row_hboxes[label])
         self.textlabels[label].deleteLater()
@@ -465,18 +481,16 @@ class TextColorInterface(QtWidgets.QWidget):
 
     def __init__(
         self,
-        parent=None,  # type: Optional[Any]
-        color_cb=None,  # type: Optional[Callable[str, QtGui.QColor]]
-        params_cb=None,  # type: Optional[Callable[str, Tuple[float, float, str]]]
-        remove_cb=None,  # type: Optional[Callable[str]]
-    ):
-        # type: (...) -> None
+        parent: Optional[Any] = None,
+        color_cb: Optional[Callable[str, QtGui.QColor]] = None,
+        params_cb: Optional[Callable[[str, Tuple[float, float, str]], None]] = None,
+        remove_cb: Optional[Callable[[str], None]] = None,
+    ) -> None:
         """
         * color_cb(label, color)
         * params_cb(label, params), where params is (float, float, str)
         * remove_cb(label)
         """
-        # TODO: I'm not sure what this is needed for?
         super(TextColorInterface, self).__init__(parent)
         self.parent = parent
 
@@ -487,20 +501,19 @@ class TextColorInterface(QtWidgets.QWidget):
         self.layout = QtWidgets.QVBoxLayout()
         self.setLayout(self.layout)
 
-        self.labels = []  # type: List[str]
-        self.text_labels = {}  # type: Dict[str, QtWidgets.QLabel]
+        self.labels: List[str] = []
+        self.text_labels: Dict[str, QtWidgets.QLabel] = {}
         # self.spinboxes = {}
-        self.first_textboxes = {}  # type: Dict[str, QtWidgets.QLineEdit]
-        self.second_textboxes = {}  # type: Dict[str, QtWidgets.QLineEdit]
-        self.color_buttons = {}  # type: Dict[str, QtWidgets.QPushButton]
-        self.colors = {}  # type: Dict[str, QtWidgets.QColor]
-        self.val1 = {}  # type: Dict[str, float]
-        self.val2 = {}  # type: Dict[str, float]
-        self.remove_buttons = {}  # type: Dict[str, QtWidgets.QPushButton]
-        self.row_hboxes = {}  # type: Dict[str, QtWidgets.QHBoxLayout]
+        self.first_textboxes: Dict[str, QtWidgets.QLineEdit] = {}
+        self.second_textboxes: Dict[str, QtWidgets.QLineEdit] = {}
+        self.color_buttons: Dict[str, QtWidgets.QPushButton] = {}
+        self.colors: Dict[str, QtWidgets.QColor] = {}
+        self.val1: Dict[str, float] = {}
+        self.val2: Dict[str, float] = {}
+        self.remove_buttons: Dict[str, QtWidgets.QPushButton] = {}
+        self.row_hboxes: Dict[str, QtWidgets.QHBoxLayout] = {}
 
-    def _on_color_button_clicked(self, label):
-        # type: (str) -> None
+    def _on_color_button_clicked(self, label: str) -> None:
         # Pop up color dialog
         # if color not none, change button color AND call self.color_cb(color)
         color = QtWidgets.QColorDialog.getColor()
@@ -511,18 +524,16 @@ class TextColorInterface(QtWidgets.QWidget):
             if self.color_cb is not None:
                 self.color_cb(label, str(color.name()))
 
-    def _on_remove_button_clicked(self, label):
-        # type: (str) -> None
+    def _on_remove_button_clicked(self, label: str) -> None:
         self.remove_row(label)
         if self.remove_cb is not None:
             self.remove_cb(label)
 
-    def _on_textbox_edited(self, textbox, label):
-        # type: (int, str) -> None
+    def _on_textbox_edited(self, textbox: int, label: str) -> None:
         try:
             val1 = float(self.first_textboxes[label].text())
             self.val1[label] = val1
-        except:
+        except Exception:
             msg = "unable to cast textbox to float!"
             show_error_message_box(msg)
             self.first_textboxes[label].setText(str(self.val1[label]))
@@ -530,7 +541,7 @@ class TextColorInterface(QtWidgets.QWidget):
         try:
             val2 = float(self.second_textboxes[label].text())
             self.val2[label] = val2
-        except:
+        except Exception:
             msg = "unable to cast textbox to float!"
             show_error_message_box(msg)
             self.first_textboxes[label].setText(str(self.val2[label]))
@@ -540,14 +551,14 @@ class TextColorInterface(QtWidgets.QWidget):
         if self.params_cb is not None:
             self.params_cb(label, params)
 
-    def _on_spinbox_changed(self, label):
-        # type: (str) -> None
+    def _on_spinbox_changed(self, label: str) -> None:
         print(
             "spinbox for data %s changed to %f" % (label, self.spinboxes[label].value())
         )
 
-    def add_row(self, label, box1_val, box2_val, color):
-        # type: (str, float, float, QtGui.QColor) -> None
+    def add_row(
+        self, label: str, box1_val: float, box2_val: float, color: QtGui.QColor
+    ) -> None:
         self.labels.append(label)
         self.val1[label] = box1_val
         self.val2[label] = box2_val
@@ -608,8 +619,7 @@ class TextColorInterface(QtWidgets.QWidget):
 
         self.layout.addLayout(self.row_hboxes[label])
 
-    def remove_row(self, label):
-        # type: (str) -> None
+    def remove_row(self, label: str) -> None:
         self.labels.remove(label)
         self.layout.removeItem(self.row_hboxes[label])
 
@@ -634,12 +644,11 @@ class RadioCheckInterface(QtWidgets.QWidget):
 
     def __init__(
         self,
-        parent=None,  # type: Optional[Any]
-        radio_cb=None,  # type: Optional[Callable[str]]
-        check_cb=None,  # type: Optional[Callable[str, bool]]
-        color_cb=None,  # type: Optional[Callable[str, any]]
-    ):
-        # type: (...) -> None
+        parent: Optional[Any] = None,
+        radio_cb: Optional[Callable[[str], None]] = None,
+        check_cb: Optional[Callable[[str, bool], None]] = None,
+        color_cb: Optional[Callable[[str, any], None]] = None,
+    ) -> None:
         """
         * radio_cb(string) - callback to call when any radio button clicked.
           (if one is selected, others are all unclicked).
@@ -673,17 +682,17 @@ class RadioCheckInterface(QtWidgets.QWidget):
 
         # self.layout.addLayout(self.title_hbox)
 
-        self.row_hboxes = {}  # type: Dict[str, QtWidgets.QHBoxLayout]
-        self.checkboxes = {}  # type: Dict[str, QtWidgets.QCheckBox]
-        self.radiobuttons = {}  # type: Dict[str, QtWidgets.QRadioButton]
-        self.textlabels = {}  # type: Dict[str, QtWidgets.QLabel]
-        self.colorbuttons = {}  # type: Dict[str, QtWidgets.QPushButton]
+        self.row_hboxes: Dict[str, QtWidgets.QHBoxLayout] = {}
+        self.checkboxes: Dict[str, QtWidgets.QCheckBox] = {}
+        self.radiobuttons: Dict[str, QtWidgets.QRadioButton] = {}
+        self.textlabels: Dict[str, QtWidgets.QLabel] = {}
+        self.colorbuttons: Dict[str, QtWidgets.QPushButton] = {}
         # used for looking up colors
-        self.colors = {}  # type: Dict[str, QtGui.QColor]
+        self.colors: Dict[str, QtGui.QColor] = {}
 
         # When adding buttons to the group, set the id to the label's index
         # in the labels array.
-        self.labels = []  # type: List[str]
+        self.labels: List[str] = []
         self.radio_group = QtWidgets.QButtonGroup()
         self.radio_group.buttonPressed.connect(
             self.on_radio_button_pressed,
@@ -700,15 +709,20 @@ class RadioCheckInterface(QtWidgets.QWidget):
         # TODO: Generate better initial colors than random ...
         # color = '#%06x' % np.random.randint(0xFFFFFF)
         self.pick_color_gen = itertools.cycle(
-            ["green", "red", "blue", "magenta", "cyan", "purple"]
+            [
+                "green",
+                "red",
+                "blue",
+                "magenta",
+                "cyan",
+                "purple",
+            ]
         )
 
-    def get_color(self, label):
-        # type: (str) -> QtGui.QColor
+    def get_color(self, label: str) -> QtGui.QColor:
         return self.colors[label]
 
-    def add_row(self, label):
-        # type: (str) -> None
+    def add_row(self, label: str) -> None:
         self.labels.append(label)
 
         self.radiobuttons[label] = QtWidgets.QRadioButton("")
@@ -739,8 +753,7 @@ class RadioCheckInterface(QtWidgets.QWidget):
 
         self.layout.addLayout(self.row_hboxes[label])
 
-    def on_color_button_clicked(self, label):
-        # type: (str) -> None
+    def on_color_button_clicked(self, label: str) -> None:
         color = QtWidgets.QColorDialog.getColor()
         if color.isValid():
             self.colorbuttons[label].setStyleSheet(
@@ -749,14 +762,12 @@ class RadioCheckInterface(QtWidgets.QWidget):
             if self.color_cb is not None:
                 self.color_cb(label, str(color.name()))
 
-    def on_radio_button_pressed(self, button_id):
-        # type: (int) -> None
+    def on_radio_button_pressed(self, button_id: int) -> None:
         label = self.labels[button_id]
         if self.radio_cb is not None:
             self.radio_cb(label)
 
-    def on_checkbox_pressed(self, button_id):
-        # type: (int) -> None
+    def on_checkbox_pressed(self, button_id: int) -> None:
         label = self.labels[button_id]
         # For some reason, this returns 1 when event causes box to be
         # unchecked, and 0 when it winds up checked.
@@ -764,8 +775,7 @@ class RadioCheckInterface(QtWidgets.QWidget):
         if self.check_cb is not None:
             self.check_cb(label, not checked)
 
-    def activate_radio_checkbox(self):
-        # type: () -> None
+    def activate_radio_checkbox(self) -> None:
         """
         This causes the checkbox of the currently-active radio button to be
         selected. It is needed for programatically showing the max when

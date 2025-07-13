@@ -28,41 +28,38 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+from typing import Dict, Optional, Tuple
+
 import matplotlib
 import matplotlib.patches
 import matplotlib.transforms
 import numpy as np
 
-try:
-    import typing
-    from typing import Dict, Optional, Tuple
-except:
-    pass
 
 class Scalebar(object):
     # NB - NONE of these functions actually call draw on the axis.
-    def __init__(self,
-                 ax, # type: matplotlib.axes.Axes
-                 x0, # type: float
-                 y0, # type: float
-                 length, # type: float
-                 width, # type: float
-                 coords='frac', # type: str
-                 orientation='horiz', # type: str
-                 barstyle='simple', # type: str
-                 unit_label=None,  # type: Optional[str]
-                 unit_factor=1, # type: float
-                 fontsize=9, # type: float
-                 fontcolor='k', # type: str
-                 zorder=10, # type: float
-                 majorcolor='k', # type: str
-                 minorcolor='w', # type: str
-                 linewidth=1, # type: int
-                 autoupdate=True, # type: bool
-                 alpha=0.0 #type: float
-                 ):
-        # type: (...) -> None
-        '''
+    def __init__(
+        self,
+        ax: matplotlib.axes.Axes,
+        x0: float,
+        y0: float,
+        length: float,
+        width: float,
+        coords: str = "frac",
+        orientation: str = "horiz",
+        barstyle: str = "simple",
+        unit_label: Optional[str] = None,
+        unit_factor: float = 1,
+        fontsize: float = 9,
+        fontcolor: str = "k",
+        zorder: float = 10,
+        majorcolor: str = "k",
+        minorcolor: str = "w",
+        linewidth: int = 1,
+        autoupdate: bool = True,
+        alpha: float = 0.0,
+    ) -> None:
+        """
         Adds a scalebar to specified axes.
 
         I chose to reimplement my own because I can't use basemap (due to its
@@ -103,8 +100,10 @@ class Scalebar(object):
            rectangles won't be filled in.
         * autoupdate - whether to hook update() in to the xlim_changed signals
         * alpha - alpha for the background
-        '''
-        print(f"Initializing Scalebar. x0,y0 = {x0}, {y0}. length,width = {length}, {width}. unit_factor={unit_factor}")
+        """
+        print(
+            f"Initializing Scalebar. x0,y0 = {x0}, {y0}. length,width = {length}, {width}. unit_factor={unit_factor}"
+        )
         self.ax = ax
         self.x0 = x0
         self.y0 = y0
@@ -117,53 +116,69 @@ class Scalebar(object):
         self.unit_factor = unit_factor
         self.fontsize = fontsize
         self.zorder = zorder
-#        self.ax.set_zorder(self.zorder) # Gotta set it here to be in front of the background
+        #        self.ax.set_zorder(self.zorder) # Gotta set it here to be in front of the background
         self.majorcolor = majorcolor
         self.minorcolor = minorcolor
         self.linewidth = linewidth
         self.autoupdate = autoupdate
         self.alpha = alpha
         # Will hold all the created artists
-        self.elements = {} # type: Dict[str, matplotlib.lines.Line2D]
+        self.elements: Dict[str, matplotlib.lines.Line2D] = {}
         # Create ax for background; needs to be smaller zorder than the axis itself.
         # QUESTION: Does zorder for an axis bg compare to other axes, or to the
         #           zorder of elements within those axes?
         fig = self.ax.get_figure()
-        self.background = matplotlib.patches.Rectangle([0,0], 0, 0,
-                                                       facecolor=[1,1,1,self.alpha],
-                                                       edgecolor='none',
-                                                       zorder=self.zorder-1,
-                                                       transform=fig.transFigure)
+        self.background = matplotlib.patches.Rectangle(
+            [0, 0],
+            0,
+            0,
+            facecolor=[1, 1, 1, self.alpha],
+            edgecolor="none",
+            zorder=self.zorder - 1,
+            transform=fig.transFigure,
+        )
         self.ax.add_patch(self.background)
 
         # This is super-hacky, since setup seems to change bounds around...
-        if self.barstyle == 'simple':
+        if self.barstyle == "simple":
             self._setup_simple()
-        elif self.barstyle == 'fancy':
+        elif self.barstyle == "fancy":
             self._setup_fancy()
         else:
             msg = "Invalid option %r for style." % (self.barstyle)
             raise KeyError(msg)
 
         if self.autoupdate:
-            update_lambda = lambda x: self.update()
-            self.ax.callbacks.connect('xlim_changed', update_lambda)
-            self.ax.callbacks.connect('ylim_changed', update_lambda)
+            self.ax.callbacks.connect("xlim_changed", self.update)
+            self.ax.callbacks.connect("ylim_changed", self.update)
 
     def __repr__(self):
-        repr = ("Scalebar(x0=%r, y0=%r, length=%r, width=%r, coords=%r, "
-                "orientation=%r, barstyle=%r, unit_label=%r, unit_factor=%r, "
-                "fontsize=%r, zorder=%r, majorcolor=%r, minorcolor=%r, "
-                "linewidth=%r, autoupdate=%r)"
-                % (self.x0, self.y0, self.length, self.width,
-                   self.coords, self.orientation, self.barstyle,
-                   self.unit_label, self.unit_factor,
-                   self.fontsize, self.zorder, self.majorcolor,
-                   self.minorcolor, self.linewidth, self.autoupdate))
+        repr = (
+            "Scalebar(x0=%r, y0=%r, length=%r, width=%r, coords=%r, "
+            "orientation=%r, barstyle=%r, unit_label=%r, unit_factor=%r, "
+            "fontsize=%r, zorder=%r, majorcolor=%r, minorcolor=%r, "
+            "linewidth=%r, autoupdate=%r)"
+            % (
+                self.x0,
+                self.y0,
+                self.length,
+                self.width,
+                self.coords,
+                self.orientation,
+                self.barstyle,
+                self.unit_label,
+                self.unit_factor,
+                self.fontsize,
+                self.zorder,
+                self.majorcolor,
+                self.minorcolor,
+                self.linewidth,
+                self.autoupdate,
+            )
+        )
         return repr
 
-    def get_full_extent(self, pad=0.0):
-        # type: (float) -> Tuple[float, float, float, float]
+    def get_full_extent(self, pad: float = 0.0) -> Tuple[float, float, float, float]:
         """
         return the extent, in figure coords, of all elements in the scalebar.
         """
@@ -175,32 +190,29 @@ class Scalebar(object):
         extents = [elem.get_window_extent(None) for elem in self.elements.values()]
 
         bbox = matplotlib.transforms.Bbox.union(extents)
-        bbox_exp =  bbox.expanded(1.0 + pad, 1.0 + pad)
+        bbox_exp = bbox.expanded(1.0 + pad, 1.0 + pad)
         fig = self.ax.get_figure()
         extent = bbox_exp.transformed(fig.transFigure.inverted())
         return extent
 
-
-
-    def set_visible(self, visible):
-        # type: (bool) -> None
-        '''
+    def set_visible(self, visible: bool) -> None:
+        """
         Sets the scalebar to be visible or not.
         (Lets it be tured on/off as a unit by a GUI.)
-        '''
+        """
         for elem in self.elements.values():
             elem.set_visible(visible)
 
-    def set_origin(self, x0=None, y0=None):
-        # type: (Optional[float], Optional[float]) -> None
-        """ Set scalebar origin"""
+    def set_origin(
+        self, x0: Optional[float] = None, y0: Optional[float] = None
+    ) -> None:
+        """Set scalebar origin"""
         if x0 is not None:
             self.x0 = x0
         if y0 is not None:
             self.y0 = y0
 
-    def set_length(self, length, scale=None):
-        # type: (float, Optional[float]) -> None
+    def set_length(self, length: float, scale: Optional[float] = None) -> None:
         """
         Set scalebar length. If scale is set, it gives total dimensions of
         current axes in length's direction and units.
@@ -214,31 +226,29 @@ class Scalebar(object):
         if scale is None:
             self.length = length
             return
-        if self.coords == 'frac':
+        if self.coords == "frac":
             self.length = length / scale
-        elif self.coords == 'abs':
+        elif self.coords == "abs":
             self.length = length
         else:
             raise Exception("Invalid coordinate type")
 
-        if self.orientation == 'horiz':
-            self.unit_factor = dx/scale
-            #print("set_length()...length: %0.2f, scale: %0.2f, dx: %d" % (length, scale, dx))
-        elif self.orientation == 'vert':
-            self.unit_factor = dy/scale
-            #print("set_length(): %0.2f, scale: %0.2f, dy: %d" % (length, scale, dy))
+        if self.orientation == "horiz":
+            self.unit_factor = dx / scale
+            # print("set_length()...length: %0.2f, scale: %0.2f, dx: %d" % (length, scale, dx))
+        elif self.orientation == "vert":
+            self.unit_factor = dy / scale
+            # print("set_length(): %0.2f, scale: %0.2f, dy: %d" % (length, scale, dy))
         else:
             raise Exception("Invalid orientation")
 
-
-    def update(self):
-        # type: () -> None
-        '''
+    def update(self, _=None) -> None:
+        """
         Call this when the axis bounds change.
-        '''
-        if self.barstyle == 'simple':
+        """
+        if self.barstyle == "simple":
             self._update_simple()
-        elif self.barstyle == 'fancy':
+        elif self.barstyle == "fancy":
             self._update_fancy()
         else:
             msg = "Invalid option %r for style." % (self.barstyle)
@@ -249,166 +259,267 @@ class Scalebar(object):
             ext = self.get_full_extent(pad=0.01)
             self.background.set_bounds(*ext.bounds)
 
-    def _setup_simple(self):
-        # type: () -> None
-        '''
+    def _setup_simple(self) -> None:
+        """
         Setup the plot objects for a simple line, with ticks at the ends.
-        '''
-        if self.orientation == 'horiz':
-            self.elements['line'], = self.ax.plot([0, 0], [0, 0],
-                                                  color=self.majorcolor,
-                                                  zorder=self.zorder,
-                                                  linewidth=self.linewidth)
-            self.elements['tick1'], = self.ax.plot([0, 0], [0, 0],
-                                                   color=self.majorcolor,
-                                                   zorder=self.zorder,
-                                                   linewidth=self.linewidth)
-            self.elements['tick2'], = self.ax.plot([0, 0], [0, 0],
-                                                   color=self.majorcolor,
-                                                   zorder=self.zorder,
-                                                   linewidth=self.linewidth)
-            self.elements['label'] = self.ax.text(
-                0, 0, '0', weight='bold',
-                horizontalalignment='center', verticalalignment='bottom',
-                fontsize=self.fontsize, color=self.majorcolor, zorder=self.zorder)
-        elif self.orientation == 'vert':
-            self.elements['line'], = self.ax.plot([0, 0], [0, 0],
-                                                  color=self.majorcolor,
-                                                  zorder=self.zorder,
-                                                  linewidth=self.linewidth)
-            self.elements['tick1'], = self.ax.plot([0, 0], [0, 0],
-                                                   color=self.majorcolor,
-                                                   zorder=self.zorder,
-                                                   linewidth=self.linewidth)
-            self.elements['tick2'], = self.ax.plot([0, 0], [0, 0],
-                                                   color=self.majorcolor,
-                                                   zorder=self.zorder,
-                                                   linewidth=self.linewidth)
-            self.elements['label'] = self.ax.text(
-                0, 0, '0', weight='bold',
-                horizontalalignment='left', verticalalignment='center',
-                fontsize=self.fontsize, color=self.majorcolor,
-                zorder=self.zorder)
+        """
+        if self.orientation == "horiz":
+            (self.elements["line"],) = self.ax.plot(
+                [0, 0],
+                [0, 0],
+                color=self.majorcolor,
+                zorder=self.zorder,
+                linewidth=self.linewidth,
+            )
+            (self.elements["tick1"],) = self.ax.plot(
+                [0, 0],
+                [0, 0],
+                color=self.majorcolor,
+                zorder=self.zorder,
+                linewidth=self.linewidth,
+            )
+            (self.elements["tick2"],) = self.ax.plot(
+                [0, 0],
+                [0, 0],
+                color=self.majorcolor,
+                zorder=self.zorder,
+                linewidth=self.linewidth,
+            )
+            self.elements["label"] = self.ax.text(
+                0,
+                0,
+                "0",
+                weight="bold",
+                horizontalalignment="center",
+                verticalalignment="bottom",
+                fontsize=self.fontsize,
+                color=self.majorcolor,
+                zorder=self.zorder,
+            )
+        elif self.orientation == "vert":
+            (self.elements["line"],) = self.ax.plot(
+                [0, 0],
+                [0, 0],
+                color=self.majorcolor,
+                zorder=self.zorder,
+                linewidth=self.linewidth,
+            )
+            (self.elements["tick1"],) = self.ax.plot(
+                [0, 0],
+                [0, 0],
+                color=self.majorcolor,
+                zorder=self.zorder,
+                linewidth=self.linewidth,
+            )
+            (self.elements["tick2"],) = self.ax.plot(
+                [0, 0],
+                [0, 0],
+                color=self.majorcolor,
+                zorder=self.zorder,
+                linewidth=self.linewidth,
+            )
+            self.elements["label"] = self.ax.text(
+                0,
+                0,
+                "0",
+                weight="bold",
+                horizontalalignment="left",
+                verticalalignment="center",
+                fontsize=self.fontsize,
+                color=self.majorcolor,
+                zorder=self.zorder,
+            )
         else:
             raise Exception("Invalid orientation")
 
-    def _setup_fancy(self):
-        # type: () -> None
-        '''
+    def _setup_fancy(self) -> None:
+        """
         Set up all the plot objects for plotting 4 alternating-color blocks,
         with the ends and midpoint labeled below or left,
         and units labeled above or right.
         NB: Just sets up the objects; _update_fancy() makes them make sense.
-        '''
+        """
         # text alignment settings depend on horizontal/vertical
-        if self.orientation == 'horiz':
-            self.elements['title'] = self.ax.text(
-                0, 0, self.unit_label,
-                horizontalalignment='center', verticalalignment='bottom',
-                fontsize=self.fontsize, color=self.majorcolor, zorder=self.zorder)
+        if self.orientation == "horiz":
+            self.elements["title"] = self.ax.text(
+                0,
+                0,
+                self.unit_label,
+                horizontalalignment="center",
+                verticalalignment="bottom",
+                fontsize=self.fontsize,
+                color=self.majorcolor,
+                zorder=self.zorder,
+            )
 
-            self.elements['tick1_text'] = self.ax.text(
-                0, 0, '0',
-                horizontalalignment='center', verticalalignment='top',
-                fontsize=self.fontsize, color=self.majorcolor, zorder=self.zorder)
+            self.elements["tick1_text"] = self.ax.text(
+                0,
+                0,
+                "0",
+                horizontalalignment="center",
+                verticalalignment="top",
+                fontsize=self.fontsize,
+                color=self.majorcolor,
+                zorder=self.zorder,
+            )
 
-            self.elements['tick3_text'] = self.ax.text(
-                0, 0, '0',
-                horizontalalignment='center', verticalalignment='top',
-                fontsize=self.fontsize, color=self.majorcolor, zorder=self.zorder)
+            self.elements["tick3_text"] = self.ax.text(
+                0,
+                0,
+                "0",
+                horizontalalignment="center",
+                verticalalignment="top",
+                fontsize=self.fontsize,
+                color=self.majorcolor,
+                zorder=self.zorder,
+            )
 
-            self.elements['tick5_text'] = self.ax.text(
-                0, 0, '0',
-                horizontalalignment='center', verticalalignment='top',
-                fontsize=self.fontsize, color=self.majorcolor, zorder=self.zorder)
+            self.elements["tick5_text"] = self.ax.text(
+                0,
+                0,
+                "0",
+                horizontalalignment="center",
+                verticalalignment="top",
+                fontsize=self.fontsize,
+                color=self.majorcolor,
+                zorder=self.zorder,
+            )
 
-        elif self.orientation == 'vert':
-            self.elements['title'] = self.ax.text(
-                0, 0, self.unit_label,
-                horizontalalignment='left', verticalalignment='center',
-                fontsize=self.fontsize, color=self.majorcolor, zorder=self.zorder)
+        elif self.orientation == "vert":
+            self.elements["title"] = self.ax.text(
+                0,
+                0,
+                self.unit_label,
+                horizontalalignment="left",
+                verticalalignment="center",
+                fontsize=self.fontsize,
+                color=self.majorcolor,
+                zorder=self.zorder,
+            )
 
-            self.elements['tick1_text'] = self.ax.text(
-                0, 0, '0',
-                horizontalalignment='right', verticalalignment='center',
-                fontsize=self.fontsize, color=self.majorcolor, zorder=self.zorder)
+            self.elements["tick1_text"] = self.ax.text(
+                0,
+                0,
+                "0",
+                horizontalalignment="right",
+                verticalalignment="center",
+                fontsize=self.fontsize,
+                color=self.majorcolor,
+                zorder=self.zorder,
+            )
 
-            self.elements['tick3_text'] = self.ax.text(
-                0, 0, '0',
-                horizontalalignment='right', verticalalignment='center',
-                fontsize=self.fontsize, color=self.majorcolor, zorder=self.zorder)
+            self.elements["tick3_text"] = self.ax.text(
+                0,
+                0,
+                "0",
+                horizontalalignment="right",
+                verticalalignment="center",
+                fontsize=self.fontsize,
+                color=self.majorcolor,
+                zorder=self.zorder,
+            )
 
-            self.elements['tick5_text'] = self.ax.text(
-                0, 0, '0',
-                horizontalalignment='right', verticalalignment='center',
-                fontsize=self.fontsize, color=self.majorcolor, zorder=self.zorder)
+            self.elements["tick5_text"] = self.ax.text(
+                0,
+                0,
+                "0",
+                horizontalalignment="right",
+                verticalalignment="center",
+                fontsize=self.fontsize,
+                color=self.majorcolor,
+                zorder=self.zorder,
+            )
         else:
             raise Exception("Invalid orientation")
 
         # top / bottom / left / right bounds of box are same for vert/horiz.
-        self.elements['top'], = self.ax.plot([0, 0], [0, 0],
-                                             color=self.majorcolor,
-                                             zorder=self.zorder,
-                                             linewidth=self.linewidth)
-        self.elements['bottom'], = self.ax.plot([0, 0], [0, 0],
-                                                color=self.majorcolor,
-                                                zorder=self.zorder,
-                                                linewidth=self.linewidth)
-        self.elements['left'], = self.ax.plot([0, 0], [0, 0],
-                                              color=self.majorcolor,
-                                              zorder=self.zorder,
-                                              linewidth=self.linewidth)
-        self.elements['right'], = self.ax.plot([0, 0], [0, 0],
-                                               color=self.majorcolor,
-                                               zorder=self.zorder,
-                                               linewidth=self.linewidth)
-        self.elements['tick1'], = self.ax.plot(0, 0,
-                                               color = self.majorcolor,
-                                               zorder=self.zorder,
-                                               linewidth=self.linewidth)
-        self.elements['tick3'], = self.ax.plot(0, 0,
-                                               color = self.majorcolor,
-                                               zorder=self.zorder,
-                                               linewidth=self.linewidth)
-        self.elements['tick5'], = self.ax.plot(0, 0,
-                                               color = self.majorcolor,
-                                               zorder=self.zorder,
-                                               linewidth=self.linewidth)
+        (self.elements["top"],) = self.ax.plot(
+            [0, 0],
+            [0, 0],
+            color=self.majorcolor,
+            zorder=self.zorder,
+            linewidth=self.linewidth,
+        )
+        (self.elements["bottom"],) = self.ax.plot(
+            [0, 0],
+            [0, 0],
+            color=self.majorcolor,
+            zorder=self.zorder,
+            linewidth=self.linewidth,
+        )
+        (self.elements["left"],) = self.ax.plot(
+            [0, 0],
+            [0, 0],
+            color=self.majorcolor,
+            zorder=self.zorder,
+            linewidth=self.linewidth,
+        )
+        (self.elements["right"],) = self.ax.plot(
+            [0, 0],
+            [0, 0],
+            color=self.majorcolor,
+            zorder=self.zorder,
+            linewidth=self.linewidth,
+        )
+        (self.elements["tick1"],) = self.ax.plot(
+            0, 0, color=self.majorcolor, zorder=self.zorder, linewidth=self.linewidth
+        )
+        (self.elements["tick3"],) = self.ax.plot(
+            0, 0, color=self.majorcolor, zorder=self.zorder, linewidth=self.linewidth
+        )
+        (self.elements["tick5"],) = self.ax.plot(
+            0, 0, color=self.majorcolor, zorder=self.zorder, linewidth=self.linewidth
+        )
         # Add box from left to 1/4 across
-        self.elements['box1'], = self.ax.fill(
-            [0, 0, 0, 0, 0], [0, 0, 0, 0, 0],
-            fc=self.majorcolor, ec=self.majorcolor, zorder=self.zorder)
+        (self.elements["box1"],) = self.ax.fill(
+            [0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0],
+            fc=self.majorcolor,
+            ec=self.majorcolor,
+            zorder=self.zorder,
+        )
 
         # Add box from mid to 3/4 across
-        self.elements['box3'], = self.ax.fill(
-            [0, 0, 0, 0, 0], [0, 0, 0, 0, 0],
-            fc=self.majorcolor, ec=self.majorcolor, zorder=self.zorder)
+        (self.elements["box3"],) = self.ax.fill(
+            [0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0],
+            fc=self.majorcolor,
+            ec=self.majorcolor,
+            zorder=self.zorder,
+        )
 
         if self.minorcolor is not None:
             # add box from 1/4 to 1/2 way across
-            self.elements['box2'], = self.ax.fill(
-                [0, 0, 0, 0, 0], [0, 0, 0, 0, 0],
-                fc=self.minorcolor, ec=self.majorcolor, zorder=self.zorder)
+            (self.elements["box2"],) = self.ax.fill(
+                [0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0],
+                fc=self.minorcolor,
+                ec=self.majorcolor,
+                zorder=self.zorder,
+            )
             # Add box from mid to 3/4 across
-            self.elements['box4'], = self.ax.fill(
-                [0, 0, 0, 0, 0], [0, 0, 0, 0, 0],
-                fc=self.minorcolor, ec=self.majorcolor, zorder=self.zorder)
+            (self.elements["box4"],) = self.ax.fill(
+                [0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0],
+                fc=self.minorcolor,
+                ec=self.majorcolor,
+                zorder=self.zorder,
+            )
 
-    def _update_simple(self):
-        # type: () -> None
+    def _update_simple(self) -> None:
         xleft, xright, xcen, ybottom, ytop, ycen = self._calculate_bounds()
-        if self.orientation == 'horiz':
-            self.elements['line'].set_data([xleft, xright], [ycen, ycen])
-            self.elements['tick1'].set_data([xleft, xleft], [ybottom, ytop])
-            self.elements['tick2'].set_data([xright, xright], [ybottom, ytop])
-            length = np.abs((xright-xleft) / self.unit_factor)
-            self.elements['label'].set_position([xcen, ytop])
-        elif self.orientation == 'vert':
-            self.elements['line'].set_data([xcen, xcen], [ybottom, ytop])
-            self.elements['tick1'].set_data([xleft, xright], [ybottom, ybottom])
-            self.elements['tick2'].set_data([xleft, xright], [ytop, ytop])
-            length = np.abs((ytop-ybottom) / self.unit_factor)
-            self.elements['label'].set_position([xright, ycen])
+        if self.orientation == "horiz":
+            self.elements["line"].set_data([xleft, xright], [ycen, ycen])
+            self.elements["tick1"].set_data([xleft, xleft], [ybottom, ytop])
+            self.elements["tick2"].set_data([xright, xright], [ybottom, ytop])
+            length = np.abs((xright - xleft) / self.unit_factor)
+            self.elements["label"].set_position([xcen, ytop])
+        elif self.orientation == "vert":
+            self.elements["line"].set_data([xcen, xcen], [ybottom, ytop])
+            self.elements["tick1"].set_data([xleft, xright], [ybottom, ybottom])
+            self.elements["tick2"].set_data([xleft, xright], [ytop, ytop])
+            length = np.abs((ytop - ybottom) / self.unit_factor)
+            self.elements["label"].set_position([xright, ycen])
         else:
             raise Exception("Invalid orientation")
         # Hacky way to provide up to 2 decimal points, where needed
@@ -416,9 +527,9 @@ class Scalebar(object):
         # ValueError: cannot convert float NaN to integer
         # For JKB2e lines, it doesn't.
         try:
-            if np.abs(10*np.round(10*length) - int(np.round(100*length))) > 0.5:
+            if np.abs(10 * np.round(10 * length) - int(np.round(100 * length))) > 0.5:
                 label = f"{length:.2f} {self.unit_label}"
-            elif np.abs(10*np.round(length) - int(np.round(10*length))) > 0.5:
+            elif np.abs(10 * np.round(length) - int(np.round(10 * length))) > 0.5:
                 label = f"{length:.1f} {self.unit_label}"
             else:
                 label = f"{int(np.round(length))} {self.unit_label}"
@@ -426,11 +537,9 @@ class Scalebar(object):
             print(ex)
             print(f"xright = {xright}, xleft = {xleft}, factor = {self.unit_factor}")
             label = ""
-        self.elements['label'].set_text(label)
+        self.elements["label"].set_text(label)
 
-
-    def _update_fancy(self):
-        # type: () -> None
+    def _update_fancy(self) -> None:
         xleft, xright, xcen, ybottom, ytop, ycen = self._calculate_bounds()
         dx_bar = xright - xleft
         dy_bar = ytop - ybottom
@@ -438,13 +547,13 @@ class Scalebar(object):
         # TODO: These calculations are all duplicates of stuff in plot_fancy.
         # Maybe have plot_fancy be just "setup_fancy", then call update_fancy"?
 
-        if self.orientation == 'horiz':
+        if self.orientation == "horiz":
             x2 = 0.5 * (xleft + xcen)
             x4 = 0.5 * (xcen + xright)
             bar_length = 1.0 * dx_bar / self.unit_factor
 
             xtick1 = [xleft, xleft]
-            ytick1 = [ybottom - 0.5*dy_bar, ybottom]
+            ytick1 = [ybottom - 0.5 * dy_bar, ybottom]
             xtick3 = [xcen, xcen]
             ytick3 = ytick1
             xtick5 = [xright, xright]
@@ -466,12 +575,12 @@ class Scalebar(object):
             textpos3 = [xcen, ybottom - dy_bar]
             textpos5 = [xright, ybottom - dy_bar]
 
-        elif self.orientation == 'vert':
+        elif self.orientation == "vert":
             y2 = 0.5 * (ybottom + ycen)
             y4 = 0.5 * (ycen + ytop)
             bar_length = 1.0 * dy_bar / self.unit_factor
 
-            xtick1 = [xleft - 0.5*dx_bar, xleft]
+            xtick1 = [xleft - 0.5 * dx_bar, xleft]
             ytick1 = [ybottom, ybottom]
             xtick3 = xtick1
             ytick3 = [ycen, ycen]
@@ -498,40 +607,39 @@ class Scalebar(object):
             raise Exception("Invalid orientation")
 
         # Box outline is same for horizontal/vertical
-        self.elements['top'].set_data([xleft, xright], [ytop, ytop])
-        self.elements['bottom'].set_data([xleft, xright], [ybottom, ybottom])
-        self.elements['left'].set_data([xleft, xleft], [ybottom, ytop])
-        self.elements['right'].set_data([xright, xright], [ybottom, ytop])
+        self.elements["top"].set_data([xleft, xright], [ytop, ytop])
+        self.elements["bottom"].set_data([xleft, xright], [ybottom, ybottom])
+        self.elements["left"].set_data([xleft, xleft], [ybottom, ytop])
+        self.elements["right"].set_data([xright, xright], [ybottom, ytop])
 
-        self.elements['tick1'].set_data(xtick1, ytick1)
-        self.elements['tick3'].set_data(xtick3, ytick3)
-        self.elements['tick5'].set_data(xtick5, ytick5)
+        self.elements["tick1"].set_data(xtick1, ytick1)
+        self.elements["tick3"].set_data(xtick3, ytick3)
+        self.elements["tick5"].set_data(xtick5, ytick5)
 
-        self.elements['box1'].set_xy(np.array([xbox1, ybox1]).T)
-        self.elements['box3'].set_xy(np.array([xbox3, ybox3]).T)
+        self.elements["box1"].set_xy(np.array([xbox1, ybox1]).T)
+        self.elements["box3"].set_xy(np.array([xbox3, ybox3]).T)
 
         if self.minorcolor is not None:
-            self.elements['box2'].set_xy(np.array([xbox2, ybox2]).T)
-            self.elements['box4'].set_xy(np.array([xbox4, ybox4]).T)
+            self.elements["box2"].set_xy(np.array([xbox2, ybox2]).T)
+            self.elements["box4"].set_xy(np.array([xbox4, ybox4]).T)
 
-        self.elements['title'].set_position([xtitle, ytitle])
-        self.elements['tick1_text'].set_position(textpos1)
-        self.elements['tick3_text'].set_position(textpos3)
-        self.elements['tick5_text'].set_position(textpos5)
+        self.elements["title"].set_position([xtitle, ytitle])
+        self.elements["tick1_text"].set_position(textpos1)
+        self.elements["tick3_text"].set_position(textpos3)
+        self.elements["tick5_text"].set_position(textpos5)
 
         # tick1 text will always be '0'
-        self.elements['tick3_text'].set_text('%d' % int(0.5 * bar_length))
-        self.elements['tick5_text'].set_text('%d' % int(bar_length))
+        self.elements["tick3_text"].set_text("%d" % int(0.5 * bar_length))
+        self.elements["tick5_text"].set_text("%d" % int(bar_length))
 
-    def _calculate_bounds(self):
-        # type: () -> Tuple[float, float, float, float, float, float]
-        '''
+    def _calculate_bounds(self) -> Tuple[float, float, float, float, float, float]:
+        """
         Calculates the axis-unit bounds for the scalebar.
         Handles all conversions between unit_factor, and making scalebar a nice
         round length for printing.
         Returns xleft, xright, xcen, ybottom, ytop, ycen in data units.
         (Handles axes with xlim[1] < xlim[0])
-        '''
+        """
         xlim = self.ax.get_xlim()
         ylim = self.ax.get_ylim()
         dx_ax = xlim[1] - xlim[0]
@@ -539,8 +647,8 @@ class Scalebar(object):
         xsign = np.sign(dx_ax)
         ysign = np.sign(dy_ax)
 
-        if self.coords == 'abs':
-            if self.orientation == 'horiz':
+        if self.coords == "abs":
+            if self.orientation == "horiz":
                 xleft = self.x0
                 xright = self.x0 + xsign * self.length * self.unit_factor
                 xcen = 0.5 * (xleft + xright)
@@ -549,7 +657,7 @@ class Scalebar(object):
                 ybottom = ycen - 0.5 * dy_ax * self.width
                 ytop = ycen + 0.5 * dy_ax * self.width
 
-            elif self.orientation == 'vert':
+            elif self.orientation == "vert":
                 ybottom = self.y0
                 ytop = self.y0 + ysign * self.length * self.unit_factor
                 ycen = 0.5 * (ybottom + ytop)
@@ -558,38 +666,38 @@ class Scalebar(object):
                 xleft = xcen - 0.5 * dx_ax * self.width
                 xright = xcen + 0.5 * dx_ax * self.width
             else:
-                raise Exception('Invalid orientation')
+                raise Exception("Invalid orientation")
 
-        elif self.coords == 'frac':
-            if self.orientation == 'horiz':
+        elif self.coords == "frac":
+            if self.orientation == "horiz":
                 xleft = xlim[0] + dx_ax * self.x0
                 dx_bar_raw = dx_ax * self.length
                 # This figures out if max sig fig is ones, tens, hundreds, etc ...
-                max_pow_10 = np.floor(np.log(np.abs(dx_bar_raw))/np.log(10.0))
+                # max_pow_10 = np.floor(np.log(np.abs(dx_bar_raw)) / np.log(10.0))
                 # We need an even length for the scalebar (so the fancy plot's
                 # scalebar can have an integer middle tick), and want its dimension
                 # to have at most two significant figures.
-                round_units = 2 * 10 ** (max_pow_10 - 1)
-                dx_bar_round = round_units * np.round(dx_bar_raw / round_units)
+                # round_units = 2 * 10 ** (max_pow_10 - 1)
+                # dx_bar_round = round_units * np.round(dx_bar_raw / round_units)
                 # TODO: This was rounding into plot units, not data units ...
-                xright = xleft + dx_bar_raw#_round
+                xright = xleft + dx_bar_raw  # _round
                 xcen = 0.5 * (xleft + xright)
 
                 ycen = ylim[0] + dy_ax * self.y0
                 ybottom = ycen - 0.5 * dy_ax * self.width
                 ytop = ycen + 0.5 * dy_ax * self.width
 
-            elif self.orientation == 'vert':
+            elif self.orientation == "vert":
                 ybottom = ylim[0] + dy_ax * self.y0
                 dy_bar_raw = dy_ax * self.length
                 # This figures out if max sig fig is ones, tens, hundreds, etc ...
-                max_pow_10 = np.floor(np.log(np.abs(dy_bar_raw))/np.log(10.0))
+                # max_pow_10 = np.floor(np.log(np.abs(dy_bar_raw)) / np.log(10.0))
                 # We need an even length for the scalebar (so the fancy plot's
                 # scalebar can have an integer middle tick), and want its dimension
                 # to have at most two significant figures.
-                round_units = 2 * 10 ** (max_pow_10 - 1)
-                dy_bar_round = round_units * np.round(dy_bar_raw / round_units)
-                ytop = ybottom + dy_bar_raw#round
+                # round_units = 2 * 10 ** (max_pow_10 - 1)
+                # dy_bar_round = round_units * np.round(dy_bar_raw / round_units)
+                ytop = ybottom + dy_bar_raw  # round
                 ycen = 0.5 * (ybottom + ytop)
 
                 xcen = xlim[0] + dx_ax * self.x0
@@ -597,7 +705,7 @@ class Scalebar(object):
                 xright = xcen + 0.5 * dx_ax * self.width
 
             else:
-                raise Exception('Invalid orientation.')
+                raise Exception("Invalid orientation.")
 
         else:
             msg = "Invalid option %r for coords. (abs or frac)" % (self.coords)

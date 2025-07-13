@@ -50,7 +50,7 @@ def load_radargram(filepath: pathlib.Path) -> Tuple[Any, Any, Any, Any, Any]:
 
     print(f"load_radargram({filepath})")
     try:
-        data = h5py.File(filepath, 'r')
+        data = h5py.File(filepath, "r")
         return extract_radargram_h5py(data)
     except OSError:
         print(f"Couldn't open {filepath} with h5py library; trying scipy")
@@ -60,32 +60,32 @@ def load_radargram(filepath: pathlib.Path) -> Tuple[Any, Any, Any, Any, Any]:
     return extract_radargram_scipy(data)
 
 
-
 def extract_radargram_h5py(data):
-    radargram = data['Data']
+    radargram = data["Data"]
     radargram = np.log(np.array(radargram))
 
-    lat = data['Latitude'][:].flatten()
-    lon = data['Longitude'][:].flatten()
+    lat = data["Latitude"][:].flatten()
+    lon = data["Longitude"][:].flatten()
 
-    utc = data['GPS_time'][:].flatten()
-    fast_time_us = 1e6 * data['Time'][:].flatten()
+    utc = data["GPS_time"][:].flatten()
+    fast_time_us = 1e6 * data["Time"][:].flatten()
     return radargram, lat, lon, utc, fast_time_us
+
 
 def extract_radargram_scipy(data):
     """
     Older data needs to be imported using scipy.io.
     """
-    radargram = data['Data']
+    radargram = data["Data"]
     # 2005_GPRWAIS's data is reported as a complex array
     if np.iscomplexobj(radargram):
         radargram = np.abs(radargram)
     radargram = np.log(np.array(radargram).transpose())
 
-    lat = data['Latitude'].flatten()
-    lon = data['Longitude'].flatten()
+    lat = data["Latitude"].flatten()
+    lon = data["Longitude"].flatten()
 
-    utc = data['GPS_time'].flatten()
-    fast_time_us = 1e6 * data['Time'].flatten()
+    utc = data["GPS_time"].flatten()
+    fast_time_us = 1e6 * data["Time"].flatten()
 
     return radargram, lat, lon, utc, fast_time_us

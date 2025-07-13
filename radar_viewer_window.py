@@ -51,12 +51,8 @@ export QT_QPA_PLATFORM_PLUGIN_PATH=/Applications/$QGIS_VERSION.app/Contents/Plug
 export DYLD_INSERT_LIBRARIES=/Applications/$QGIS_VERSION.app/Contents/MacOS/lib/libsqlite3.dylib
 """
 
-import argparse
-import datetime
 import pathlib
-import sqlite3
-import sys
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import matplotlib as mpl
 import matplotlib.backend_bases
@@ -82,7 +78,7 @@ from .plotutils.matplotlib_utils import (
     SaveToolbar,
     get_ax_shape,
 )
-from .plotutils.pyqt_utils import HLine, VLine, show_error_message_box
+from .plotutils.pyqt_utils import HLine
 from .radar_viewer_widgets import DoubleSlider, ScalebarControls
 
 # TODO: These need to be renamed. it's currently really confusing ...
@@ -152,13 +148,13 @@ class PlotParams:
     """
 
     def __init__(self) -> None:
-        self.curr_xlim = None  # type: Optional[Tuple[int, int]]
-        self.curr_ylim = None  # type: Optional[Tuple[int, int]]
+        self.curr_xlim: Optional[Tuple[int, int]] = None
+        self.curr_ylim: Optional[Tuple[int, int]] = None
         # how many traces are skipped between the displayed traces
-        self.radar_skip = None  # type: Optional[int]
+        self.radar_skip: Optional[int] = None
 
         # which trace the camera cursor should currently be on.
-        self.displayed_trace_num = None  # type: Optional[int]
+        self.displayed_trace_num: Optional[int] = None
 
         # Whether these positions should be frozen or updated as the mouse moves
         self.crosshair_frozen = False
@@ -179,7 +175,7 @@ class PlotParams:
         self.horiz_scale_x0 = 0.1
         self.horiz_scale_y0 = 0.05
 
-        self.product = None  # type: Optional[str]
+        self.product: Optional[str] = None
 
         self.cmap = "gray"
         self.clim = (0, 1)  # what's currently displayed
@@ -248,64 +244,61 @@ class PlotObjects:
 
         self.dpi: Optional[int] = None
 
-        self.full_ax = None  # type: Optional[mpl.axes.Axes]
-        self.radar_ax = None  # type: Optional[mpl.axes.Axes]
-        self.xevas_horiz_ax = None  # type: Optional[mpl.axes.Axes]
-        self.xevas_vert_ax = None  # type: Optional[mpl.axes.Axes]
+        self.full_ax: Optional[mpl.axes.Axes] = None
+        self.radar_ax: Optional[mpl.axes.Axes] = None
+        self.xevas_horiz_ax: Optional[mpl.axes.Axes] = None
+        self.xevas_vert_ax: Optional[mpl.axes.Axes] = None
 
         self.xevas_horiz: Optional[xevas.XevasHorizSelector] = None
         self.xevas_vert: Optional[xevas.XevasVertSelector] = None
 
-        self.crosshair_x = None  # type: Optional[mpl.lines.Line2D]
-        self.crosshair_y = None  # type: Optional[mpl.lines.Line2D]
+        self.crosshair_x: Optional[mpl.lines.Line2D] = None
+        self.crosshair_y: Optional[mpl.lines.Line2D] = None
 
         self.trace_sparkline: Optional[sparkline.Sparkline] = None
         self.trace_base: Optional[mpl.lines.Line2D] = None
 
-        self.left_click_rs = {}  # type: Dict[str, mpw.RectangleSelector]
-        self.right_click_rs = {}  # type: Dict[str, mpw.RectangleSelector]
+        self.left_click_rs: Dict[str, mpw.RectangleSelector] = {}
+        self.right_click_rs: Dict[str, mpw.RectangleSelector] = {}
+        self.mouse_mode_buttons: Dict[str, QtWidgets.QRadioButton] = {}
+        self.mouse_mode_group: Optional[QtWidgets.QButtonGroup] = None
+        self.citation_button: Optional[QtWidgets.QPushButton] = None
+        self.prev_button: Optional[QtWidgets.QPushButton] = None
+        self.full_button: Optional[QtWidgets.QPushButton] = None
+        self.next_button: Optional[QtWidgets.QPushButton] = None
 
-        self.mouse_mode_buttons = {}  # type: Dict[str, QtWidgets.QRadioButton]
-        self.mouse_mode_group = None  # type: Optional[QtWidgets.QButtonGroup]
+        self.colormap_buttons: Dict[str, QtWidgets.QRadioButton] = {}
+        self.colormap_group: Optional[QtWidgets.QButtonGroup] = None
 
-        self.citation_button = None  # type: Optional[QtWidgets.QPushButton]
-        self.prev_button = None  # type: Optional[QtWidgets.QPushButton]
-        self.full_button = None  # type: Optional[QtWidgets.QPushButton]
-        self.next_button = None  # type: Optional[QtWidgets.QPushButton]
-
-        self.colormap_buttons = {}  # type: Dict[str, QtWidgets.QRadioButton]
-        self.colormap_group = None  # type: Optional[QtWidgets.QButtonGroup]
-
-        self.product_buttons = {}  # type: Dict[str, QtWidgets.QRadioButton]
-        self.product_group = None  # type: Optional[QtWidgets.QButtonGroup]
-
-        self.trace_checkbox = None  # type: Optional[QtWidgets.QCheckBox]
-        self.crosshair_checkbox = None  # type: Optional[QtWidgets.QCheckBox]
+        self.product_buttons: Dict[str, QtWidgets.QRadioButton] = {}
+        self.product_group: Optional[QtWidgets.QButtonGroup] = None
+        self.trace_checkbox: Optional[QtWidgets.QCheckBox] = None
+        self.crosshair_checkbox: Optional[QtWidgets.QCheckBox] = None
 
         self.clim_label = None
-        self.clim_slider = None  # type: Optional[DoubleSlider]
+        self.clim_slider: Optional[DoubleSlider] = None
 
-        self.vert_scale_checkbox = None  # type: Optional[QtWidgets.QCheckBox]
-        self.vert_scale_length_label = None  # type: Optional[QtWidgets.QLabel]
-        self.vert_scale_length_textbox = None  # type: Optional[QtWidgets.QLineEdit]
-        self.vert_scale_origin_label = None  # type: Optional[QtWidgets.QLabel]
-        self.vert_scale_x0_textbox = None  # type: Optional[QtWidgets.QLineEdit]
-        self.vert_scale_y0_textbox = None  # type: Optional[QtWidgets.QLineEdit]
+        self.vert_scale_checkbox: Optional[QtWidgets.QCheckBox] = None
+        self.vert_scale_length_label: Optional[QtWidgets.QLabel] = None
+        self.vert_scale_length_textbox: Optional[QtWidgets.QLineEdit] = None
+        self.vert_scale_origin_label: Optional[QtWidgets.QLabel] = None
+        self.vert_scale_x0_textbox: Optional[QtWidgets.QLineEdit] = None
+        self.vert_scale_y0_textbox: Optional[QtWidgets.QLineEdit] = None
 
-        self.horiz_scale_checkbox = None  # type: Optional[QtWidgets.QCheckBox]
-        self.horiz_scale_length_label = None  # type: Optional[QtWidgets.QLabel]
-        self.horiz_scale_length_textbox = None  # type: Optional[QtWidgets.QLineEdit]
-        self.horiz_scale_origin_label = None  # type: Optional[QtWidgets.QLabel]
-        self.horiz_scale_x0_textbox = None  # type: Optional[QtWidgets.QLineEdit]
-        self.horiz_scale_y0_textbox = None  # type: Optional[QtWidgets.QLineEdit]
+        self.horiz_scale_checkbox: Optional[QtWidgets.QCheckBox] = None
+        self.horiz_scale_length_label: Optional[QtWidgets.QLabel] = None
+        self.horiz_scale_length_textbox: Optional[QtWidgets.QLineEdit] = None
+        self.horiz_scale_origin_label: Optional[QtWidgets.QLabel] = None
+        self.horiz_scale_x0_textbox: Optional[QtWidgets.QLineEdit] = None
+        self.horiz_scale_y0_textbox: Optional[QtWidgets.QLineEdit] = None
 
-        self.vert_scale = None  # type: Optional[scalebar.Scalebar]
-        self.horiz_scale = None  # type: Optional[scalebar.Scalebar]
+        self.vert_scale: Optional[scalebar.Scalebar] = None
+        self.horiz_scale: Optional[scalebar.Scalebar] = None
 
-        self.quit_button = None  # type: Optional[QtWidgets.QPushButton]
+        self.quit_button: Optional[QtWidgets.QPushButton] = None
 
-        self.annotations_label = None  # type: Optional[QtWidgets.QLabel]
-        self.annotations_vbox = None  # type: Optional[QtWidgets.QHBoxLayout]
+        self.annotations_label: Optional[QtWidgets.QLabel] = None
+        self.annotations_vbox: Optional[QtWidgets.QHBoxLayout] = None
 
 
 def calc_radar_skip(fig: Figure, ax: mpl.axes.Axes, xlim: Tuple[int, int]) -> int:
@@ -409,7 +402,7 @@ class RadarWindow(QtWidgets.QMainWindow):
     # However, it only works if the focus is on the frame, not the canvas.
     # So, I made the canvas unfocusable...
     def keyPressEvent(self, event: QtGui.QKeyEvent) -> None:
-        if type(event) == QtGui.QKeyEvent:
+        if type(event) is QtGui.QKeyEvent:
             self._on_qt_key_press(event)
             # By doing this here, we don't let anybody downstream of this
             # catch 'em. If I wanted to allow that, move event.accept()
@@ -477,7 +470,7 @@ class RadarWindow(QtWidgets.QMainWindow):
         # TODO(lindzey): consider calculating a reasonable scale + offset
         # from the data itself?
         # offset = radarAnalysis.channel_offsets[self.plot_params.channel]
-        offset = 0
+        # offset = 0
         # trace_dB = self.radar_data.data[trace_num, :] / 1000.0 + offset
         trace_dB = self.radar_data.data[trace_num, :]
         yy = np.arange(0, self.radar_data.num_samples)
@@ -529,7 +522,10 @@ class RadarWindow(QtWidgets.QMainWindow):
         # update_selection doesn't trigger any cbs.
         num_traces = self.radar_data.num_traces
         self.plot_objects.xevas_horiz.update_selection(
-            (1.0 * new_xlim[0] / (num_traces - 1), 1.0 * new_xlim[1] / (num_traces - 1))
+            (
+                1.0 * new_xlim[0] / (num_traces - 1),
+                1.0 * new_xlim[1] / (num_traces - 1),
+            )
         )
 
     def update_ylim(self, new_ylim: Tuple[int, int]) -> None:
@@ -1014,7 +1010,7 @@ class RadarWindow(QtWidgets.QMainWindow):
         """
         TODO
         """
-        old_product = self.plot_params.product
+        # old_product = self.plot_params.product
         for new_product, button in self.plot_objects.product_buttons.items():
             if button.isDown():
                 if self.plot_params.product != new_product:
@@ -1734,7 +1730,7 @@ class RadarWindow(QtWidgets.QMainWindow):
             # dist = self.transect_data.rpc.along_track_dist([0, xx], "traces")
             all_dists = self.radar_data.along_track_dist()
             dist = all_dists[int_trace]
-            label = f"{dist/1000.0:0.1f} km"
+            label = f"{dist / 1000.0:0.1f} km"
 
             # It appears that the BAS data's utc data isn't what I expected,
             # so I can't convert to minutes or date.
@@ -1762,7 +1758,7 @@ class RadarWindow(QtWidgets.QMainWindow):
             #     f"Requested trace {trace}: closest valid is {int_trace}"
             #     f"along-track dist is: {dist}, and time for {t1} is {time_str}"
             # )
-        except Exception as ex:
+        except Exception:
             raise Exception(
                 f"Trying to format label. input trace = {trace}, type is {type(trace)}. Rounds to {int_trace} for radargram with {self.radar_data.num_traces} traces and {self.radar_data.num_samples} samples"
             )

@@ -31,7 +31,6 @@ import pathlib
 
 import PyQt5.QtCore as QtCore
 import PyQt5.QtWidgets as QtWidgets
-import qgis.core
 from qgis.core import QgsMessageLog
 from qgis.gui import QgisInterface
 
@@ -48,7 +47,6 @@ from .qiceradar_config import (
 # QUESTION: Does the iface argument wind up mattering? My other QDialog
 #           popups don't have it, and it seems like it's not used.
 class QIceRadarConfigWidget(QtWidgets.QDialog):
-
     # Useful so other dialogs that open this one can react
     # when it is closed.
     closed = QtCore.pyqtSignal()
@@ -69,7 +67,7 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
 
         datadir_row = 0
         nsidc_row = 1
-        aad_row = 2
+        # aad_row = 2
         button_row = 3
 
         self.datadir_label = QtWidgets.QLabel("Root data directory")
@@ -262,9 +260,7 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
         else:
             aad_secret_key = None
 
-        config = UserConfig(
-            rootdir, nsidc_token, aad_access_key, aad_secret_key
-        )
+        config = UserConfig(rootdir, nsidc_token, aad_access_key, aad_secret_key)
 
         # If configuration isn't valid, we can't do anything useful.
         errmsg = None
@@ -282,7 +278,6 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
             error_message_box = QtWidgets.QMessageBox()
             error_message_box.setText(errmsg)
             error_message_box.exec()
-
 
     def close(self) -> bool:
         self.closed.emit()

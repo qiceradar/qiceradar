@@ -46,11 +46,13 @@ class Institutions(enum.IntEnum):
     PRIC = 5
     UTIG = 6
 
+
 class RadarData:
     """
     This is all the radar-specific data, for a given product that has
     been loaded. Includes parameters derived from the data.
     """
+
     supported_data_formats = ["awi_netcdf", "bas_netcdf", "utig_netcdf", "cresis_mat"]
 
     # TODO: Refactor this so institution and campaign are enums, and filepath is actually a pathlib.Path
@@ -108,7 +110,7 @@ class RadarData:
                 ) = cresis_utils.load_radargram(filepath)
             except Exception as ex:
                 print(f"Couldn't load {filepath}.")
-                raise(ex)
+                raise (ex)
         else:
             raise Exception("Only BAS, CRESIS & UTIG formats supported for now!")
 

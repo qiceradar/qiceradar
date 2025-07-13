@@ -27,11 +27,10 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from PyQt5.QtCore import Qt
 import PyQt5.QtWidgets as QtWidgets
-from qgis.gui import QgisInterface
 
 from .qiceradar_symbology_widget import SymbologyWidget
+
 
 class ControlsWindow(QtWidgets.QMainWindow):
     def __init__(self, symbology_widget: SymbologyWidget) -> None:
