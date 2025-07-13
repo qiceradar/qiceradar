@@ -147,9 +147,10 @@ class PlotParams:
     Some are initialized here; I'm not sure if that's a good idea.
     """
 
-    def __init__(self) -> None:
-        self.curr_xlim: Optional[Tuple[int, int]] = None
-        self.curr_ylim: Optional[Tuple[int, int]] = None
+    def __init__(self, radar_data: radar_utils.RadarData) -> None:
+        self.curr_xlim = (0, radar_data.num_traces - 1)
+        self.curr_ylim = (radar_data.num_samples - 1, 0)
+
         # how many traces are skipped between the displayed traces
         self.radar_skip: Optional[int] = None
 
@@ -175,7 +176,7 @@ class PlotParams:
         self.horiz_scale_x0 = 0.1
         self.horiz_scale_y0 = 0.05
 
-        self.product: Optional[str] = None
+        self.product = radar_data.available_products[0]
 
         self.cmap = "gray"
         self.clim = (0, 1)  # what's currently displayed
@@ -183,19 +184,6 @@ class PlotParams:
         self.cmax = 1  # max val from radar
 
         self.mouse_mode = "zoom"
-
-    def initialize_from_radar(self, radar_data: radar_utils.RadarData) -> None:
-        """
-        Called to initialize the plotting parameters to match the
-        limits implied by the radargram. Only called at the start - we don't
-        want the plots to change as a function of reloading data.
-        # TODO: Maybe have clim change, but not xlim, for reloading? ... the
-        # pik1/1m change is a bigger, more annoying, problem.
-        """
-        self.product = radar_data.available_products[0]
-        self.curr_xlim = (0, radar_data.num_traces - 1)
-        self.curr_ylim = (radar_data.num_samples - 1, 0)
-
         self.update_clim_from_radar(radar_data)
 
     def update_clim_from_radar(self, radar_data: radar_utils.RadarData) -> None:
@@ -367,8 +355,7 @@ class RadarWindow(QtWidgets.QMainWindow):
         # TODO: Fix this!
         self.radar_data = radar_utils.RadarData(self.db_granule, filepath)
         self.plot_config = PlotConfig(self.radar_data.available_products)
-        self.plot_params = PlotParams()
-        self.plot_params.initialize_from_radar(self.radar_data)
+        self.plot_params = PlotParams(self.radar_data)
 
         # Set up the visual display, and hook up all the callbacks.
         # TODO: get rid of dependence on plot_params.available_products?
