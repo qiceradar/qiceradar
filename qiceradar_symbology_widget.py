@@ -51,10 +51,51 @@ try:
     from qgis.core import QgsUnitTypes
 except Exception:
     pass
+
 from qgis.gui import (
     QgsLayerTreeView,
     QgsLayerTreeViewMenuProvider,
 )
+
+
+# I wanted to force the decorated function to have the correct signature.
+# (Unannotated, it works in QGIS and passes mypy, but mypy didn't force it
+# to only be used with SymbologyWidget member functions)
+#
+# I think the way to do this would be:
+# ```
+# from typing import Callable, Concatenate, ParamSpect
+# P = ParamSpec("P")
+# def deduplicate_updates(func: Callable[Concatenate["SymbologyWidget", P], None]):
+# ```
+# However, Concatenate is needed for handling kwargs, but isn't part of the
+# standard library until 3.10, and QGIS 3.40 is still on 3.9
+def deduplicate_updates(func):
+    """
+    The styleChanged signal is emitted twice when the user clicks
+    "Apply" or "OK" in the layer properties dialog; I experimented
+    with other signals to no avail:
+    * styleLoaded is never triggered
+    * rendererChanged and styleChanged trigger twice
+    * repaintRequester triggers 3x
+    So ... this implements logic to only update styles once per second,
+    and should be used to wrap any callback connected to styleChanged.
+    """
+
+    def wrapper(self: "SymbologyWidget", *args, **kwargs):
+        try:
+            force_update = kwargs["force_update"]
+        except Exception:
+            force_update = False
+
+        dt = time.time() - self.style_changed_time
+        if dt < 1.0 and not force_update:
+            QgsMessageLog.logMessage("...repeated call, skipping (decorator!)")
+            return
+        func(self, *args, **kwargs)
+        self.style_changed_time = time.time()
+
+    return wrapper
 
 
 class SymbologyMenuProvider(QgsLayerTreeViewMenuProvider):
@@ -142,9 +183,13 @@ class SymbologyWidget(QtWidgets.QWidget):
         root = QgsLayerTree()
         view = QgsLayerTreeView()
         model = QgsLayerTreeModel(root)
-        model.setFlag(QgsLayerTreeModel.AllowNodeChangeVisibility, False)
-        model.setFlag(QgsLayerTreeModel.AllowNodeRename, False)
-        model.setFlag(QgsLayerTreeModel.AllowNodeReorder, False)
+        # MyPy didn't approve of QgsLayerTreeModel.AllowNodeChangeVisibility, saying:
+        # "type[QgsLayerTreeModel]" has no attribute "AllowNodeChangeVisibility",
+        # So, use QgsLayerTreeModel.Flag, which is the same thing.
+        # https://qgis.org/pyqgis/master/core/QgsLayerTreeModel.html#qgis.core.QgsLayerTreeModel.AllowNodeChangeVisibility
+        model.setFlag(QgsLayerTreeModel.Flag.AllowNodeChangeVisibility, False)
+        model.setFlag(QgsLayerTreeModel.Flag.AllowNodeRename, False)
+        model.setFlag(QgsLayerTreeModel.Flag.AllowNodeReorder, False)
         view.setModel(model)
         view.setMenuProvider(SymbologyMenuProvider(view, iface))
         return root, view, model
@@ -161,13 +206,10 @@ class SymbologyWidget(QtWidgets.QWidget):
         self.line_layer = SymbologyWidget.add_unavailable_linestring_layer(root)
         self.categorized_layer = SymbologyWidget.add_categorized_layer(root)
 
-        # The styleChanged signal is emitted twice when the user clicks
-        # "Apply" or "OK" in the layer properties dialog; I experimented
-        # with other signals to no avail:
-        # * styleLoaded is never triggered
-        # * rendererChanged and styleChanged trigger twice
-        # * repaintRequester triggers 3x
-        # So ... I have implemented logic to only update styles once per second
+        # mypy gives the error: "Callable[[], None]" has no attribute "connect"  [attr-defined]
+        # Is this an issue with the pyqgis stubs not handling pyqtSignal -> pyqtBoundSignal correctly?
+        # Oddly, adding the single assert statement addresses it for all of them.
+        assert isinstance(self.trace_layer.styleChanged, QtCore.pyqtBoundSignal)
         self.trace_layer.styleChanged.connect(self.update_trace_layer_style)
         self.selected_layer.styleChanged.connect(self.update_selected_layer_style)
         self.segment_layer.styleChanged.connect(self.update_segment_layer_style)
@@ -442,24 +484,8 @@ class SymbologyWidget(QtWidgets.QWidget):
         root.addLayer(categorized_layer)
         return categorized_layer
 
-    def deduplicate_updates(fun):
-        def wrapper(self, *args, **kwargs):
-            try:
-                force_update = kwargs["force_update"]
-            except Exception:
-                force_update = False
-
-            dt = time.time() - self.style_changed_time
-            if dt < 1.0 and not force_update:
-                QgsMessageLog.logMessage("...repeated call, skipping (decorator!)")
-                return
-            fun(self, *args, **kwargs)
-            self.style_changed_time = time.time()
-
-        return wrapper
-
     @deduplicate_updates
-    def update_trace_layer_style(self, force_update=False):
+    def update_trace_layer_style(self, force_update=False) -> None:
         QgsMessageLog.logMessage("update_trace_layer_style")
         doc = QtXml.QDomDocument()
         self.trace_layer.exportNamedStyle(doc)
@@ -469,7 +495,7 @@ class SymbologyWidget(QtWidgets.QWidget):
         self.trace_style_changed.emit(style_str)
 
     @deduplicate_updates
-    def update_selected_layer_style(self, force_update=False):
+    def update_selected_layer_style(self, force_update=False) -> None:
         QgsMessageLog.logMessage("update_selected_layer_style")
         doc = QtXml.QDomDocument()
         self.selected_layer.exportNamedStyle(doc)
@@ -479,7 +505,7 @@ class SymbologyWidget(QtWidgets.QWidget):
         self.selected_style_changed.emit(style_str)
 
     @deduplicate_updates
-    def update_segment_layer_style(self, force_update=False):
+    def update_segment_layer_style(self, force_update=False) -> None:
         QgsMessageLog.logMessage("update_segment_layer_style")
         doc = QtXml.QDomDocument()
         self.segment_layer.exportNamedStyle(doc)
@@ -489,7 +515,7 @@ class SymbologyWidget(QtWidgets.QWidget):
         self.segment_style_changed.emit(style_str)
 
     @deduplicate_updates
-    def update_unavailable_point_layer_style(self, force_update=False):
+    def update_unavailable_point_layer_style(self, force_update=False) -> None:
         QgsMessageLog.logMessage("update_unavailable_point_layer_style")
         doc = QtXml.QDomDocument()
         self.point_layer.exportNamedStyle(doc)
@@ -499,7 +525,7 @@ class SymbologyWidget(QtWidgets.QWidget):
         self.unavailable_point_style_changed.emit(style_str)
 
     @deduplicate_updates
-    def update_unavailable_line_layer_style(self, force_update=False):
+    def update_unavailable_line_layer_style(self, force_update=False) -> None:
         QgsMessageLog.logMessage("update_unavailable_line_layer_style")
         doc = QtXml.QDomDocument()
         self.line_layer.exportNamedStyle(doc)
@@ -509,7 +535,7 @@ class SymbologyWidget(QtWidgets.QWidget):
         self.unavailable_line_style_changed.emit(style_str)
 
     @deduplicate_updates
-    def update_categorized_layer_style(self, force_update=False):
+    def update_categorized_layer_style(self, force_update=False) -> None:
         QgsMessageLog.logMessage("update_categorized_layer_style")
         doc = QtXml.QDomDocument()
         self.categorized_layer.exportNamedStyle(doc)
