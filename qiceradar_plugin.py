@@ -182,7 +182,6 @@ class GranuleMetadata():
         return valid_path and valid_data_format and valid_campaign
 
 
-    @profile
     def load_data_from_layer(self, granule_name: str, layer_id, feature_id):
         """
         Load attributes and a database file path from the map layer
@@ -201,7 +200,6 @@ class GranuleMetadata():
         self.layer_attributes = feature.attributeMap()
         self.database_filepath = layer.source().split("|")[0]
 
-    @profile
     def load_data_from_database(self, granule_name: str, database_filepath: str):
         """
         Load granule and campaign data from the database
