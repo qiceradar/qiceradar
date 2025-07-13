@@ -29,6 +29,7 @@
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import time
+from typing import Tuple
 
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
@@ -135,7 +136,9 @@ class SymbologyWidget(QtWidgets.QWidget):
         self.setLayout(vbox)
 
     @staticmethod
-    def setup_tree_view(iface) -> (QgsLayerTree, QgsLayerTreeView, QgsLayerTreeModel):
+    def setup_tree_view(
+        iface,
+    ) -> Tuple[QgsLayerTree, QgsLayerTreeView, QgsLayerTreeModel]:
         root = QgsLayerTree()
         view = QgsLayerTreeView()
         model = QgsLayerTreeModel(root)

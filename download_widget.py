@@ -577,7 +577,7 @@ class DownloadWorker(QtCore.QObject):
                 print(f"Could not find last-modified. Huh. Headers = {req.headers}")
         except Exception as ex:
             QgsMessageLog.logMessage("DownloadWorker.run got exception!")
-            QgsMessageLog.logMessage(ex)
+            QgsMessageLog.logMessage(f"{ex}")
             self.failed.emit(str(ex))
             return
 

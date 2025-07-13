@@ -51,7 +51,6 @@ class QIceRadarSelectionTool(QgsMapTool):
 
     def __init__(self, canvas: QgsMapCanvas) -> None:
         super(QIceRadarSelectionTool, self).__init__(canvas)
-        self.canvas = canvas
 
     def canvasReleaseEvent(self, event: QgsMapMouseEvent) -> None:
         pt = event.mapPoint()
@@ -62,7 +61,7 @@ class QIceRadarSelectionTool(QgsMapTool):
         # the user to select one thing in a row.
         # (unsetMapTool does cause the deactivate signal to be emitted)
         # self.deactivate()
-        self.canvas.unsetMapTool(self)
+        self.canvas().unsetMapTool(self)
 
 
 class QIceRadarSelectionWidget(QtWidgets.QDialog):

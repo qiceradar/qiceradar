@@ -41,7 +41,7 @@ def show_error_message_box(msg: str) -> None:
     msgbox.exec_()
 
 
-def HLine() -> None:
+def HLine() -> QtWidgets.QFrame:
     """
     Creates a horizontal line that can be added to a layout.
     """
@@ -51,7 +51,7 @@ def HLine() -> None:
     return line
 
 
-def VLine() -> None:
+def VLine() -> QtWidgets.QFrame:
     """
     Creates a vertical line that can be added to a layout.
     """
