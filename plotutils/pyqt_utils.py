@@ -32,8 +32,7 @@
 import PyQt5.QtWidgets as QtWidgets
 
 
-def show_error_message_box(msg):
-    # type: (str) -> None
+def show_error_message_box(msg: str) -> None:
     """
     Pops up dialog box with input message and waits for user to hit 'ok'.
     """
@@ -42,8 +41,7 @@ def show_error_message_box(msg):
     msgbox.exec_()
 
 
-def HLine():
-    # type: () -> None
+def HLine() -> None:
     """
     Creates a horizontal line that can be added to a layout.
     """
@@ -53,8 +51,7 @@ def HLine():
     return line
 
 
-def VLine():
-    # type: () -> None
+def VLine() -> None:
     """
     Creates a vertical line that can be added to a layout.
     """

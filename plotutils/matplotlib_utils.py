@@ -46,12 +46,10 @@ def get_ax_shape(fig, ax) -> Tuple[int, int]:
 class UnzoomableAxes(matplotlib.axes.Axes):
     name = "unzoomable"
 
-    def can_pan(self):
-        # type: () -> bool
+    def can_pan(self) -> bool:
         return False
 
-    def can_zoom(self):
-        # type: () -> bool
+    def can_zoom(self) -> bool:
         return False
 
 

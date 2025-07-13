@@ -30,7 +30,7 @@
 
 
 import itertools
-from typing import Any, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import matplotlib
 import PyQt5.QtCore as QtCore
@@ -413,10 +413,9 @@ class ColorKeyInterface(QtWidgets.QWidget):
 
     def __init__(
         self,
-        parent=None,  # type: Optional[Any]
-        color_cb=None,  # type: Optional[Callable[str, QtGui.QColor]]
-    ):
-        # type: (...) -> None
+        parent: Optional[Any] = None,
+        color_cb: Optional[Callable[str, QtGui.QColor]] = None,
+    ) -> None:
         """
         * color_cb(label, color) - callback to call when color is changed.
         """
@@ -427,13 +426,12 @@ class ColorKeyInterface(QtWidgets.QWidget):
         self.layout = QtWidgets.QVBoxLayout()
         self.setLayout(self.layout)
 
-        self.labels = []  # type: List[str]
-        self.textlabels = {}  # type: Dict[str, QtGui.QColor]
-        self.colorbuttons = {}  # type: Dict[str, QtWidgets.QPushButton]
-        self.row_hboxes = {}  # type: Dict[str, QtWidgets.QHBoxLayout]
+        self.labels: List[str] = []
+        self.textlabels: Dict[str, QtGui.QColor] = {}
+        self.colorbuttons: Dict[str, QtWidgets.QPushButton] = {}
+        self.row_hboxes: Dict[str, QtWidgets.QHBoxLayout] = {}
 
-    def on_color_button_clicked(self, label):
-        # type: (str) -> None
+    def on_color_button_clicked(self, label: str) -> None:
         # Pop up color dialog
         # if color not none, change button color AND call self.color_cb(color)
         color = QtWidgets.QColorDialog.getColor()
@@ -444,8 +442,7 @@ class ColorKeyInterface(QtWidgets.QWidget):
             )
             self.color_cb(label, str(color.name()))
 
-    def add_row(self, label, color):
-        # type: (str, QtGui.QColor) -> None
+    def add_row(self, label: str, color: QtGui.QColor) -> None:
         """
         The label here will be used when calling color_cb.
         """
@@ -466,8 +463,7 @@ class ColorKeyInterface(QtWidgets.QWidget):
         self.row_hboxes[label].addWidget(self.textlabels[label])
         self.layout.addLayout(self.row_hboxes[label])
 
-    def remove_row(self, label):
-        # type: (str) -> None
+    def remove_row(self, label: str) -> None:
         self.labels.remove(label)
         self.layout.removeItem(self.row_hboxes[label])
         self.textlabels[label].deleteLater()
@@ -485,18 +481,16 @@ class TextColorInterface(QtWidgets.QWidget):
 
     def __init__(
         self,
-        parent=None,  # type: Optional[Any]
-        color_cb=None,  # type: Optional[Callable[str, QtGui.QColor]]
-        params_cb=None,  # type: Optional[Callable[str, Tuple[float, float, str]]]
-        remove_cb=None,  # type: Optional[Callable[str]]
-    ):
-        # type: (...) -> None
+        parent: Optional[Any] = None,
+        color_cb: Optional[Callable[str, QtGui.QColor]] = None,
+        params_cb: Optional[Callable[[str, Tuple[float, float, str]], None]] = None,
+        remove_cb: Optional[Callable[[str], None]] = None,
+    ) -> None:
         """
         * color_cb(label, color)
         * params_cb(label, params), where params is (float, float, str)
         * remove_cb(label)
         """
-        # TODO: I'm not sure what this is needed for?
         super(TextColorInterface, self).__init__(parent)
         self.parent = parent
 
@@ -507,20 +501,19 @@ class TextColorInterface(QtWidgets.QWidget):
         self.layout = QtWidgets.QVBoxLayout()
         self.setLayout(self.layout)
 
-        self.labels = []  # type: List[str]
-        self.text_labels = {}  # type: Dict[str, QtWidgets.QLabel]
+        self.labels: List[str] = []
+        self.text_labels: Dict[str, QtWidgets.QLabel] = {}
         # self.spinboxes = {}
-        self.first_textboxes = {}  # type: Dict[str, QtWidgets.QLineEdit]
-        self.second_textboxes = {}  # type: Dict[str, QtWidgets.QLineEdit]
-        self.color_buttons = {}  # type: Dict[str, QtWidgets.QPushButton]
-        self.colors = {}  # type: Dict[str, QtWidgets.QColor]
-        self.val1 = {}  # type: Dict[str, float]
-        self.val2 = {}  # type: Dict[str, float]
-        self.remove_buttons = {}  # type: Dict[str, QtWidgets.QPushButton]
-        self.row_hboxes = {}  # type: Dict[str, QtWidgets.QHBoxLayout]
+        self.first_textboxes: Dict[str, QtWidgets.QLineEdit] = {}
+        self.second_textboxes: Dict[str, QtWidgets.QLineEdit] = {}
+        self.color_buttons: Dict[str, QtWidgets.QPushButton] = {}
+        self.colors: Dict[str, QtWidgets.QColor] = {}
+        self.val1: Dict[str, float] = {}
+        self.val2: Dict[str, float] = {}
+        self.remove_buttons: Dict[str, QtWidgets.QPushButton] = {}
+        self.row_hboxes: Dict[str, QtWidgets.QHBoxLayout] = {}
 
-    def _on_color_button_clicked(self, label):
-        # type: (str) -> None
+    def _on_color_button_clicked(self, label: str) -> None:
         # Pop up color dialog
         # if color not none, change button color AND call self.color_cb(color)
         color = QtWidgets.QColorDialog.getColor()
@@ -531,14 +524,12 @@ class TextColorInterface(QtWidgets.QWidget):
             if self.color_cb is not None:
                 self.color_cb(label, str(color.name()))
 
-    def _on_remove_button_clicked(self, label):
-        # type: (str) -> None
+    def _on_remove_button_clicked(self, label: str) -> None:
         self.remove_row(label)
         if self.remove_cb is not None:
             self.remove_cb(label)
 
-    def _on_textbox_edited(self, textbox, label):
-        # type: (int, str) -> None
+    def _on_textbox_edited(self, textbox: int, label: str) -> None:
         try:
             val1 = float(self.first_textboxes[label].text())
             self.val1[label] = val1
@@ -560,14 +551,14 @@ class TextColorInterface(QtWidgets.QWidget):
         if self.params_cb is not None:
             self.params_cb(label, params)
 
-    def _on_spinbox_changed(self, label):
-        # type: (str) -> None
+    def _on_spinbox_changed(self, label: str) -> None:
         print(
             "spinbox for data %s changed to %f" % (label, self.spinboxes[label].value())
         )
 
-    def add_row(self, label, box1_val, box2_val, color):
-        # type: (str, float, float, QtGui.QColor) -> None
+    def add_row(
+        self, label: str, box1_val: float, box2_val: float, color: QtGui.QColor
+    ) -> None:
         self.labels.append(label)
         self.val1[label] = box1_val
         self.val2[label] = box2_val
@@ -628,8 +619,7 @@ class TextColorInterface(QtWidgets.QWidget):
 
         self.layout.addLayout(self.row_hboxes[label])
 
-    def remove_row(self, label):
-        # type: (str) -> None
+    def remove_row(self, label: str) -> None:
         self.labels.remove(label)
         self.layout.removeItem(self.row_hboxes[label])
 
@@ -654,12 +644,11 @@ class RadioCheckInterface(QtWidgets.QWidget):
 
     def __init__(
         self,
-        parent=None,  # type: Optional[Any]
-        radio_cb=None,  # type: Optional[Callable[str]]
-        check_cb=None,  # type: Optional[Callable[str, bool]]
-        color_cb=None,  # type: Optional[Callable[str, any]]
-    ):
-        # type: (...) -> None
+        parent: Optional[Any] = None,
+        radio_cb: Optional[Callable[[str], None]] = None,
+        check_cb: Optional[Callable[[str, bool], None]] = None,
+        color_cb: Optional[Callable[[str, any], None]] = None,
+    ) -> None:
         """
         * radio_cb(string) - callback to call when any radio button clicked.
           (if one is selected, others are all unclicked).
@@ -693,17 +682,17 @@ class RadioCheckInterface(QtWidgets.QWidget):
 
         # self.layout.addLayout(self.title_hbox)
 
-        self.row_hboxes = {}  # type: Dict[str, QtWidgets.QHBoxLayout]
-        self.checkboxes = {}  # type: Dict[str, QtWidgets.QCheckBox]
-        self.radiobuttons = {}  # type: Dict[str, QtWidgets.QRadioButton]
-        self.textlabels = {}  # type: Dict[str, QtWidgets.QLabel]
-        self.colorbuttons = {}  # type: Dict[str, QtWidgets.QPushButton]
+        self.row_hboxes: Dict[str, QtWidgets.QHBoxLayout] = {}
+        self.checkboxes: Dict[str, QtWidgets.QCheckBox] = {}
+        self.radiobuttons: Dict[str, QtWidgets.QRadioButton] = {}
+        self.textlabels: Dict[str, QtWidgets.QLabel] = {}
+        self.colorbuttons: Dict[str, QtWidgets.QPushButton] = {}
         # used for looking up colors
-        self.colors = {}  # type: Dict[str, QtGui.QColor]
+        self.colors: Dict[str, QtGui.QColor] = {}
 
         # When adding buttons to the group, set the id to the label's index
         # in the labels array.
-        self.labels = []  # type: List[str]
+        self.labels: List[str] = []
         self.radio_group = QtWidgets.QButtonGroup()
         self.radio_group.buttonPressed.connect(
             self.on_radio_button_pressed,
@@ -719,23 +708,19 @@ class RadioCheckInterface(QtWidgets.QWidget):
         # TODO: come up with a better set of default colors?
         # TODO: Generate better initial colors than random ...
         # color = '#%06x' % np.random.randint(0xFFFFFF)
-        self.pick_color_gen = itertools.cycle(
-            [
-                "green",
-                "red",
-                "blue",
-                "magenta",
-                "cyan",
-                "purple",
-            ]
-        )
+        self.pick_color_gen = itertools.cycle([
+            "green",
+            "red",
+            "blue",
+            "magenta",
+            "cyan",
+            "purple",
+        ])
 
-    def get_color(self, label):
-        # type: (str) -> QtGui.QColor
+    def get_color(self, label: str) -> QtGui.QColor:
         return self.colors[label]
 
-    def add_row(self, label):
-        # type: (str) -> None
+    def add_row(self, label: str) -> None:
         self.labels.append(label)
 
         self.radiobuttons[label] = QtWidgets.QRadioButton("")
@@ -766,8 +751,7 @@ class RadioCheckInterface(QtWidgets.QWidget):
 
         self.layout.addLayout(self.row_hboxes[label])
 
-    def on_color_button_clicked(self, label):
-        # type: (str) -> None
+    def on_color_button_clicked(self, label: str) -> None:
         color = QtWidgets.QColorDialog.getColor()
         if color.isValid():
             self.colorbuttons[label].setStyleSheet(
@@ -776,14 +760,12 @@ class RadioCheckInterface(QtWidgets.QWidget):
             if self.color_cb is not None:
                 self.color_cb(label, str(color.name()))
 
-    def on_radio_button_pressed(self, button_id):
-        # type: (int) -> None
+    def on_radio_button_pressed(self, button_id: int) -> None:
         label = self.labels[button_id]
         if self.radio_cb is not None:
             self.radio_cb(label)
 
-    def on_checkbox_pressed(self, button_id):
-        # type: (int) -> None
+    def on_checkbox_pressed(self, button_id: int) -> None:
         label = self.labels[button_id]
         # For some reason, this returns 1 when event causes box to be
         # unchecked, and 0 when it winds up checked.
@@ -791,8 +773,7 @@ class RadioCheckInterface(QtWidgets.QWidget):
         if self.check_cb is not None:
             self.check_cb(label, not checked)
 
-    def activate_radio_checkbox(self):
-        # type: () -> None
+    def activate_radio_checkbox(self) -> None:
         """
         This causes the checkbox of the currently-active radio button to be
         selected. It is needed for programatically showing the max when

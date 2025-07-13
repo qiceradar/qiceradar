@@ -28,42 +28,37 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+from typing import Dict, Optional, Tuple
+
 import matplotlib
 import matplotlib.patches
 import matplotlib.transforms
 import numpy as np
-
-try:
-    import typing
-    from typing import Dict, Optional, Tuple
-except:
-    pass
 
 
 class Scalebar(object):
     # NB - NONE of these functions actually call draw on the axis.
     def __init__(
         self,
-        ax,  # type: matplotlib.axes.Axes
-        x0,  # type: float
-        y0,  # type: float
-        length,  # type: float
-        width,  # type: float
-        coords="frac",  # type: str
-        orientation="horiz",  # type: str
-        barstyle="simple",  # type: str
-        unit_label=None,  # type: Optional[str]
-        unit_factor=1,  # type: float
-        fontsize=9,  # type: float
-        fontcolor="k",  # type: str
-        zorder=10,  # type: float
-        majorcolor="k",  # type: str
-        minorcolor="w",  # type: str
-        linewidth=1,  # type: int
-        autoupdate=True,  # type: bool
-        alpha=0.0,  # type: float
-    ):
-        # type: (...) -> None
+        ax: matplotlib.axes.Axes,
+        x0: float,
+        y0: float,
+        length: float,
+        width: float,
+        coords: str = "frac",
+        orientation: str = "horiz",
+        barstyle: str = "simple",
+        unit_label: Optional[str] = None,
+        unit_factor: float = 1,
+        fontsize: float = 9,
+        fontcolor: str = "k",
+        zorder: float = 10,
+        majorcolor: str = "k",
+        minorcolor: str = "w",
+        linewidth: int = 1,
+        autoupdate: bool = True,
+        alpha: float = 0.0,
+    ) -> None:
         """
         Adds a scalebar to specified axes.
 
@@ -128,7 +123,7 @@ class Scalebar(object):
         self.autoupdate = autoupdate
         self.alpha = alpha
         # Will hold all the created artists
-        self.elements = {}  # type: Dict[str, matplotlib.lines.Line2D]
+        self.elements: Dict[str, matplotlib.lines.Line2D] = {}
         # Create ax for background; needs to be smaller zorder than the axis itself.
         # QUESTION: Does zorder for an axis bg compare to other axes, or to the
         #           zorder of elements within those axes?
@@ -184,8 +179,7 @@ class Scalebar(object):
         )
         return repr
 
-    def get_full_extent(self, pad=0.0):
-        # type: (float) -> Tuple[float, float, float, float]
+    def get_full_extent(self, pad: float = 0.0) -> Tuple[float, float, float, float]:
         """
         return the extent, in figure coords, of all elements in the scalebar.
         """
@@ -202,8 +196,7 @@ class Scalebar(object):
         extent = bbox_exp.transformed(fig.transFigure.inverted())
         return extent
 
-    def set_visible(self, visible):
-        # type: (bool) -> None
+    def set_visible(self, visible: bool) -> None:
         """
         Sets the scalebar to be visible or not.
         (Lets it be tured on/off as a unit by a GUI.)
@@ -211,16 +204,16 @@ class Scalebar(object):
         for elem in self.elements.values():
             elem.set_visible(visible)
 
-    def set_origin(self, x0=None, y0=None):
-        # type: (Optional[float], Optional[float]) -> None
+    def set_origin(
+        self, x0: Optional[float] = None, y0: Optional[float] = None
+    ) -> None:
         """Set scalebar origin"""
         if x0 is not None:
             self.x0 = x0
         if y0 is not None:
             self.y0 = y0
 
-    def set_length(self, length, scale=None):
-        # type: (float, Optional[float]) -> None
+    def set_length(self, length: float, scale: Optional[float] = None) -> None:
         """
         Set scalebar length. If scale is set, it gives total dimensions of
         current axes in length's direction and units.
@@ -250,8 +243,7 @@ class Scalebar(object):
         else:
             raise Exception("Invalid orientation")
 
-    def update(self):
-        # type: () -> None
+    def update(self) -> None:
         """
         Call this when the axis bounds change.
         """
@@ -268,8 +260,7 @@ class Scalebar(object):
             ext = self.get_full_extent(pad=0.01)
             self.background.set_bounds(*ext.bounds)
 
-    def _setup_simple(self):
-        # type: () -> None
+    def _setup_simple(self) -> None:
         """
         Setup the plot objects for a simple line, with ticks at the ends.
         """
@@ -342,8 +333,7 @@ class Scalebar(object):
         else:
             raise Exception("Invalid orientation")
 
-    def _setup_fancy(self):
-        # type: () -> None
+    def _setup_fancy(self) -> None:
         """
         Set up all the plot objects for plotting 4 alternating-color blocks,
         with the ends and midpoint labeled below or left,
@@ -517,8 +507,7 @@ class Scalebar(object):
                 zorder=self.zorder,
             )
 
-    def _update_simple(self):
-        # type: () -> None
+    def _update_simple(self) -> None:
         xleft, xright, xcen, ybottom, ytop, ycen = self._calculate_bounds()
         if self.orientation == "horiz":
             self.elements["line"].set_data([xleft, xright], [ycen, ycen])
@@ -551,8 +540,7 @@ class Scalebar(object):
             label = ""
         self.elements["label"].set_text(label)
 
-    def _update_fancy(self):
-        # type: () -> None
+    def _update_fancy(self) -> None:
         xleft, xright, xcen, ybottom, ytop, ycen = self._calculate_bounds()
         dx_bar = xright - xleft
         dy_bar = ytop - ybottom
@@ -645,8 +633,7 @@ class Scalebar(object):
         self.elements["tick3_text"].set_text("%d" % int(0.5 * bar_length))
         self.elements["tick5_text"].set_text("%d" % int(bar_length))
 
-    def _calculate_bounds(self):
-        # type: () -> Tuple[float, float, float, float, float, float]
+    def _calculate_bounds(self) -> Tuple[float, float, float, float, float, float]:
         """
         Calculates the axis-unit bounds for the scalebar.
         Handles all conversions between unit_factor, and making scalebar a nice

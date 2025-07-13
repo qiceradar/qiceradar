@@ -29,16 +29,10 @@
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
+from typing import Dict, List, Optional, Tuple
+
+import matplotlib
 import numpy as np
-
-try:
-    import typing
-    from typing import Any, List, Optional, Tuple
-
-    if typing.TYPE_CHECKING:
-        import matplotlib
-except Exception:
-    pass
 
 
 # TODO: Should this behave more like an artist?
@@ -46,18 +40,17 @@ class Sparkline(object):
     # NB - NONE of these functions actually call draw on the axis.
     def __init__(
         self,
-        ax,  # type: matplotlib.axes.Axes
-        scalebar_pos=None,  # type: Optional[Tuple[float, float]]
-        scalebar_len=None,  # type: Optional[float]
-        major_color="r",  # type: str
-        minor_color="o",  # type: str
-        units="",  # type: str
-        plot_width=None,  # type: Optional[float]
-        plot_offset=None,  # type: Optional[float]
-        data_axis="x",  # type: str
-        show_extrema=True,  # type: bool
-    ):
-        # type: (...) -> None
+        ax: matplotlib.axes.Axes,
+        scalebar_pos: Optional[Tuple[float, float]] = None,
+        scalebar_len: Optional[float] = None,
+        major_color: str = "r",
+        minor_color: str = "o",
+        units: str = "",
+        plot_width: Optional[float] = None,
+        plot_offset: Optional[float] = None,
+        data_axis: str = "x",
+        show_extrema: bool = True,
+    ) -> None:
         """
         Draws a sparkline on the input axes. Input data will be registered
         to either the x or y axis.
@@ -94,14 +87,14 @@ class Sparkline(object):
         self.show_extrema = show_extrema
         # This is ugly - sometimes I want to give an absolute offset (for
         # traces), sometimes I want relative (for unrelated data)
-        self.abs_offset = None  # type: Optional[float]
+        self.abs_offset: Optional[float] = None
 
         # Vectors that are going to be plotted.
-        self.x_in = None  # type: Optional[List[float]]
-        self.y_in = None  # type: Optional[List[float]]
+        self.x_in: Optional[List[float]] = None
+        self.y_in: Optional[List[float]] = None
 
         # Will hold all created artists
-        self.elements = {}  # type: Dict[str, matplotlib.lines.Line2D]
+        self.elements: Dict[str, matplotlib.lines.Line2D] = {}
 
         self.plot(major_color, minor_color)
 
@@ -109,8 +102,7 @@ class Sparkline(object):
         self.ax.callbacks.connect("xlim_changed", update_lambda)
         self.ax.callbacks.connect("ylim_changed", update_lambda)
 
-    def plot(self, major_color, minor_color):
-        # type: (str, str) -> None
+    def plot(self, major_color: str, minor_color: str) -> None:
         """
         Performs initial creation of the plot elements.
         """
@@ -132,8 +124,9 @@ class Sparkline(object):
 
         self.set_visible(False)
 
-    def set_data(self, x_in, y_in, offset=None):
-        # type: (List[float], List[float], Optional[float]) -> None
+    def set_data(
+        self, x_in: List[float], y_in: List[float], offset: Optional[float] = None
+    ) -> None:
         """
         For now, we're assuming that we're plotting data vs. the x-axis.
         (Like for the RCoeff sparkline, NOT the trace one.)
@@ -298,8 +291,7 @@ class Sparkline(object):
                     ]
                 )
 
-    def set_major_color(self, color):
-        # type: (str) -> None
+    def set_major_color(self, color: str) -> None:
         """
         Changes color used in this sparkline.
         Useful for when the colormap changes interactively.
@@ -307,13 +299,11 @@ class Sparkline(object):
         for key in ["line", "min_text", "max_text", "scale", "scale_text"]:
             self.elements[key].set_color(color)
 
-    def set_minor_color(self, color):
-        # type: (str) -> None
+    def set_minor_color(self, color: str) -> None:
         for key in ["min_pt", "max_pt"]:
             self.elements[key].set_color(color)
 
-    def set_visible(self, visible):
-        # type: (bool) -> None
+    def set_visible(self, visible: bool) -> None:
         """
         Sets the sparkline to be visible or not.
         (Lets my GUI turn this on/off as a unit.)
@@ -321,8 +311,7 @@ class Sparkline(object):
         for elem in self.elements.values():
             elem.set_visible(visible)
 
-    def update(self):
-        # type: () -> None
+    def update(self) -> None:
         """
         Called when the axis bounds change.
         Yeah, this is hacky, but there would have been a ton of repeated

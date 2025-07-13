@@ -33,14 +33,20 @@ Matplotlib classes that replicate UI elements from the original Xevas radar
 viewer at UTIG.
 """
 
-from typing import Any, Tuple
+from typing import Tuple
 
 import matplotlib.widgets as mpw
 
 
 class XevasHorizSelector:
-    def __init__(self, ax, min_data, max_data, update_cb=None, margin_frac=0):
-        # type: (Any, float, float, Any, float) -> None
+    def __init__(
+        self,
+        ax,
+        min_data: float,
+        max_data: float,
+        update_cb=None,
+        margin_frac: float = 0,
+    ) -> None:
         """
         * ax - axes on which to add the selector.
         * {min,max}_data - in data units, min/max of full plot
@@ -98,8 +104,14 @@ class XevasHorizSelector:
 
 
 class XevasVertSelector:
-    def __init__(self, ax, min_data, max_data, update_cb=None, margin_frac=0):
-        # type: (Any, float, float, Any, float) -> None
+    def __init__(
+        self,
+        ax,
+        min_data: float,
+        max_data: float,
+        update_cb=None,
+        margin_frac: float = 0,
+    ) -> None:
         """
         * ax - axes on which to add the selector.
         * {min,max}_data - in axis units, min/max of full plot
