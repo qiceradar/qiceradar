@@ -1,0 +1,75 @@
+direction: right
+
+classes: {
+  signal: {
+    label: signal
+    style.stroke-dash: 2
+  }
+}
+
+selected_radargram_signal: QIceRadarSelectionWidget.selected_radargram
+selected_radargram_signal -> qiceradar_plugin.selected_transect_callback: {class: signal}
+
+radar_window_cursor_callback: RadarWindow.parent_cursor_cb
+radar_window_cursor_callback -> qiceradar_plugin.update_trace_callback: {
+  label: lon, lat
+}
+
+radar_window_selection_callback: RadarWindow.parent_xlim_changed_cb
+radar_window_selection_callback -> qiceradar_plugin.update_radar_xlim_callback: {
+  label: points
+}
+
+radar_window_close_callback: RadarWindow.close_cb
+radar_window_close_callback -> qiceradar_plugin.not_implemented
+qiceradar_plugin.not_implemented.style.font-color: red
+
+qiceradar_plugin: {
+  label: QIceRadarPlugin
+
+  selected_transect_callback: {
+    shape: rectangle
+    label: |md
+      ### selected_transect_view_callback(granule)
+      Pulls granule information from the database
+    |
+  }
+
+  display_unavailable_dialogue: display_unavailable_dialogue()
+  selected_transect_callback -> display_unavailable_dialogue: {
+    label: "granule[\"availability\"]=='u'"
+  }
+
+  request_user_update_config: {
+    shape: rectangle
+    label: |md
+      ### request_user_update_config()
+      creates QGIS message bar with push button
+    |
+  }
+
+  selected_transect_callback -> request_user_update_config: {
+    label: "invalid root directory"
+  }
+
+  display_cannot_view_dialog: display_cannot_view_dialog()
+  selected_transect_callback -> display_cannot_view_dialog: {
+    label: "unsupported datatype"
+  }
+
+  display_must_download_dialog: display_must_download_dialog()
+  selected_transect_callback -> display_must_download_dialog: {
+    label: "data not yet downloaded"
+  }
+
+  launch_radar_viewer: launch_radar_viewer()
+  selected_transect_callback -> launch_radar_viewer: {
+    label: "ELSE"
+  }
+}
+
+qiceradar_config_widget: QIceRadarConfigWidget()
+qiceradar_plugin.request_user_update_config -> qiceradar_config_widget
+
+radar_window: RadarWindow()
+qiceradar_plugin.launch_radar_viewer -> radar_window
