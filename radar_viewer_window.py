@@ -474,7 +474,7 @@ class RadarWindow(QtWidgets.QMainWindow):
         # offset = 0
         # trace_dB = self.radar_data.data[trace_num, :] / 1000.0 + offset
         trace_dB = self.radar_data.data[trace_num, :]
-        yy = np.arange(0, self.radar_data.num_samples)
+        yy = np.arange(0, self.radar_data.num_samples).tolist()
 
         self.plot_objects.trace_sparkline.set_data(trace_dB, yy, trace_num + 0.5)
         self.plot_objects.trace_base.set_data(
@@ -582,7 +582,7 @@ class RadarWindow(QtWidgets.QMainWindow):
         self.plot_objects.radar_plot.set_data(
             data[xlim[0] : xlim[1] : radar_skip, ylim[1] : ylim[0]].T
         )
-        extent = np.append(xlim, ylim)
+        extent = (xlim[0], xlim[1], ylim[0], ylim[1])
         self.plot_objects.radar_plot.set_extent(extent)
         self.plot_objects.radar_plot.set_cmap(self.plot_params.cmap)
         self.plot_objects.radar_plot.set_clim(self.plot_params.clim)
@@ -861,7 +861,7 @@ class RadarWindow(QtWidgets.QMainWindow):
         self.update_ylim((ymax - dy, ymin - dy))
         self.full_redraw()
 
-    def _on_resize_event(self, event: matplotlib.backend_bases.Event) -> None:
+    def _on_resize_event(self, event: matplotlib.backend_bases.ResizeEvent) -> None:
         """
         TODO
         """
@@ -957,6 +957,7 @@ class RadarWindow(QtWidgets.QMainWindow):
         """
         Pop up dialog box with metadata about currently-displayed transect.
         """
+        assert self.db_campaign is not None
         science_citation = self.db_campaign.science_citation.replace("\n", "<br>")
         citation_info = (
             f"Granule: {self.db_granule.granule_name}"
@@ -1063,76 +1064,6 @@ class RadarWindow(QtWidgets.QMainWindow):
             self.plot_objects.crosshair_x.set_color(major)
             self.plot_objects.crosshair_y.set_color(major)
             self.full_redraw()
-
-    def _on_product_group_pressed(self) -> None:
-        """
-        TODO: this function is not currently used since QIceRadar does not
-        support switching products
-        """
-        # old_product = self.plot_params.product
-        for new_product, button in self.plot_objects.product_buttons.items():
-            if button.isDown():
-                if self.plot_params.product != new_product:
-                    prev_xlim = self.plot_params.curr_xlim
-
-                    prev_num_traces = self.radar_data.num_traces
-                    self.plot_params.product = new_product
-                    # TODO: This needs to be updated!
-                    # channel = self.plot_params.channel
-                    channel = 1
-                    self.radar_data = radar_utils.RadarData(
-                        self.pst, new_product, channel
-                    )
-                    new_num_traces = self.radar_data.num_traces
-
-                    # Converting bounds is trickier than you might think because
-                    # it has to result in integers, which leads to propagating
-                    # rounding errors.
-
-                    # We used to do this for 1m/pik1, and if we decide to support
-                    # BAS's pulse data, we may have to do that as well.
-                    # if prev_1m and not new_1m:
-                    #     # Have to be careful here to be consistent ... w/o the
-                    #     # ceil, repeately converting between the two caused the
-                    #     # boundaries to drift slightly.
-                    #     new_xcoords = self.transect_data.rtc.convert(
-                    #         list(prev_xlim), "traces_1m", "traces_pik1"
-                    #     )
-                    #     new_xlim = (np.ceil(new_xcoords[0]), np.ceil(new_xcoords[1]))
-                    # elif new_1m and not prev_1m:
-                    #     # Have to be careful here - each pik1 sweep points to
-                    #     # the middle of the range of 1m sweeps used to generate
-                    #     # it, so we want to make the boundary the midpoint.
-                    #     xcoords = [
-                    #         prev_xlim[0] - 1,
-                    #         prev_xlim[0],
-                    #         prev_xlim[1] - 1,
-                    #         prev_xlim[1],
-                    #     ]
-                    #     # This awkwardness is for mypy type checking - convert takes floats!
-                    #     new_xcoords = self.transect_data.rtc.convert(
-                    #         [float(xc) for xc in xcoords], "traces_pik1", "traces_1m"
-                    #     )
-                    #     new_xlim = (
-                    #         int(np.round(np.mean(new_xcoords[0:2]))),
-                    #         int(np.round(np.mean(new_xcoords[2:4]))),
-                    #     )
-                    # else:
-                    #     new_xlim = prev_xlim
-                    new_xlim = prev_xlim
-
-                    # If we're at the start/end of the PST, want new display
-                    # to also include all data ....
-                    if prev_xlim[0] == 0:
-                        new_xlim = (0, new_xlim[1])
-                    if prev_xlim[-1] >= prev_num_traces - 1:
-                        new_xlim = (new_xlim[0], new_num_traces - 1)
-
-                    self.update_xlim(new_xlim)
-                    self.plot_params.update_clim_from_radar(self.radar_data)
-
-                    # This recalculates skip and sets data based on curr_xlim
-                    self.full_redraw()
 
     def _on_trace_checkbox_changed(self, val: int) -> None:
         """
@@ -1294,8 +1225,13 @@ class RadarWindow(QtWidgets.QMainWindow):
         # Huh. This seems to only affect the vertical scale of the figure ...
         plot_objects.fig = Figure((18.0, 12.0), dpi=plot_objects.dpi)
         plot_objects.canvas = FigureCanvas(plot_objects.fig)
-        # This can't go any earlier, or else I'll get errors about fig not having canvas
-        plot_objects.fig.canvas.mpl_connect("resize_event", self._on_resize_event)
+
+        # The type needs to be ResizeEvent, but mypy expects Event
+        plot_objects.fig.canvas.mpl_connect(
+            "resize_event",
+            self._on_resize_event,  # type: ignore[arg-type]
+        )
+
         # Used for save button + info about trace/sample of mouse position
         plot_objects.mpl_toolbar = SaveToolbar(
             plot_objects.canvas, plot_objects.main_frame
@@ -1553,19 +1489,29 @@ class RadarWindow(QtWidgets.QMainWindow):
         # activated/deactivated, but now that a single one is controlling all
         # of 'em, it's simpler to just leave it connected. Only change that if
         # it turns into a bottleneck...
+
+        # Another place where mypy expects type Event but it needs to be MouseEvent
         plot_objects.canvas.mpl_connect(
-            "motion_notify_event", self._on_motion_notify_event
+            "motion_notify_event",
+            self._on_motion_notify_event,  # type: ignore[arg-type]
         )
 
         # Since the RectangleSelector no longer provides the
         # correct ordering of click/release events to the callback,
         # cache the coordinates, then just use the selector for
         # its drawing/blitting/callback.
+        # I think the stubs may be wrong here? The docs say this should be a MouseEvent:
+        # https://matplotlib.org/stable/users/explain/figure/event_handling.html
+        # but mypy gives an error:
+        # Argument 2 to "mpl_connect" of "FigureCanvasBase" has incompatible type
+        # "Callable[[MouseEvent], None]"; expected "Callable[[Event], Any]"  [arg-type]
         plot_objects.canvas.mpl_connect(
-            "button_press_event", self._on_button_press_event
+            "button_press_event",
+            self._on_button_press_event,  # type: ignore[arg-type]
         )
         plot_objects.canvas.mpl_connect(
-            "button_release_event", self._on_button_release_event
+            "button_release_event",
+            self._on_button_release_event,  # type: ignore[arg-type]
         )
 
         # Radio buttons for controlling what mouse clicks mean!

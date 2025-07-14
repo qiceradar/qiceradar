@@ -54,6 +54,7 @@ except Exception:
     pass
 
 from qgis.gui import (
+    QgisInterface,
     QgsLayerTreeView,
     QgsLayerTreeViewMenuProvider,
 )
@@ -86,7 +87,7 @@ def deduplicate_updates(func):
     @functools.wraps(func)
     def wrapper(self: "SymbologyWidget", *args, **kwargs):
         try:
-            force_update = kwargs["force_update"]
+            force_update: bool = kwargs["force_update"]
         except Exception:
             force_update = False
 
@@ -107,22 +108,19 @@ class SymbologyMenuProvider(QgsLayerTreeViewMenuProvider):
     symbol dialogue, so this pops up the entire layer properties dialog.
     """
 
-    def __init__(self, view, iface):
+    def __init__(self, view: QgsLayerTreeView, iface: QgisInterface) -> None:
         super().__init__()
         self.view = view
         self.iface = iface
 
-    def createContextMenu(self):
-        if not self.view.currentLayer():
-            return None
-
+    def createContextMenu(self) -> QtWidgets.QMenu:
         menu = QtWidgets.QMenu()
         layer_properties_action = QtWidgets.QAction("Layer Properties", menu)
         layer_properties_action.triggered.connect(self.open_layer_properties)
         menu.addAction(layer_properties_action)
         return menu
 
-    def open_layer_properties(self):
+    def open_layer_properties(self) -> None:
         self.iface.showLayerProperties(self.view.currentLayer(), "mOptsPage_Symbology")
 
 
@@ -152,7 +150,7 @@ class SymbologyWidget(QtWidgets.QWidget):
     unavailable_line_style_config_key = "qiceradar_config/unavailable_line_layer_style"
     categorized_style_config_key = "qiceradar_config/categorized_layer_style"
 
-    def __init__(self, iface) -> None:
+    def __init__(self, iface: QgisInterface) -> None:
         super().__init__()
         self.iface = iface
         # I have not been able to find a signal that triggers only once
@@ -180,7 +178,7 @@ class SymbologyWidget(QtWidgets.QWidget):
 
     @staticmethod
     def setup_tree_view(
-        iface,
+        iface: QgisInterface,
     ) -> Tuple[QgsLayerTree, QgsLayerTreeView, QgsLayerTreeModel]:
         root = QgsLayerTree()
         view = QgsLayerTreeView()
@@ -487,7 +485,7 @@ class SymbologyWidget(QtWidgets.QWidget):
         return categorized_layer
 
     @deduplicate_updates
-    def update_trace_layer_style(self, force_update=False) -> None:
+    def update_trace_layer_style(self, force_update: bool = False) -> None:
         QgsMessageLog.logMessage("update_trace_layer_style")
         doc = QtXml.QDomDocument()
         self.trace_layer.exportNamedStyle(doc)
@@ -497,7 +495,7 @@ class SymbologyWidget(QtWidgets.QWidget):
         self.trace_style_changed.emit(style_str)
 
     @deduplicate_updates
-    def update_selected_layer_style(self, force_update=False) -> None:
+    def update_selected_layer_style(self, force_update: bool = False) -> None:
         QgsMessageLog.logMessage("update_selected_layer_style")
         doc = QtXml.QDomDocument()
         self.selected_layer.exportNamedStyle(doc)
@@ -507,7 +505,7 @@ class SymbologyWidget(QtWidgets.QWidget):
         self.selected_style_changed.emit(style_str)
 
     @deduplicate_updates
-    def update_segment_layer_style(self, force_update=False) -> None:
+    def update_segment_layer_style(self, force_update: bool = False) -> None:
         QgsMessageLog.logMessage("update_segment_layer_style")
         doc = QtXml.QDomDocument()
         self.segment_layer.exportNamedStyle(doc)
@@ -517,7 +515,7 @@ class SymbologyWidget(QtWidgets.QWidget):
         self.segment_style_changed.emit(style_str)
 
     @deduplicate_updates
-    def update_unavailable_point_layer_style(self, force_update=False) -> None:
+    def update_unavailable_point_layer_style(self, force_update: bool = False) -> None:
         QgsMessageLog.logMessage("update_unavailable_point_layer_style")
         doc = QtXml.QDomDocument()
         self.point_layer.exportNamedStyle(doc)
@@ -527,7 +525,7 @@ class SymbologyWidget(QtWidgets.QWidget):
         self.unavailable_point_style_changed.emit(style_str)
 
     @deduplicate_updates
-    def update_unavailable_line_layer_style(self, force_update=False) -> None:
+    def update_unavailable_line_layer_style(self, force_update: bool = False) -> None:
         QgsMessageLog.logMessage("update_unavailable_line_layer_style")
         doc = QtXml.QDomDocument()
         self.line_layer.exportNamedStyle(doc)
@@ -537,7 +535,7 @@ class SymbologyWidget(QtWidgets.QWidget):
         self.unavailable_line_style_changed.emit(style_str)
 
     @deduplicate_updates
-    def update_categorized_layer_style(self, force_update=False) -> None:
+    def update_categorized_layer_style(self, force_update: bool = False) -> None:
         QgsMessageLog.logMessage("update_categorized_layer_style")
         doc = QtXml.QDomDocument()
         self.categorized_layer.exportNamedStyle(doc)

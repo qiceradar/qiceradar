@@ -33,7 +33,7 @@ import inspect
 import os
 import pathlib
 import sqlite3
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
@@ -94,7 +94,7 @@ class GranuleMetadata:
     in this class.
     """
 
-    def __init__(self, granule_name, layer_id, feature_id):
+    def __init__(self, granule_name: str, layer_id: str, feature_id: int) -> None:
         """
         It is too slow to iterate through the whole layer tree looking for
         the matching granule name, so the plugin maintains that mapping
@@ -102,15 +102,14 @@ class GranuleMetadata:
         """
         self.granule_name = granule_name
 
-        # dict returned by attributeMap()
-        self.layer_attributes = None
+        # this includes finding the database file needed for the next call
+        self.layer_attributes, self.database_filepath = self.load_data_from_layer(
+            self.granule_name, layer_id, feature_id
+        )
+
         # dataclasses that map to data from a row in the corresponding database
         self.db_granule: Optional[db_utils.DatabaseGranule] = None
         self.db_campaign: Optional[db_utils.DatabaseCampaign] = None
-
-        # this includes finding the database file needed for the next call
-        self.load_data_from_layer(self.granule_name, layer_id, feature_id)
-
         # this populates self.db_granule and self.db_campaign
         self.load_data_from_database(self.granule_name, self.database_filepath)
 
@@ -198,7 +197,10 @@ class GranuleMetadata:
 
         return valid_path and valid_data_format and valid_campaign
 
-    def load_data_from_layer(self, granule_name: str, layer_id, feature_id):
+    @classmethod
+    def load_data_from_layer(
+        cls, granule_name: str, layer_id: str, feature_id: int
+    ) -> Tuple[Dict[str, Any], str]:
         """
         Load attributes and a database file path from the map layer
         """
@@ -213,10 +215,13 @@ class GranuleMetadata:
                 "indicating a corrupt index. Try reloading the plugin."
             )
         feature = layer.getFeature(feature_id)
-        self.layer_attributes = feature.attributeMap()
-        self.database_filepath = layer.source().split("|")[0]
+        layer_attributes = feature.attributeMap()
+        database_filepath = layer.source().split("|")[0]
+        return layer_attributes, database_filepath
 
-    def load_data_from_database(self, granule_name: str, database_filepath: str):
+    def load_data_from_database(
+        self, granule_name: str, database_filepath: str
+    ) -> None:
         """
         Load granule and campaign data from the database
         """
@@ -292,6 +297,8 @@ class QIceRadarPlugin(QtCore.QObject):
 
         # After presenting the transect names to the user to select among,
         # need to map back to a feature in the database that we can query.
+        # Confusingly map layers and feature IDs have different types
+        # (QgsMapLayer.id() -> str, QgsFeature.id() -> int)
         self.transect_name_lookup: Dict[str, Tuple[str, int]] = {}
 
         # Try loading config when plugin initialized (before project has been selected)
@@ -497,19 +504,19 @@ class QIceRadarPlugin(QtCore.QObject):
             map_layer.importNamedStyle(doc)
             map_layer.triggerRepaint()
 
-    def on_trace_style_changed(self, style_str: str):
+    def on_trace_style_changed(self, style_str: str) -> None:
         QgsMessageLog.logMessage("on_trace_style_changed")
         self.on_named_layer_style_changed(style_str, "Highlighted Trace")
 
-    def on_selected_style_changed(self, style_str: str):
+    def on_selected_style_changed(self, style_str: str) -> None:
         QgsMessageLog.logMessage("on_selected_style_changed")
         self.on_named_layer_style_changed(style_str, "Selected Region")
 
-    def on_segment_style_changed(self, style_str: str):
+    def on_segment_style_changed(self, style_str: str) -> None:
         QgsMessageLog.logMessage("on_segment_style_changed")
         self.on_named_layer_style_changed(style_str, "Full Transect")
 
-    def on_categorized_style_changed(self, style_str: str):
+    def on_categorized_style_changed(self, style_str: str) -> None:
         QgsMessageLog.logMessage("on_categorized_style_changed")
         # This update assumes that rule based renderers have already been created,
         # so initialize them if necessary
@@ -572,10 +579,10 @@ class QIceRadarPlugin(QtCore.QObject):
             self.iface.layerTreeView().refreshLayerSymbology(map_layer.id())
             map_layer.triggerRepaint()
 
-    def on_unavailable_point_style_changed(self, style_str: str):
+    def on_unavailable_point_style_changed(self, style_str: str) -> None:
         self.on_unavailable_layer_style_changed(style_str, QgsWkbTypes.PointGeometry)
 
-    def on_unavailable_line_style_changed(self, style_str: str):
+    def on_unavailable_line_style_changed(self, style_str: str) -> None:
         self.on_unavailable_layer_style_changed(style_str, QgsWkbTypes.LineGeometry)
 
     # NOTE: I'm unsure about the typing here ... might only be valid for
@@ -646,7 +653,7 @@ class QIceRadarPlugin(QtCore.QObject):
             message_box.exec()
         return index_group
 
-    def is_valid_granule_feature(self, feature: QgsFeature):
+    def is_valid_granule_feature(self, feature: QgsFeature) -> bool:
         attributes = feature.attributeMap()
         # TODO: this should include relative_path, but early
         # versions of the index did not always have that set.
@@ -764,6 +771,7 @@ class QIceRadarPlugin(QtCore.QObject):
             return
 
         # can_download_radargram already checked for a non-null relative_path
+        assert self.config.rootdir is not None
         transect_filepath = pathlib.Path(
             self.config.rootdir, granule_metadata.relative_path()
         )
@@ -773,6 +781,7 @@ class QIceRadarPlugin(QtCore.QObject):
             return
 
         # TODO: refactor to not reach in and directly use db_granule
+        assert granule_metadata.db_granule is not None
         self.launch_radar_downloader(transect_filepath, granule_metadata.db_granule)
 
     def selected_transect_view_callback(self, granule_name: str) -> None:
@@ -803,6 +812,9 @@ class QIceRadarPlugin(QtCore.QObject):
             QIceRadarDialogs.display_cannot_view_dialog(granule_name)
             return
 
+        # if I was targeting a more recent version of python, I think I could
+        # have used TypeGuard to annotate rootdir_is_valid and narrow the type
+        assert self.config.rootdir is not None
         transect_filepath = pathlib.Path(
             self.config.rootdir, granule_metadata.relative_path()
         )
@@ -813,7 +825,9 @@ class QIceRadarPlugin(QtCore.QObject):
             )
             return
 
-        # TODO: Rather than just assuming the user will fix it in the
+        # These were checked by the above function calls, but mypy does not know that
+        assert granule_metadata.db_campaign is not None
+        assert granule_metadata.db_granule is not None
         self.launch_radar_viewer(
             transect_filepath, granule_metadata.db_granule, granule_metadata.db_campaign
         )
@@ -890,10 +904,10 @@ class QIceRadarPlugin(QtCore.QObject):
         # TODO: (So does the widget! I just tested, and it leaves layers when it is closed!)
         self.setup_qgis_layers(db_granule.granule_name)
 
-        def trace_cb(lon, lat):
+        def trace_cb(lon: float, lat: float) -> None:
             return self.update_trace_callback(db_granule.granule_name, lon, lat)
 
-        def selection_cb(pts):
+        def selection_cb(pts: List[Tuple[float, float]]) -> None:
             return self.update_radar_xlim_callback(db_granule.granule_name, pts)
 
         rw = RadarWindow(
@@ -1320,6 +1334,7 @@ class QIceRadarPlugin(QtCore.QObject):
 
         # The toolbar icon isn't automatically unchecked when the
         # corresponding action is deactivated.
+        assert isinstance(download_selection_tool.deactivated, QtCore.pyqtBoundSignal)
         download_selection_tool.deactivated.connect(
             lambda ac=self.downloader_action, ch=False: self.maybe_set_action_checked(
                 ac, ch
@@ -1362,6 +1377,7 @@ class QIceRadarPlugin(QtCore.QObject):
 
         self.iface.mapCanvas().setMapTool(viewer_selection_tool)
 
+        assert isinstance(viewer_selection_tool.deactivated, QtCore.pyqtBoundSignal)
         viewer_selection_tool.deactivated.connect(
             lambda ac=self.viewer_action, ch=False: self.maybe_set_action_checked(
                 ac, ch
