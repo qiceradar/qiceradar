@@ -32,7 +32,6 @@ Dataclasses used for passing rows from the geopackage database around.
 """
 
 from dataclasses import dataclass
-from typing import List
 
 
 @dataclass
@@ -88,4 +87,4 @@ class DatabaseCampaign:
     db_campaign: str
     institution: str
     data_citation: str
-    science_citation: List[str]
+    science_citation: str

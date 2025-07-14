@@ -207,10 +207,10 @@ class DoubleSlider(QtWidgets.QWidget):
         # Unfortunately, the on_changed events don't only fire when the mouse
         # is released, but that seems to cause minimal enough redraw to not
         # present a huge problem.
-        slider_label = None
+        slider_label = ""
         if RANGE_SLIDER_SUPPORTED:
             # Can't use full xlim because the slider handles will go off the sides
-            self.slider_ax = self.slider_fig.add_axes([0.03, 0, 0.94, 1])
+            self.slider_ax = self.slider_fig.add_axes((0.03, 0, 0.94, 1))
             self.range_slider = RangeSlider(
                 self.slider_ax, slider_label, curr_lim[0], curr_lim[1], valfmt=None
             )
@@ -221,8 +221,8 @@ class DoubleSlider(QtWidgets.QWidget):
             self.slider_canvas.setFixedHeight(15)
         else:
             # Can't use full xlim because the slider handles will go off the sides
-            self.slider_ax1 = self.slider_fig.add_axes([0.03, 0.5, 0.94, 1])
-            self.slider_ax2 = self.slider_fig.add_axes([0.03, 0.0, 0.94, 0.5])
+            self.slider_ax1 = self.slider_fig.add_axes((0.03, 0.5, 0.94, 1))
+            self.slider_ax2 = self.slider_fig.add_axes((0.03, 0.0, 0.94, 0.5))
 
             self.min_range_slider = Slider(
                 self.slider_ax1,
@@ -299,7 +299,7 @@ class DoubleSlider(QtWidgets.QWidget):
         """
         rmin, rmax = lim
         # Create new RangeSlider since valmin/valmax can't be changed via the API
-        slider_label = None
+        slider_label = ""
         if RANGE_SLIDER_SUPPORTED:
             self.range_slider = matplotlib.widgets.RangeSlider(
                 self.slider_ax, slider_label, lim[0], lim[1], valinit=lim, valfmt=None
@@ -368,19 +368,19 @@ class DoubleSlider(QtWidgets.QWidget):
         if self.new_lim_cb is not None:
             self.new_lim_cb(self.curr_lim)
 
-    def _on_min_range_slider_changed(self, newmin) -> None:
+    def _on_min_range_slider_changed(self, newmin: float) -> None:
         # print(f"Called _on_min_range_slider_changed with newlim = {newmin}")
         self.min_slider_textbox.setText(f"{newmin:.2f}")
         curr_max = float(self.max_slider_textbox.text())
-        self.curr_lim = [newmin, curr_max]
+        self.curr_lim = (newmin, curr_max)
         if self.new_lim_cb is not None:
             self.new_lim_cb(self.curr_lim)
 
-    def _on_max_range_slider_changed(self, newmax) -> None:
+    def _on_max_range_slider_changed(self, newmax: float) -> None:
         # print(f"Called _on_max_range_slider_changed with newlim = {newmax}")
         self.max_slider_textbox.setText(f"{newmax:.2f}")
         curr_min = float(self.min_slider_textbox.text())
-        self.curr_lim = [curr_min, newmax]
+        self.curr_lim = (curr_min, newmax)
         if self.new_lim_cb is not None:
             self.new_lim_cb(self.curr_lim)
 
@@ -414,13 +414,12 @@ class ColorKeyInterface(QtWidgets.QWidget):
     def __init__(
         self,
         parent: Optional[Any] = None,
-        color_cb: Optional[Callable[str, QtGui.QColor]] = None,
+        color_cb: Optional[Callable[[str], QtGui.QColor]] = None,
     ) -> None:
         """
         * color_cb(label, color) - callback to call when color is changed.
         """
         super(ColorKeyInterface, self).__init__(parent)
-        self.parent = parent
         self.color_cb = color_cb
 
         self.layout = QtWidgets.QVBoxLayout()

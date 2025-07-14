@@ -57,6 +57,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 import matplotlib as mpl
 import matplotlib.backend_bases
 import numpy as np
+from matplotlib.backend_bases import MouseButton
 
 mpl.use("Qt5Agg")
 import matplotlib.widgets as mpw
@@ -147,13 +148,15 @@ class PlotParams:
     Some are initialized here; I'm not sure if that's a good idea.
     """
 
-    def __init__(self) -> None:
-        self.curr_xlim: Optional[Tuple[int, int]] = None
-        self.curr_ylim: Optional[Tuple[int, int]] = None
+    def __init__(self, radar_data: radar_utils.RadarData) -> None:
+        self.curr_xlim = (0, radar_data.num_traces - 1)
+        self.curr_ylim = (radar_data.num_samples - 1, 0)
+
         # how many traces are skipped between the displayed traces
         self.radar_skip: Optional[int] = None
 
         # which trace the camera cursor should currently be on.
+        # NB: I don't think this is only the camera anymore -- repurposed for cursor?
         self.displayed_trace_num: Optional[int] = None
 
         # Whether these positions should be frozen or updated as the mouse moves
@@ -175,7 +178,7 @@ class PlotParams:
         self.horiz_scale_x0 = 0.1
         self.horiz_scale_y0 = 0.05
 
-        self.product: Optional[str] = None
+        self.product = radar_data.available_products[0]
 
         self.cmap = "gray"
         self.clim = (0, 1)  # what's currently displayed
@@ -183,19 +186,6 @@ class PlotParams:
         self.cmax = 1  # max val from radar
 
         self.mouse_mode = "zoom"
-
-    def initialize_from_radar(self, radar_data: radar_utils.RadarData) -> None:
-        """
-        Called to initialize the plotting parameters to match the
-        limits implied by the radargram. Only called at the start - we don't
-        want the plots to change as a function of reloading data.
-        # TODO: Maybe have clim change, but not xlim, for reloading? ... the
-        # pik1/1m change is a bigger, more annoying, problem.
-        """
-        self.product = radar_data.available_products[0]
-        self.curr_xlim = (0, radar_data.num_traces - 1)
-        self.curr_ylim = (radar_data.num_samples - 1, 0)
-
         self.update_clim_from_radar(radar_data)
 
     def update_clim_from_radar(self, radar_data: radar_utils.RadarData) -> None:
@@ -248,6 +238,7 @@ class PlotObjects:
         self.radar_ax: Optional[mpl.axes.Axes] = None
         self.xevas_horiz_ax: Optional[mpl.axes.Axes] = None
         self.xevas_vert_ax: Optional[mpl.axes.Axes] = None
+        self.pick_ax: Optional[mpl.axes.Axes] = None
 
         self.xevas_horiz: Optional[xevas.XevasHorizSelector] = None
         self.xevas_vert: Optional[xevas.XevasVertSelector] = None
@@ -272,10 +263,11 @@ class PlotObjects:
 
         self.product_buttons: Dict[str, QtWidgets.QRadioButton] = {}
         self.product_group: Optional[QtWidgets.QButtonGroup] = None
+
+        # We actually want to keep references to these because we check their state
         self.trace_checkbox: Optional[QtWidgets.QCheckBox] = None
         self.crosshair_checkbox: Optional[QtWidgets.QCheckBox] = None
 
-        self.clim_label = None
         self.clim_slider: Optional[DoubleSlider] = None
 
         self.vert_scale_checkbox: Optional[QtWidgets.QCheckBox] = None
@@ -297,8 +289,8 @@ class PlotObjects:
 
         self.quit_button: Optional[QtWidgets.QPushButton] = None
 
-        self.annotations_label: Optional[QtWidgets.QLabel] = None
-        self.annotations_vbox: Optional[QtWidgets.QHBoxLayout] = None
+        self.cursor_label: Optional[QtWidgets.QLabel] = None
+        self.cursor_format: Optional[str] = None
 
 
 def calc_radar_skip(fig: Figure, ax: mpl.axes.Axes, xlim: Tuple[int, int]) -> int:
@@ -327,7 +319,7 @@ class RadarWindow(QtWidgets.QMainWindow):
             Callable[[List[Tuple[float, float]]], None]
         ] = None,
         parent_cursor_cb: Optional[Callable[[float, float], None]] = None,
-        close_cb: Optional[Callable[[None], None]] = None,
+        close_cb: Optional[Callable[[], None]] = None,
     ) -> None:
         """
         params:
@@ -346,8 +338,8 @@ class RadarWindow(QtWidgets.QMainWindow):
         # This is for the QtGui stuff
         super(RadarWindow, self).__init__()
 
-        self.press_event = None
-        self.release_event = None
+        self.press_event: Optional[matplotlib.backend_bases.MouseEvent] = None
+        self.release_event: Optional[matplotlib.backend_bases.MouseEvent] = None
 
         self.pst = db_granule.granule_name
         self.db_granule = db_granule
@@ -367,20 +359,20 @@ class RadarWindow(QtWidgets.QMainWindow):
         # TODO: Fix this!
         self.radar_data = radar_utils.RadarData(self.db_granule, filepath)
         self.plot_config = PlotConfig(self.radar_data.available_products)
-        self.plot_params = PlotParams()
-        self.plot_params.initialize_from_radar(self.radar_data)
+        self.plot_params = PlotParams(self.radar_data)
 
         # Set up the visual display, and hook up all the callbacks.
         # TODO: get rid of dependence on plot_params.available_products?
         self.plot_objects = self.create_layout(self.plot_params, self.plot_config)
 
         # This needs to come after initialize_from_radar, b/c it depends on xlim
-        # TODO: silly to pass radar_data just for
         self.initialize_gui_from_params_data(self.plot_params, self.plot_config)
 
         # This is annoying, because it depends on and modifies plot_params
         # However, I think that all that matters is that the fig and ax exist,
         # not their state.
+        assert self.plot_objects.fig is not None
+        assert self.plot_objects.radar_ax is not None
         self.plot_params.radar_skip = calc_radar_skip(
             self.plot_objects.fig,
             self.plot_objects.radar_ax,
@@ -418,6 +410,9 @@ class RadarWindow(QtWidgets.QMainWindow):
         This just sets the current state of various GUI widgets based on:
         * plot params - initial state of buttons
         """
+        assert self.plot_objects.radar_ax is not None
+        assert self.plot_objects.clim_slider is not None
+
         # TODO(lindzey): Shouldn't need this input list if we only
         #  create the appropriate buttons given the dataset.
         # for product in plot_config.all_products:
@@ -442,6 +437,9 @@ class RadarWindow(QtWidgets.QMainWindow):
         updates info below radargram regarding trace/sample/amplitude/twtt
         corresponding to mouse's current location.
         """
+        assert self.plot_objects.cursor_label is not None
+        assert self.plot_objects.cursor_format is not None
+
         db = self.radar_data.data[trace_num, sample_num]
         twtt = self.radar_data.fast_time_us[sample_num]
         self.plot_objects.cursor_label.setText(
@@ -463,6 +461,9 @@ class RadarWindow(QtWidgets.QMainWindow):
         Center trace on median, scaled to take up 1/16th of display..
         Raw values are reported in dBm, with a season-dependent offset.
         """
+        assert self.plot_objects.trace_sparkline is not None
+        assert self.plot_objects.trace_base is not None
+
         self.plot_params.displayed_trace_num = trace_num
 
         # TODO: Need to figure out conversion from counts to dB in order to
@@ -473,7 +474,7 @@ class RadarWindow(QtWidgets.QMainWindow):
         # offset = 0
         # trace_dB = self.radar_data.data[trace_num, :] / 1000.0 + offset
         trace_dB = self.radar_data.data[trace_num, :]
-        yy = np.arange(0, self.radar_data.num_samples)
+        yy = np.arange(0, self.radar_data.num_samples).tolist()
 
         self.plot_objects.trace_sparkline.set_data(trace_dB, yy, trace_num + 0.5)
         self.plot_objects.trace_base.set_data(
@@ -491,6 +492,9 @@ class RadarWindow(QtWidgets.QMainWindow):
             return False
 
     def update_crosshair(self, trace: int, sample: int) -> None:
+        assert self.plot_objects.crosshair_x is not None
+        assert self.plot_objects.crosshair_y is not None
+
         if self.parent_cursor_cb is not None:
             lon = self.radar_data.lon[trace]
             lat = self.radar_data.lat[trace]
@@ -508,6 +512,10 @@ class RadarWindow(QtWidgets.QMainWindow):
     # TODO: This is ugly -- mypy doesn't currently pass, so I've wound up
     #   adding type checks + fixes in the code that should be redundant.
     def update_xlim(self, new_xlim: Tuple[int, int]) -> None:
+        assert self.plot_objects.fig is not None
+        assert self.plot_objects.radar_ax is not None
+        assert self.plot_objects.xevas_horiz is not None
+
         if not isinstance(new_xlim[0], int) or not isinstance(new_xlim[1], int):
             print("update_xlim: expects integers, since we are plotting an image")
             xmin = int(round(new_xlim[0]))
@@ -519,7 +527,7 @@ class RadarWindow(QtWidgets.QMainWindow):
         )
         self.plot_objects.radar_ax.set_xlim(new_xlim)
         # It's OK, this isn't infinitely circular ...
-        # update_selection doesn't trigger any cbs.
+        # update_selection doesn't trigger any callbacks.
         num_traces = self.radar_data.num_traces
         self.plot_objects.xevas_horiz.update_selection(
             (
@@ -529,6 +537,9 @@ class RadarWindow(QtWidgets.QMainWindow):
         )
 
     def update_ylim(self, new_ylim: Tuple[int, int]) -> None:
+        assert self.plot_objects.radar_ax is not None
+        assert self.plot_objects.xevas_vert is not None
+
         if not isinstance(new_ylim[0], int) or not isinstance(new_ylim[1], int):
             print("update_ylim: expects integers, since we are plotting an image")
             ymin = int(round(new_ylim[0]))
@@ -560,6 +571,10 @@ class RadarWindow(QtWidgets.QMainWindow):
         * if they're animated=False, then I'll need to clear 'em off
           before recording, which also requires a draw.
         """
+        assert self.plot_objects.canvas is not None
+        assert self.plot_objects.full_ax is not None
+        assert self.plot_objects.radar_plot is not None
+
         data = self.radar_data.data
         xlim = self.plot_params.curr_xlim
         ylim = self.plot_params.curr_ylim
@@ -567,7 +582,7 @@ class RadarWindow(QtWidgets.QMainWindow):
         self.plot_objects.radar_plot.set_data(
             data[xlim[0] : xlim[1] : radar_skip, ylim[1] : ylim[0]].T
         )
-        extent = np.append(xlim, ylim)
+        extent = (xlim[0], xlim[1], ylim[0], ylim[1])
         self.plot_objects.radar_plot.set_extent(extent)
         self.plot_objects.radar_plot.set_cmap(self.plot_params.cmap)
         self.plot_objects.radar_plot.set_clim(self.plot_params.clim)
@@ -615,6 +630,9 @@ class RadarWindow(QtWidgets.QMainWindow):
         # this or do a per-artist blit when it changes. However, this seems
         # easier/cleaner.
         """
+        assert self.plot_objects.canvas is not None
+        assert self.plot_objects.full_ax is not None
+
         self.plot_objects.canvas.restore_region(self.radar_restore)
 
         self.data_set_visible(self.plot_objects, self.plot_params)
@@ -643,6 +661,13 @@ class RadarWindow(QtWidgets.QMainWindow):
         changed seems combinatorially annoying.
         Plus, the reflection coeff/elsa plots don't need to be blitted.
         """
+        assert self.plot_objects.canvas is not None
+        assert self.plot_objects.crosshair_x is not None
+        assert self.plot_objects.crosshair_y is not None
+        assert self.plot_objects.radar_ax is not None
+        assert self.plot_objects.trace_base is not None
+        assert self.plot_objects.trace_sparkline is not None
+
         # TODO: Make this more general, rather than hardcoding artists in?
         # I couldn't figure out how to do it alongside the special cases
         # for the sparkline (and making the sparkline an artist ...
@@ -675,6 +700,8 @@ class RadarWindow(QtWidgets.QMainWindow):
         """
         Set ALL overlays invisible.
         """
+        assert plot_objects.vert_scale is not None
+        assert plot_objects.horiz_scale is not None
         plot_objects.vert_scale.set_visible(False)
         plot_objects.horiz_scale.set_visible(False)
 
@@ -686,10 +713,16 @@ class RadarWindow(QtWidgets.QMainWindow):
         Replot various data overlays based on configuration in plot_params.
         Does NOT turn everything on; only those that are enabled.
         """
+        assert plot_objects.vert_scale is not None
+        assert plot_objects.horiz_scale is not None
         plot_objects.vert_scale.set_visible(plot_params.vert_scale_visible)
         plot_objects.horiz_scale.set_visible(plot_params.horiz_scale_visible)
 
     def cursor_set_invisible(self, plot_objects: PlotObjects) -> None:
+        assert plot_objects.crosshair_x is not None
+        assert plot_objects.crosshair_y is not None
+        assert plot_objects.trace_sparkline is not None
+        assert plot_objects.trace_base is not None
         plot_objects.crosshair_x.set_visible(False)
         plot_objects.crosshair_y.set_visible(False)
         plot_objects.trace_sparkline.set_visible(False)
@@ -702,6 +735,10 @@ class RadarWindow(QtWidgets.QMainWindow):
         Restores any elements that follow the mouse around to be visible
         if they were supposed to be ...
         """
+        assert plot_objects.crosshair_x is not None
+        assert plot_objects.crosshair_y is not None
+        assert plot_objects.trace_sparkline is not None
+        assert plot_objects.trace_base is not None
         plot_objects.crosshair_x.set_visible(plot_params.crosshair_visible)
         plot_objects.crosshair_y.set_visible(plot_params.crosshair_visible)
         plot_objects.trace_sparkline.set_visible(plot_params.trace_visible)
@@ -714,17 +751,21 @@ class RadarWindow(QtWidgets.QMainWindow):
         axis, which means that picks just slightly off the side will be
         interpreted as labeling the last trace.
         """
+        assert self.plot_objects.radar_ax is not None
         # I tried precalculating this, but it was awkward to make sure it got
         # initialized correctly. It takes < 0.2ms per call, so I'm OK with
         # that penalty. Putting it in initialize_gui_from_params_data just
         # after set_{xlim,ylim} didn't do it.
         inv = self.plot_objects.radar_ax.transData.inverted()
-        p0 = inv.transform(pick)
+        # p0 = inv.transform(pick)
+        px, py = inv.transform(pick)
         xlim = self.plot_params.curr_xlim
         ylim = self.plot_params.curr_ylim
-        xx = min(xlim[1], max(xlim[0], int(round(p0[0]))))
+        # xx = min(xlim[1], max(xlim[0], int(round(p0[0]))))
+        xx = min(xlim[1], max(xlim[0], int(round(px))))
         # Tricksy .. axis reversed!
-        yy = max(ylim[1], min(ylim[0], int(round(p0[1]))))
+        # yy = max(ylim[1], min(ylim[0], int(round(p0[1]))))
+        yy = max(ylim[1], min(ylim[0], int(round(py))))
         return xx, yy
 
     def _on_left_rect_click_zoom(
@@ -824,6 +865,9 @@ class RadarWindow(QtWidgets.QMainWindow):
         """
         TODO
         """
+        assert self.plot_objects.fig is not None
+        assert self.plot_objects.radar_ax is not None
+
         self.plot_params.radar_skip = calc_radar_skip(
             self.plot_objects.fig,
             self.plot_objects.radar_ax,
@@ -836,15 +880,19 @@ class RadarWindow(QtWidgets.QMainWindow):
         """
         TODO
         """
+        assert self.plot_params.displayed_trace_num is not None
+        assert self.plot_params.radar_skip is not None
         if event.key() == QtCore.Qt.Key_F and self.plot_params.trace_visible:
             self.plot_params.trace_frozen = not self.plot_params.trace_frozen
         elif event.key() == QtCore.Qt.Key_G and self.plot_params.crosshair_visible:
             self.plot_params.crosshair_frozen = not self.plot_params.crosshair_frozen
         # And, adding support for enhanced picking =)
         elif event.key() == QtCore.Qt.Key_A:
-            self._on_auto_pick_button_clicked()
+            # self._on_auto_pick_button_clicked()
+            pass
         elif event.key() == QtCore.Qt.Key_S:
-            self._on_save_picks_button_clicked()
+            # self._on_save_picks_button_clicked()
+            pass
         elif event.key() == QtCore.Qt.Key_E:
             self._on_prev_button_clicked()
         elif event.key() == QtCore.Qt.Key_R:
@@ -866,7 +914,8 @@ class RadarWindow(QtWidgets.QMainWindow):
         ]:
             # These all require figuring out the mouse postion in the radar ax,
             # so I'm sending them through the same handler.
-            self._on_pick_key_press(event.key())
+            # self._on_pick_key_press(event.key())
+            pass
 
         # Using the key press events from the gui, the gui elements get first
         # dibbs on handling 'em. So, can't use left/right... replacing with ,.
@@ -908,6 +957,7 @@ class RadarWindow(QtWidgets.QMainWindow):
         """
         Pop up dialog box with metadata about currently-displayed transect.
         """
+        assert self.db_campaign is not None
         science_citation = self.db_campaign.science_citation.replace("\n", "<br>")
         citation_info = (
             f"Granule: {self.db_granule.granule_name}"
@@ -939,7 +989,7 @@ class RadarWindow(QtWidgets.QMainWindow):
         """
         xlim = self.plot_params.curr_xlim
         width = xlim[1] - xlim[0]
-        shift = np.min([0.8 * width, xlim[0]])
+        shift: float = np.min([0.8 * width, xlim[0]])
         xmin = int(round(xlim[0] - shift))
         xmax = int(round(xlim[1] - shift))
         print(
@@ -967,7 +1017,7 @@ class RadarWindow(QtWidgets.QMainWindow):
         """
         xlim = self.plot_params.curr_xlim
         width = xlim[1] - xlim[0]
-        shift = np.min([0.8 * width, self.radar_data.num_traces - 1 - xlim[1]])
+        shift: float = np.min([0.8 * width, self.radar_data.num_traces - 1 - xlim[1]])
         xmin = int(round(xlim[0] + shift))
         xmax = int(round(xlim[1] + shift))
         print(
@@ -981,6 +1031,10 @@ class RadarWindow(QtWidgets.QMainWindow):
         """
         TODO
         """
+        assert self.plot_objects.trace_sparkline is not None
+        assert self.plot_objects.trace_base is not None
+        assert self.plot_objects.crosshair_x is not None
+        assert self.plot_objects.crosshair_y is not None
         for cmap, button in self.plot_objects.colormap_buttons.items():
             if button.isDown():
                 if self.plot_params.cmap != cmap:
@@ -994,7 +1048,12 @@ class RadarWindow(QtWidgets.QMainWindow):
                     self.plot_objects.crosshair_y.set_color(major)
                     self.full_redraw()
 
-    def _on_colormap_changed(self, cmap):
+    def _on_colormap_changed(self, cmap: str) -> None:
+        assert self.plot_objects.trace_sparkline is not None
+        assert self.plot_objects.trace_base is not None
+        assert self.plot_objects.crosshair_x is not None
+        assert self.plot_objects.crosshair_y is not None
+
         if self.plot_params.cmap != cmap:
             self.plot_params.cmap = cmap
             major = self.plot_config.cmap_major_colors[cmap]
@@ -1006,78 +1065,11 @@ class RadarWindow(QtWidgets.QMainWindow):
             self.plot_objects.crosshair_y.set_color(major)
             self.full_redraw()
 
-    def _on_product_group_pressed(self) -> None:
-        """
-        TODO
-        """
-        # old_product = self.plot_params.product
-        for new_product, button in self.plot_objects.product_buttons.items():
-            if button.isDown():
-                if self.plot_params.product != new_product:
-                    prev_xlim = self.plot_params.curr_xlim
-
-                    prev_num_traces = self.radar_data.num_traces
-                    self.plot_params.product = new_product
-                    # TODO: This needs to be updated!
-                    self.radar_data = radar_utils.RadarData(
-                        self.pst, new_product, self.plot_params.channel
-                    )
-                    new_num_traces = self.radar_data.num_traces
-
-                    # Converting bounds is trickier than you might think because
-                    # it has to result in integers, which leads to propagating
-                    # rounding errors.
-
-                    # We used to do this for 1m/pik1, and if we decide to support
-                    # BAS's pulse data, we may have to do that as well.
-                    # if prev_1m and not new_1m:
-                    #     # Have to be careful here to be consistent ... w/o the
-                    #     # ceil, repeately converting between the two caused the
-                    #     # boundaries to drift slightly.
-                    #     new_xcoords = self.transect_data.rtc.convert(
-                    #         list(prev_xlim), "traces_1m", "traces_pik1"
-                    #     )
-                    #     new_xlim = (np.ceil(new_xcoords[0]), np.ceil(new_xcoords[1]))
-                    # elif new_1m and not prev_1m:
-                    #     # Have to be careful here - each pik1 sweep points to
-                    #     # the middle of the range of 1m sweeps used to generate
-                    #     # it, so we want to make the boundary the midpoint.
-                    #     xcoords = [
-                    #         prev_xlim[0] - 1,
-                    #         prev_xlim[0],
-                    #         prev_xlim[1] - 1,
-                    #         prev_xlim[1],
-                    #     ]
-                    #     # This awkwardness is for mypy type checking - convert takes floats!
-                    #     new_xcoords = self.transect_data.rtc.convert(
-                    #         [float(xc) for xc in xcoords], "traces_pik1", "traces_1m"
-                    #     )
-                    #     new_xlim = (
-                    #         int(np.round(np.mean(new_xcoords[0:2]))),
-                    #         int(np.round(np.mean(new_xcoords[2:4]))),
-                    #     )
-                    # else:
-                    #     new_xlim = prev_xlim
-                    new_xlim = prev_xlim
-
-                    # If we're at the start/end of the PST, want new display
-                    # to also include all data ....
-                    if prev_xlim[0] == 0:
-                        new_xlim = (0, new_xlim[1])
-                    if prev_xlim[-1] >= prev_num_traces - 1:
-                        new_xlim = (new_xlim[0], new_num_traces - 1)
-
-                    self.update_xlim(new_xlim)
-                    self.plot_params.update_clim_from_radar(self.radar_data)
-                    self.plot_params.rcoeff_needs_recalc = True
-
-                    # This recalculates skip and sets data based on curr_xlim
-                    self.full_redraw()
-
     def _on_trace_checkbox_changed(self, val: int) -> None:
         """
         Registers / unregisters the trace callback.
         """
+        assert self.plot_objects.trace_checkbox is not None
         self.plot_params.trace_visible = self.plot_objects.trace_checkbox.isChecked()
         # Should be responsive when turned back on...
         if self.plot_params.trace_visible:
@@ -1093,6 +1085,7 @@ class RadarWindow(QtWidgets.QMainWindow):
           intersect at the mouse's location and make it easier to see
           along-track distance + TWTT.
         """
+        assert self.plot_objects.crosshair_checkbox is not None
         self.plot_params.crosshair_visible = (
             self.plot_objects.crosshair_checkbox.isChecked()
         )
@@ -1110,6 +1103,7 @@ class RadarWindow(QtWidgets.QMainWindow):
     def _on_button_release_event(
         self, event: matplotlib.backend_bases.MouseEvent
     ) -> None:
+        assert self.press_event is not None
         # print("_on_button_release_event")
         if event.inaxes is not self.plot_objects.pick_ax:
             # print("... but not in our axes! Skipping ...")
@@ -1123,7 +1117,11 @@ class RadarWindow(QtWidgets.QMainWindow):
                 self._on_right_rect_click_zoom(self.press_event, event)
         self.press_event = None
 
-    def _do_nothing(self, event1, event2):
+    def _do_nothing(
+        self,
+        event1: matplotlib.backend_bases.MouseEvent,
+        event2: matplotlib.backend_bases.MouseEvent,
+    ) -> None:
         """
         We're using the RectangleSelector just for the bounds, since
         the callback was borked in the transition from python2 -> 3.
@@ -1137,7 +1135,6 @@ class RadarWindow(QtWidgets.QMainWindow):
         """
         When mouse moved on radargram, update cursor, trace, and crosshair.
         """
-        # if event.inaxes is not self.plot_objects.pick_ax:
         if event.inaxes is not self.plot_objects.pick_ax:
             return
 
@@ -1228,8 +1225,13 @@ class RadarWindow(QtWidgets.QMainWindow):
         # Huh. This seems to only affect the vertical scale of the figure ...
         plot_objects.fig = Figure((18.0, 12.0), dpi=plot_objects.dpi)
         plot_objects.canvas = FigureCanvas(plot_objects.fig)
-        # This can't go any earlier, or else I'll get errors about fig not having canvas
-        plot_objects.fig.canvas.mpl_connect("resize_event", self._on_resize_event)
+
+        # The type needs to be ResizeEvent, but mypy expects Event
+        plot_objects.fig.canvas.mpl_connect(
+            "resize_event",
+            self._on_resize_event,  # type: ignore[arg-type]
+        )
+
         # Used for save button + info about trace/sample of mouse position
         plot_objects.mpl_toolbar = SaveToolbar(
             plot_objects.canvas, plot_objects.main_frame
@@ -1258,13 +1260,13 @@ class RadarWindow(QtWidgets.QMainWindow):
 
         # Used purely for blitting, so that the whole region gets restored
         # (sometimes, the sparkline text was going out-of-bounds)
-        plot_objects.full_ax = plot_objects.fig.add_axes([0, 0, 1, 1])
+        plot_objects.full_ax = plot_objects.fig.add_axes((0, 0, 1, 1))
         plot_objects.full_ax.axis("off")
         # Don't want to show anything when we're outside the pick_ax
-        plot_objects.full_ax.format_coord = lambda x, y: ""
+        plot_objects.full_ax.format_coord = lambda x, y: ""  # type: ignore[method-assign]
 
         plot_objects.radar_ax = plot_objects.fig.add_axes(
-            [radar_x0, radar_y0, radar_dx, radar_dy], zorder=1, label="radar"
+            (radar_x0, radar_y0, radar_dx, radar_dy), zorder=1, label="radar"
         )
         plot_objects.radar_ax.xaxis.set_major_formatter(
             FuncFormatter(self.format_xlabel)
@@ -1292,38 +1294,38 @@ class RadarWindow(QtWidgets.QMainWindow):
         # the radargram, taking up the margin.
         # NOTE(lindzey): This is used for loads of non-pick interactions, so keep it around!
         plot_objects.pick_ax = plot_objects.fig.add_axes(
-            [radar_x0 - margin, radar_y0, radar_dx + 2 * margin, radar_dy],
+            (radar_x0 - margin, radar_y0, radar_dx + 2 * margin, radar_dy),
             zorder=3,
             label="pick",
         )
         plot_objects.pick_ax.axis("off")
         # This is the one that shows ... and it's called with units of 0-1
-        plot_objects.pick_ax.format_coord = self.format_coord
+        plot_objects.pick_ax.format_coord = self.format_coord  # type: ignore[method-assign]
 
         xmargin_frac = margin / radar_dx
         ymargin_frac = abs(margin / radar_dy)
 
-        xevas_horiz_bounds = [
+        xevas_horiz_bounds = (
             radar_x0 - margin,
             margin,
             radar_dx + 2 * margin,
             zoom_width,
-        ]
+        )
         plot_objects.xevas_horiz_ax = plot_objects.fig.add_axes(
             xevas_horiz_bounds, projection="unzoomable"
         )
-        plot_objects.xevas_horiz_ax.format_coord = lambda x, y: ""
+        plot_objects.xevas_horiz_ax.format_coord = lambda x, y: ""  # type: ignore[method-assign]
 
-        xevas_vert_bounds = [
+        xevas_vert_bounds = (
             margin,
             radar_y0 - margin,
             zoom_width,
             radar_dy + 2 * margin,
-        ]
+        )
         plot_objects.xevas_vert_ax = plot_objects.fig.add_axes(
             xevas_vert_bounds, projection="unzoomable"
         )
-        plot_objects.xevas_vert_ax.format_coord = lambda x, y: ""
+        plot_objects.xevas_vert_ax.format_coord = lambda x, y: ""  # type: ignore[method-assign]
 
         # Have to give 0-1 and 1-0 for these to be agnostic to changing x units.
         plot_objects.xevas_horiz = xevas.XevasHorizSelector(
@@ -1401,41 +1403,29 @@ class RadarWindow(QtWidgets.QMainWindow):
             autoupdate=False,
         )
 
-        plot_objects.scalebar_label = QtWidgets.QLabel("Scalebars:")
+        scalebar_label = QtWidgets.QLabel("Scalebars:")
 
-        plot_objects.vert_scale_controls = ScalebarControls(
+        vert_scale_controls = ScalebarControls(
             self.plot_params.vert_scale_length_m,
             "Vertical",
             "m",
             self.plot_params.vert_scale_x0,
             self.plot_params.vert_scale_y0,
         )
-        plot_objects.vert_scale_controls.checked.connect(
-            self._on_vert_scale_checkbox_changed
-        )
-        plot_objects.vert_scale_controls.new_length.connect(
-            self._on_vert_scale_new_length
-        )
-        plot_objects.vert_scale_controls.new_origin.connect(
-            self._on_vert_scale_new_origin
-        )
+        vert_scale_controls.checked.connect(self._on_vert_scale_checkbox_changed)
+        vert_scale_controls.new_length.connect(self._on_vert_scale_new_length)
+        vert_scale_controls.new_origin.connect(self._on_vert_scale_new_origin)
 
-        plot_objects.horiz_scale_controls = ScalebarControls(
+        horiz_scale_controls = ScalebarControls(
             self.plot_params.horiz_scale_length_km,
             "Horizontal",
             "km",
             self.plot_params.horiz_scale_x0,
             self.plot_params.horiz_scale_y0,
         )
-        plot_objects.horiz_scale_controls.checked.connect(
-            self._on_horiz_scale_checkbox_changed
-        )
-        plot_objects.horiz_scale_controls.new_length.connect(
-            self._on_horiz_scale_new_length
-        )
-        plot_objects.horiz_scale_controls.new_origin.connect(
-            self._on_horiz_scale_new_origin
-        )
+        horiz_scale_controls.checked.connect(self._on_horiz_scale_checkbox_changed)
+        horiz_scale_controls.new_length.connect(self._on_horiz_scale_new_length)
+        horiz_scale_controls.new_origin.connect(self._on_horiz_scale_new_origin)
 
         # TODO: These wil have to be connected to pick_ax, which will
         #  be on top of the various pcor axes.
@@ -1454,14 +1444,14 @@ class RadarWindow(QtWidgets.QMainWindow):
             plot_objects.pick_ax,
             self._do_nothing,
             # drawtype="box",  # This was deprecated in 3.5, and was default anyways
-            button=[1],
+            button=[MouseButton.LEFT],
             useblit=True,
         )
         plot_objects.right_click_rs["zoom"] = mpw.RectangleSelector(
             plot_objects.pick_ax,
             self._do_nothing,
             # drawtype="box",
-            button=[3],
+            button=[MouseButton.RIGHT],
             useblit=True,
         )
         # Pan is the same for both of 'em (it's easier this way)
@@ -1472,7 +1462,7 @@ class RadarWindow(QtWidgets.QMainWindow):
             # `rectprops={'visible': False}` and then manually
             # drawing the line
             # drawtype="line",
-            button=[1],
+            button=[MouseButton.LEFT],
             useblit=True,
             # Hacky way to allow "selections" where click/release have the same
             # x or y coordinate, which we do want for panning.
@@ -1483,7 +1473,7 @@ class RadarWindow(QtWidgets.QMainWindow):
             plot_objects.pick_ax,
             self._do_nothing,
             # drawtype="line",
-            button=[3],
+            button=[MouseButton.RIGHT],
             useblit=True,
             # Hacky way to allow "selections" where click/release have the same
             # x or y coordinate, which we do want for panning.
@@ -1499,19 +1489,29 @@ class RadarWindow(QtWidgets.QMainWindow):
         # activated/deactivated, but now that a single one is controlling all
         # of 'em, it's simpler to just leave it connected. Only change that if
         # it turns into a bottleneck...
+
+        # Another place where mypy expects type Event but it needs to be MouseEvent
         plot_objects.canvas.mpl_connect(
-            "motion_notify_event", self._on_motion_notify_event
+            "motion_notify_event",
+            self._on_motion_notify_event,  # type: ignore[arg-type]
         )
 
         # Since the RectangleSelector no longer provides the
         # correct ordering of click/release events to the callback,
         # cache the coordinates, then just use the selector for
         # its drawing/blitting/callback.
+        # I think the stubs may be wrong here? The docs say this should be a MouseEvent:
+        # https://matplotlib.org/stable/users/explain/figure/event_handling.html
+        # but mypy gives an error:
+        # Argument 2 to "mpl_connect" of "FigureCanvasBase" has incompatible type
+        # "Callable[[MouseEvent], None]"; expected "Callable[[Event], Any]"  [arg-type]
         plot_objects.canvas.mpl_connect(
-            "button_press_event", self._on_button_press_event
+            "button_press_event",
+            self._on_button_press_event,  # type: ignore[arg-type]
         )
         plot_objects.canvas.mpl_connect(
-            "button_release_event", self._on_button_release_event
+            "button_release_event",
+            self._on_button_release_event,  # type: ignore[arg-type]
         )
 
         # Radio buttons for controlling what mouse clicks mean!
@@ -1570,32 +1570,30 @@ class RadarWindow(QtWidgets.QMainWindow):
             self._on_next_button_clicked,
         )
 
-        plot_objects.controls_hbox = QtWidgets.QHBoxLayout()
+        controls_hbox = QtWidgets.QHBoxLayout()
         # controls_hbox.addWidget(plot_objects.mpl_toolbar)
-        plot_objects.controls_hbox.addWidget(plot_objects.citation_button)
-        plot_objects.controls_hbox.addStretch(1)
-        plot_objects.controls_hbox.addWidget(plot_objects.cursor_label)
-        plot_objects.controls_hbox.addStretch(1)
-        plot_objects.controls_hbox.addLayout(mouse_mode_hbox)
-        plot_objects.controls_hbox.addWidget(plot_objects.prev_button)
-        plot_objects.controls_hbox.addWidget(plot_objects.full_button)
-        plot_objects.controls_hbox.addWidget(plot_objects.next_button)
+        controls_hbox.addWidget(plot_objects.citation_button)
+        controls_hbox.addStretch(1)
+        controls_hbox.addWidget(plot_objects.cursor_label)
+        controls_hbox.addStretch(1)
+        controls_hbox.addLayout(mouse_mode_hbox)
+        controls_hbox.addWidget(plot_objects.prev_button)
+        controls_hbox.addWidget(plot_objects.full_button)
+        controls_hbox.addWidget(plot_objects.next_button)
 
-        plot_objects.lower_controls_widget = QtWidgets.QWidget()
-        plot_objects.lower_controls_widget.setLayout(plot_objects.controls_hbox)
-        plot_objects.lower_controls_scroll_area = QtWidgets.QScrollArea()
-        plot_objects.lower_controls_scroll_area.verticalScrollBar().setEnabled(False)
+        lower_controls_widget = QtWidgets.QWidget()
+        lower_controls_widget.setLayout(controls_hbox)
+        lower_controls_scroll_area = QtWidgets.QScrollArea()
+        lower_controls_scroll_area.verticalScrollBar().setEnabled(False)
         # The call to setWidgetResizable ensures that addStretch() is
         # respected when the scroll area is larger than necessary for
         # the included widgets.
-        plot_objects.lower_controls_scroll_area.setWidgetResizable(True)
-        plot_objects.lower_controls_scroll_area.setWidget(
-            plot_objects.lower_controls_widget
-        )
+        lower_controls_scroll_area.setWidgetResizable(True)
+        lower_controls_scroll_area.setWidget(lower_controls_widget)
 
         data_vbox = QtWidgets.QVBoxLayout()
         data_vbox.addWidget(plot_objects.canvas)
-        data_vbox.addWidget(plot_objects.lower_controls_scroll_area)
+        data_vbox.addWidget(lower_controls_scroll_area)
 
         ####
         # All of the control on the right half of the window
@@ -1642,8 +1640,8 @@ class RadarWindow(QtWidgets.QMainWindow):
         """
 
         # enable/disable the various annotations plotted on the radargram (traces/crosshairs/scalebars)
-        plot_objects.annotations_vbox = QtWidgets.QVBoxLayout()
-        plot_objects.annotations_label = QtWidgets.QLabel("Annotations:")
+        annotations_vbox = QtWidgets.QVBoxLayout()
+        annotations_label = QtWidgets.QLabel("Annotations:")
         plot_objects.trace_checkbox = QtWidgets.QCheckBox("Traces")
         plot_objects.trace_checkbox.stateChanged.connect(
             self._on_trace_checkbox_changed,
@@ -1652,14 +1650,14 @@ class RadarWindow(QtWidgets.QMainWindow):
         plot_objects.crosshair_checkbox.stateChanged.connect(
             self._on_crosshair_checkbox_changed,
         )
-        plot_objects.annotations_vbox.addWidget(plot_objects.annotations_label)
-        plot_objects.annotations_vbox.addWidget(plot_objects.trace_checkbox)
-        plot_objects.annotations_vbox.addWidget(plot_objects.crosshair_checkbox)
-        plot_objects.annotations_vbox.addStretch(1)  # left-justify this row
+        annotations_vbox.addWidget(annotations_label)
+        annotations_vbox.addWidget(plot_objects.trace_checkbox)
+        annotations_vbox.addWidget(plot_objects.crosshair_checkbox)
+        annotations_vbox.addStretch(1)  # left-justify this row
 
         ############
 
-        plot_objects.clim_label = QtWidgets.QLabel("Color Limits:")
+        clim_label = QtWidgets.QLabel("Color Limits:")
         plot_objects.clim_slider = DoubleSlider(new_lim_cb=self._on_clim_slider_changed)
 
         # Button to exit (the little one in the corner is a PITA.
@@ -1672,26 +1670,26 @@ class RadarWindow(QtWidgets.QMainWindow):
         quit_hbox.addWidget(plot_objects.quit_button)
 
         # Assembling the right vbox ...
-        plot_objects.control_vbox = QtWidgets.QVBoxLayout()
-        plot_objects.control_vbox.addLayout(colormap_hbox)
+        control_vbox = QtWidgets.QVBoxLayout()
+        control_vbox.addLayout(colormap_hbox)
         # control_vbox.addWidget(HLine())
         # control_vbox.addLayout(products_vbox)
-        plot_objects.control_vbox.addWidget(HLine())
-        plot_objects.control_vbox.addLayout(plot_objects.annotations_vbox)
-        plot_objects.control_vbox.addWidget(HLine())
-        plot_objects.control_vbox.addWidget(plot_objects.clim_label)
-        plot_objects.control_vbox.addWidget(plot_objects.clim_slider)
-        plot_objects.control_vbox.addWidget(HLine())
-        plot_objects.control_vbox.addWidget(plot_objects.scalebar_label)
-        plot_objects.control_vbox.addWidget(plot_objects.vert_scale_controls)
-        plot_objects.control_vbox.addWidget(plot_objects.horiz_scale_controls)
-        plot_objects.control_vbox.addStretch(1)
-        plot_objects.control_vbox.addWidget(HLine())
-        plot_objects.control_vbox.addStretch(1)
-        plot_objects.control_vbox.addLayout(quit_hbox)
+        control_vbox.addWidget(HLine())
+        control_vbox.addLayout(annotations_vbox)
+        control_vbox.addWidget(HLine())
+        control_vbox.addWidget(clim_label)
+        control_vbox.addWidget(plot_objects.clim_slider)
+        control_vbox.addWidget(HLine())
+        control_vbox.addWidget(scalebar_label)
+        control_vbox.addWidget(vert_scale_controls)
+        control_vbox.addWidget(horiz_scale_controls)
+        control_vbox.addStretch(1)
+        control_vbox.addWidget(HLine())
+        control_vbox.addStretch(1)
+        control_vbox.addLayout(quit_hbox)
 
         control_scroll_widget = QtWidgets.QWidget()
-        control_scroll_widget.setLayout(plot_objects.control_vbox)
+        control_scroll_widget.setLayout(control_vbox)
         control_scroll_area = QtWidgets.QScrollArea()
         control_scroll_area.setWidget(control_scroll_widget)
 
@@ -1777,9 +1775,10 @@ class RadarWindow(QtWidgets.QMainWindow):
         # Hacky way to get a newline inside a raw string
         return "\n".join([f"{sample_time_us:.2f}", r"$\mu$s"])
 
-    def format_coord(self, xx: float, yy: float) -> None:
-        coord = self.plot_objects.pick_ax.transData.transform([xx, yy])
-        trace, sample = self.radar_from_pick_coords(coord)
+    def format_coord(self, x: float, y: float) -> str:
+        assert self.plot_objects.pick_ax is not None
+        xd, yd = self.plot_objects.pick_ax.transData.transform([x, y])
+        trace, sample = self.radar_from_pick_coords((xd, yd))
         counts = self.radar_data.data[trace, sample]
         return "trace=%d sample=%d (%d counts)" % (trace, sample, counts)
 
@@ -1863,6 +1862,10 @@ class RadarWindow(QtWidgets.QMainWindow):
         """
         TODO
         """
+        assert self.plot_objects.radar_ax is not None
+        assert self.plot_objects.vert_scale is not None
+        assert self.plot_objects.horiz_scale is not None
+
         xlim = tuple(map(int, self.plot_objects.radar_ax.get_xlim()))
         ylim = tuple(map(int, self.plot_objects.radar_ax.get_ylim()))
 
