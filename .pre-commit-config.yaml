@@ -8,14 +8,15 @@ repos:
     # Run the formatter.
     - id: ruff-format
 
--   repo: https://github.com/pre-commit/mirrors-mypy
-    rev: 'v1.16.1'
-    hooks:
-    -   id: mypy
-        additional_dependencies: [matplotlib-stubs, numpy, PyQt5-stubs, qgis-stubs, scipy, types-PyYAML]
-        # By default, pre-commit only checks files that have changed, which
-        # doesn't work particularly well for mypy.
-        # Setting this false requires my mypy.ini to explicitly list files
-        pass_filenames: false
-        # pre-commit doesn't automatically find the config file like CLI mypy does; we have to specify it explicitly if we want to override the pre-commit default config (that includes --ignore-missing-imports)
-        args: ["--config-file", "mypy.ini"]
+# This exceeds the image size allowed by the free version of pre-commit.io
+# -   repo: https://github.com/pre-commit/mirrors-mypy
+#     rev: 'v1.16.1'
+#     hooks:
+#     -   id: mypy
+#         additional_dependencies: [matplotlib-stubs, numpy, PyQt5-stubs, qgis-stubs, scipy, types-PyYAML]
+#         # By default, pre-commit only checks files that have changed, which
+#         # doesn't work particularly well for mypy.
+#         # Setting this false requires my mypy.ini to explicitly list files
+#         pass_filenames: false
+#         # pre-commit doesn't automatically find the config file like CLI mypy does; we have to specify it explicitly if we want to override the pre-commit default config (that includes --ignore-missing-imports)
+#         args: ["--config-file", "mypy.ini"]
