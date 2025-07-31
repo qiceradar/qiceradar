@@ -153,11 +153,12 @@ class PlotParams:
         self.curr_ylim = (radar_data.num_samples - 1, 0)
 
         # how many traces are skipped between the displayed traces
-        self.radar_skip: Optional[int] = None
+        # Initialize to 1, updated by the viewer when it figures out how many
+        # pixels are available to the radar window.
+        self.radar_skip = 1
 
-        # which trace the camera cursor should currently be on.
-        # NB: I don't think this is only the camera anymore -- repurposed for cursor?
-        self.displayed_trace_num: Optional[int] = None
+        # which trace the crosshairs or trace visualization should currently be on.
+        self.displayed_trace_num = 1
 
         # Whether these positions should be frozen or updated as the mouse moves
         self.crosshair_frozen = False
@@ -302,7 +303,7 @@ def calc_radar_skip(fig: Figure, ax: mpl.axes.Axes, xlim: Tuple[int, int]) -> in
     """
     if xlim is None:
         print("WARNING: called calc_radar_skip w/ xlim==None")
-        return 1  # I added this to make mypy happy.
+        return 1
     ax_width, _ = get_ax_shape(fig, ax)
     num_fig_traces = xlim[1] - xlim[0]
     radar_skip = max(1, int(np.ceil(num_fig_traces / ax_width)))
@@ -880,14 +881,11 @@ class RadarWindow(QtWidgets.QMainWindow):
         """
         TODO
         """
-        # TODO: Can't make this assertions, since it WILL be None if user hasn't
-        # pressed it yet. Find another way to make mypy pass.
-        # assert self.plot_params.displayed_trace_num is not None
-        assert self.plot_params.radar_skip is not None
         if event.key() == QtCore.Qt.Key_F and self.plot_params.trace_visible:
             self.plot_params.trace_frozen = not self.plot_params.trace_frozen
         elif event.key() == QtCore.Qt.Key_G and self.plot_params.crosshair_visible:
             self.plot_params.crosshair_frozen = not self.plot_params.crosshair_frozen
+
         # And, adding support for enhanced picking =)
         elif event.key() == QtCore.Qt.Key_A:
             # self._on_auto_pick_button_clicked()
@@ -1492,10 +1490,9 @@ class RadarWindow(QtWidgets.QMainWindow):
         # of 'em, it's simpler to just leave it connected. Only change that if
         # it turns into a bottleneck...
 
-        # Another place where mypy expects type Event but it needs to be MouseEvent
         plot_objects.canvas.mpl_connect(
             "motion_notify_event",
-            self._on_motion_notify_event,  # type: ignore[arg-type]
+            self._on_motion_notify_event,
         )
 
         # Since the RectangleSelector no longer provides the
@@ -1507,13 +1504,15 @@ class RadarWindow(QtWidgets.QMainWindow):
         # but mypy gives an error:
         # Argument 2 to "mpl_connect" of "FigureCanvasBase" has incompatible type
         # "Callable[[MouseEvent], None]"; expected "Callable[[Event], Any]"  [arg-type]
+        # (Upgrading _something_ seems to have gotten rid of the problem, so I've
+        # removed the # type: ignore[arg-type] for now)
         plot_objects.canvas.mpl_connect(
             "button_press_event",
-            self._on_button_press_event,  # type: ignore[arg-type]
+            self._on_button_press_event,
         )
         plot_objects.canvas.mpl_connect(
             "button_release_event",
-            self._on_button_release_event,  # type: ignore[arg-type]
+            self._on_button_release_event,
         )
 
         # Radio buttons for controlling what mouse clicks mean!
