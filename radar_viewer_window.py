@@ -880,7 +880,9 @@ class RadarWindow(QtWidgets.QMainWindow):
         """
         TODO
         """
-        assert self.plot_params.displayed_trace_num is not None
+        # TODO: Can't make this assertions, since it WILL be None if user hasn't
+        # pressed it yet. Find another way to make mypy pass.
+        # assert self.plot_params.displayed_trace_num is not None
         assert self.plot_params.radar_skip is not None
         if event.key() == QtCore.Qt.Key_F and self.plot_params.trace_visible:
             self.plot_params.trace_frozen = not self.plot_params.trace_frozen

@@ -123,21 +123,27 @@ class GranuleMetadata:
         Return the campaign name that should be displayed to the user.
         This is not necessarily equivalent to the key for the campaign table.
         """
+        # attributeMap() returns Dict[str, object | None]; we know by constructing
+        # the index that these attributes are strings.
+        assert isinstance(self.layer_attributes["campaign"], str)
         return self.layer_attributes["campaign"]
 
     def institution(self) -> str:
+        assert isinstance(self.layer_attributes["institution"], str)
         return self.layer_attributes["institution"]
 
     def relative_path(self) -> str:
         # Not all layers have this attribute set
         try:
             relative_path = self.layer_attributes["relative_path"]
+            assert isinstance(relative_path, str)
         except Exception:
             relative_path = ""
         return relative_path
 
     def radargram_is_available(self) -> bool:
         availability = self.layer_attributes["availability"]
+        assert isinstance(availability, str)
         # Older database versions used u/a/s, rather than just u/a
         return availability != "u"
 
@@ -473,6 +479,11 @@ class QIceRadarPlugin(QtCore.QObject):
 
         radar_group = root.findGroup("Radar Viewer")
         if radar_group is None:
+            # mypy thinks this is unreachable, but according to the docs, the
+            # return type of findGroup is `QgsLayerTreeGroup | None`
+            # QUESTION: is there an error in the pyQGIS stubs? I searched
+            #     https://github.com/leonhard-s/qgis-stubs
+            #     and did not even find QgsLayerTreeGroup, so I am stumped.
             self.radar_viewer_group = root.insertGroup(0, "Radar Viewer")
         else:
             self.radar_viewer_group = radar_group

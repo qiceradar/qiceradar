@@ -95,8 +95,9 @@ def deduplicate_updates(func):
         if dt < 1.0 and not force_update:
             QgsMessageLog.logMessage("...repeated call, skipping (decorator!)")
             return
-        func(self, *args, **kwargs)
+        result = func(self, *args, **kwargs)
         self.style_changed_time = time.time()
+        return result
 
     return wrapper
 
