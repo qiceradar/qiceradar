@@ -62,7 +62,8 @@ class DownloadConfirmationDialog(QtWidgets.QDialog):
     closed = QtCore.pyqtSignal()
     # Emitted when user wants to update configuration
     configure = QtCore.pyqtSignal()
-    download_confirmed = QtCore.pyqtSignal()
+    download_granule = QtCore.pyqtSignal()
+    download_segment = QtCore.pyqtSignal()
     """
     Dialog box that shows user how large the download will be and
     where the file will be saved, before asking for confirmation to
@@ -140,7 +141,7 @@ class DownloadConfirmationDialog(QtWidgets.QDialog):
         self.info_label = QtWidgets.QLabel(
             "".join(
                 [
-                    f"The requested segment is {filesize_str}.\n\n",
+                    f"The requested granule is {filesize_str}.\n\n",
                     "It can be downloaded from: \n",
                     self.url,
                     "\n\n And will be saved to: \n",
@@ -166,15 +167,23 @@ class DownloadConfirmationDialog(QtWidgets.QDialog):
 
         self.cancel_pushbutton = QtWidgets.QPushButton("Cancel")
         self.cancel_pushbutton.clicked.connect(self.close)
-        self.download_pushbutton = QtWidgets.QPushButton("Download")
-        self.download_pushbutton.clicked.connect(self.close)
-        self.download_pushbutton.clicked.connect(self.download_confirmed.emit)
+
+        self.download_granule_pushbutton = QtWidgets.QPushButton("Download Granule")
+        self.download_granule_pushbutton.clicked.connect(self.close)
+        self.download_granule_pushbutton.clicked.connect(self.download_granule.emit)
+
+        self.download_segment_pushbutton = QtWidgets.QPushButton(
+            "Download Full Segment"
+        )
+        self.download_segment_pushbutton.clicked.connect(self.close)
+        self.download_segment_pushbutton.clicked.connect(self.download_segment.emit)
 
         self.button_hbox = QtWidgets.QHBoxLayout()
         self.button_hbox.addWidget(self.cancel_pushbutton)
         self.button_hbox.addWidget(self.config_pushbutton)
         self.button_hbox.addStretch(1)
-        self.button_hbox.addWidget(self.download_pushbutton)
+        self.button_hbox.addWidget(self.download_segment_pushbutton)
+        self.button_hbox.addWidget(self.download_granule_pushbutton)
 
         self.vbox_layout = QtWidgets.QVBoxLayout()
         self.vbox_layout.addWidget(self.intro_text)
@@ -258,6 +267,17 @@ class DownloadWindow(QtWidgets.QMainWindow):
             else:
                 print(f"Currently downloading {granule}")
                 return
+
+        try:
+            destination_filepath.parents[0].mkdir(parents=True, exist_ok=True)
+        except Exception as ex:
+            # This will be raised if the path exists AND isn't a directory.
+            # This is the case for me when I have created a symbolic link
+            # to an external drive, but the drive isn't mounted.
+            # TODO: Rather than just assuming the user will fix it in the
+            #   download step, maybe pop up the config dialog here?
+            QgsMessageLog.logMessage(f"Exception encountered in mkdir: {ex}")
+            # TODO: This needs to break out, not continue!!
 
         print(f"Downloading {granule}")
         widget = DownloadWidget(granule, url, filesize, destination_filepath, headers)

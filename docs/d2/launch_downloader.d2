@@ -33,7 +33,7 @@ configure_requested_signal: DownloadConfirmationDialog.configure: {class: downlo
 signal_group: {
   selected_granule_signal: QIceRadarSelectionWidget.selected_granule
   config_saved_signal: QIceRadarConfigWidget.config_saved: {class: config}
-  download_confirmed_signal: DownloadConfirmationDialog.download_confirmed: {class: download_dialog}
+  download_confirmed_signal: DownloadConfirmationDialog.download_granule: {class: download_dialog}
   download_finished_signal: DownloadWindow.download_finished: {class: download_window}
 }
 signal_group.style.opacity: 0

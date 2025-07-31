@@ -110,7 +110,7 @@ class QIceRadarSelectionWidget(QtWidgets.QDialog):
         self.vbox.addLayout(self.radio_vbox)
         self.vbox.addLayout(self.control_hbox)
         self.setLayout(self.vbox)
-        self.setWindowTitle("Select Transect")
+        self.setWindowTitle("Select Granule")
 
     def run(self) -> None:
         # NB: using `exec` creates a modal dialogue, that the user must

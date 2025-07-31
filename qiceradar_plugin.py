@@ -795,7 +795,10 @@ class QIceRadarPlugin(QtCore.QObject):
 
         # TODO: refactor to not reach in and directly use db_granule
         assert granule_metadata.db_granule is not None
-        self.launch_radar_downloader(granule_filepath, granule_metadata.db_granule)
+        segment_granules = {granule_name: granule_metadata.db_granule}
+        self.launch_radar_downloader(
+            granule_name, self.config.rootdir, segment_granules
+        )
 
     def selected_granule_view_callback(self, granule_name: str) -> None:
         """
@@ -846,21 +849,16 @@ class QIceRadarPlugin(QtCore.QObject):
         )
 
     def launch_radar_downloader(
-        self, dest_filepath: pathlib.Path, db_granule: db_utils.DatabaseGranule
+        self,
+        selected_granule_name: str,
+        rootdir: pathlib.Path,
+        segment_granules: Dict[str, db_utils.DatabaseGranule],
     ) -> None:
         """
         Called once all checks on file existance / support for download
         have finished and we're ready to actually download.
         """
-        try:
-            dest_filepath.parents[0].mkdir(parents=True, exist_ok=True)
-        except Exception as ex:
-            # This will be raised if the path exists AND isn't a directory.
-            # This is the case for me when I have created a symbolic link
-            # to an external drive, but the drive isn't mounted.
-            # TODO: Rather than just assuming the user will fix it in the
-            #   download step, maybe pop up the config dialog here?
-            QgsMessageLog.logMessage(f"Exception encountered in mkdir: {ex}")
+        db_granule = segment_granules[selected_granule_name]
 
         # I really don't like creating headers here, because it exposes
         # the DownloadWorker's implementation details of using requests.
@@ -887,6 +885,8 @@ class QIceRadarPlugin(QtCore.QObject):
             else:
                 headers = {"Authorization": f"Bearer {self.config.nsidc_token}"}
 
+        dest_filepath = pathlib.Path(rootdir, db_granule.relative_path)
+
         dcd = DownloadConfirmationDialog(
             dest_filepath,
             db_granule.institution,
@@ -898,13 +898,31 @@ class QIceRadarPlugin(QtCore.QObject):
         )
         dcd.configure.connect(self.handle_configure_signal)
 
-        dcd.download_confirmed.connect(
-            lambda gg=db_granule.granule_name,
-            url=db_granule.url,
-            fp=dest_filepath,
-            fs=db_granule.filesize,
-            hh=headers: self.start_download([(gg, url, fp, fs)], hh)
+        single_granule = [
+            (
+                db_granule.granule_name,
+                db_granule.url,
+                os.path.join(rootdir, db_granule.relative_path),
+                db_granule.filesize,
+            )
+        ]
+        dcd.download_granule.connect(
+            lambda gg=single_granule, hh=headers: self.start_download(gg, hh)
         )
+
+        all_granules = [
+            (
+                db.granule_name,
+                db.url,
+                os.path.join(rootdir, db.relative_path),
+                db.filesize,
+            )
+            for db in segment_granules.values()
+        ]
+        dcd.download_segment.connect(
+            lambda gg=all_granules, hh=headers: self.start_download(gg, hh)
+        )
+
         dcd.run()
 
     def launch_radar_viewer(
