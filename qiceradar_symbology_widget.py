@@ -72,7 +72,7 @@ from qgis.gui import (
 # ```
 # However, Concatenate is needed for handling kwargs, but isn't part of the
 # standard library until 3.10, and QGIS 3.40 is still on 3.9
-def deduplicate_updates(func):
+def deduplicate_updates(func):  # type: ignore[no-untyped-def]
     """
     The styleChanged signal is emitted twice when the user clicks
     "Apply" or "OK" in the layer properties dialog; I experimented
@@ -85,7 +85,7 @@ def deduplicate_updates(func):
     """
 
     @functools.wraps(func)
-    def wrapper(self: "SymbologyWidget", *args, **kwargs):
+    def wrapper(self: "SymbologyWidget", *args, **kwargs):  # type: ignore[no-untyped-def]
         try:
             force_update: bool = kwargs["force_update"]
         except Exception:
