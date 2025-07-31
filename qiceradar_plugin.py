@@ -694,7 +694,7 @@ class QIceRadarPlugin(QtCore.QObject):
         QgsMessageLog.logMessage("Building spatial index.")
 
         # We need to store geometries, otherwise nearest neighbor calculations are done
-        # based on bounding boxes and the list of closest transects is nonsensical.
+        # based on bounding boxes and the list of closest granules is nonsensical.
         self.spatial_index = QgsSpatialIndex(QgsSpatialIndex.FlagStoreFeatureGeometries)
         index_id = 0
         for institution_group in index_group.children():
@@ -757,12 +757,12 @@ class QIceRadarPlugin(QtCore.QObject):
                 except Exception as ex:
                     QgsMessageLog.logMessage(f"{repr(ex)}")
 
-    def selected_transect_download_callback(self, granule_name: str) -> None:
+    def selected_granule_download_callback(self, granule_name: str) -> None:
         """
         Callback for the QIceRadarSelectionWidget that launches the download
-        widget for the chosen transect.
+        widget for the chosen granule.
         """
-        QgsMessageLog.logMessage(f"selected_transect_download_callback: {granule_name}")
+        QgsMessageLog.logMessage(f"selected_granule_download_callback: {granule_name}")
         QgsMessageLog.logMessage(f"rootdir = {self.config.rootdir}")
 
         layer_id, feature_id = self.transect_name_lookup[granule_name]
@@ -785,24 +785,24 @@ class QIceRadarPlugin(QtCore.QObject):
 
         # can_download_radargram already checked for a non-null relative_path
         assert self.config.rootdir is not None
-        transect_filepath = pathlib.Path(
+        granule_filepath = pathlib.Path(
             self.config.rootdir, granule_metadata.relative_path()
         )
-        already_downloaded = transect_filepath.is_file()
+        already_downloaded = granule_filepath.is_file()
         if already_downloaded:
             QIceRadarDialogs.display_already_downloaded_dialog(granule_name)
             return
 
         # TODO: refactor to not reach in and directly use db_granule
         assert granule_metadata.db_granule is not None
-        self.launch_radar_downloader(transect_filepath, granule_metadata.db_granule)
+        self.launch_radar_downloader(granule_filepath, granule_metadata.db_granule)
 
-    def selected_transect_view_callback(self, granule_name: str) -> None:
+    def selected_granule_view_callback(self, granule_name: str) -> None:
         """
         Callback for the QIceRadarSelectionWidget that launches the viewer
-        widget for the chosen transect.
+        widget for the chosen granule.
         """
-        QgsMessageLog.logMessage(f"selected_transect_view_callback: {granule_name}")
+        QgsMessageLog.logMessage(f"selected_granule_view_callback: {granule_name}")
         QgsMessageLog.logMessage(f"rootdir = {self.config.rootdir}")
 
         layer_id, feature_id = self.transect_name_lookup[granule_name]
@@ -828,13 +828,13 @@ class QIceRadarPlugin(QtCore.QObject):
         # if I was targeting a more recent version of python, I think I could
         # have used TypeGuard to annotate rootdir_is_valid and narrow the type
         assert self.config.rootdir is not None
-        transect_filepath = pathlib.Path(
+        granule_filepath = pathlib.Path(
             self.config.rootdir, granule_metadata.relative_path()
         )
-        already_downloaded = transect_filepath.is_file()
+        already_downloaded = granule_filepath.is_file()
         if not already_downloaded:
             QIceRadarDialogs.display_must_download_dialog(
-                transect_filepath, granule_name
+                granule_filepath, granule_name
             )
             return
 
@@ -842,7 +842,7 @@ class QIceRadarPlugin(QtCore.QObject):
         assert granule_metadata.db_campaign is not None
         assert granule_metadata.db_granule is not None
         self.launch_radar_viewer(
-            transect_filepath, granule_metadata.db_granule, granule_metadata.db_campaign
+            granule_filepath, granule_metadata.db_granule, granule_metadata.db_campaign
         )
 
     def launch_radar_downloader(
@@ -909,7 +909,7 @@ class QIceRadarPlugin(QtCore.QObject):
 
     def launch_radar_viewer(
         self,
-        transect_filepath: pathlib.Path,
+        granule_filepath: pathlib.Path,
         db_granule: db_utils.DatabaseGranule,
         db_campaign: db_utils.DatabaseCampaign,
     ) -> None:
@@ -924,7 +924,7 @@ class QIceRadarPlugin(QtCore.QObject):
             return self.update_radar_xlim_callback(db_granule.granule_name, pts)
 
         rw = RadarWindow(
-            transect_filepath,
+            granule_filepath,
             db_granule,
             db_campaign,
             parent_xlim_changed_cb=selection_cb,
@@ -1111,37 +1111,37 @@ class QIceRadarPlugin(QtCore.QObject):
         self.segment_features[granule_name] = segment_feature
         self.segment_layers[granule_name] = segment_layer
 
-    def update_trace_callback(self, transect_name: str, lon: float, lat: float) -> None:
+    def update_trace_callback(self, granule_name: str, lon: float, lat: float) -> None:
         """
         Change location of the point feature corresponding to the
         crosshairs in the radar viewer window.
         """
         # QgsMessageLog.logMessage(f"update_trace_callback with position: {lon}, {lat}!")
-        trace_layer = self.trace_layers[transect_name]
+        trace_layer = self.trace_layers[granule_name]
         with edit(trace_layer):
-            trace_feature = self.trace_features[transect_name]
+            trace_feature = self.trace_features[granule_name]
             trace_layer.changeGeometry(
                 trace_feature.id(), QgsGeometry(QgsPoint(lon, lat))
             )
             trace_layer.updateExtents()
 
     def update_radar_xlim_callback(
-        self, transect_name: str, points: List[Tuple[float, float]]
+        self, granule_name: str, points: List[Tuple[float, float]]
     ) -> None:
         # QgsMessageLog.logMessage(f"update_selected_callback with {len(points)} points!")
         radar_xlim_geometry = QgsGeometry(
             QgsLineString([QgsPoint(lon, lat) for lon, lat in points])
         )
-        radar_xlim_layer = self.radar_xlim_layers[transect_name]
+        radar_xlim_layer = self.radar_xlim_layers[granule_name]
         with edit(radar_xlim_layer):
-            radar_xlim_feature = self.radar_xlim_features[transect_name]
+            radar_xlim_feature = self.radar_xlim_features[granule_name]
             radar_xlim_layer.changeGeometry(
                 radar_xlim_feature.id(), radar_xlim_geometry
             )
             radar_xlim_layer.updateExtents()
 
     def update_segment_points(
-        self, transect_name: str, points: List[Tuple[float, float]]
+        self, granule_name: str, points: List[Tuple[float, float]]
     ) -> None:
         """
         we have to create the layers before the radargram, because
@@ -1155,9 +1155,9 @@ class QIceRadarPlugin(QtCore.QObject):
         segment_geometry = QgsGeometry(
             QgsLineString([QgsPoint(lon, lat) for lon, lat in points])
         )
-        segment_layer = self.segment_layers[transect_name]
+        segment_layer = self.segment_layers[granule_name]
         with edit(segment_layer):
-            segment_feature = self.segment_features[transect_name]
+            segment_feature = self.segment_features[granule_name]
             segment_layer.changeGeometry(segment_feature.id(), segment_geometry)
             segment_layer.updateExtents()
 
@@ -1225,22 +1225,22 @@ class QIceRadarPlugin(QtCore.QObject):
                 break
 
         if len(neighbor_names) == 0:
-            msg = "Could not find transect near mouse click."
+            msg = "Could not find granule near mouse click."
             self.message_bar.pushMessage(
                 "QIceRadar", msg, level=Qgis.Warning, duration=5
             )
         else:
             selection_widget = QIceRadarSelectionWidget(self.iface, neighbor_names)
             if operation is QIceRadarPlugin.Operation.DOWNLOAD:
-                selection_widget.selected_radargram.connect(
-                    self.selected_transect_download_callback
+                selection_widget.selected_granule.connect(
+                    self.selected_granule_download_callback
                 )
             else:  # operation is QIceRadarPlugin.Operation.VIEW:
-                selection_widget.selected_radargram.connect(
-                    self.selected_transect_view_callback
+                selection_widget.selected_granule.connect(
+                    self.selected_granule_view_callback
                 )
 
-            # Chosen transect is set via callback, rather than direct return value
+            # Chosen granule is set via callback, rather than direct return value
             selection_widget.run()
 
     def request_user_update_config(self) -> None:

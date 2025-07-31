@@ -31,7 +31,7 @@ classes: {
 # (Without this, the config symbol wound up at the very top.)
 configure_requested_signal: DownloadConfirmationDialog.configure: {class: download_dialog}
 signal_group: {
-  selected_radargram_signal: QIceRadarSelectionWidget.selected_radargram
+  selected_granule_signal: QIceRadarSelectionWidget.selected_granule
   config_saved_signal: QIceRadarConfigWidget.config_saved: {class: config}
   download_confirmed_signal: DownloadConfirmationDialog.download_confirmed: {class: download_dialog}
   download_finished_signal: DownloadWindow.download_finished: {class: download_window}
@@ -39,7 +39,7 @@ signal_group: {
 signal_group.style.opacity: 0
 
 configure_requested_signal -> qiceradar_plugin.handle_configure_signal: {class: signal}
-signal_group.selected_radargram_signal -> qiceradar_plugin.selected_transect_callback: {class: signal}
+signal_group.selected_granule_signal -> qiceradar_plugin.selected_granule_callback: {class: signal}
 signal_group.config_saved_signal -> qiceradar_plugin.set_config: {class: signal}
 signal_group.download_confirmed_signal -> qiceradar_plugin.start_download: {class: signal}
 signal_group.download_finished_signal -> qiceradar_plugin.update_index_layer_renderers: {class: signal}
@@ -65,16 +65,16 @@ qiceradar_plugin: {
 
   update_index_layer_renderers: update_index_layer_renderers()
 
-  selected_transect_callback: {
+  selected_granule_callback: {
     shape: rectangle
     label: |md
-      ### selected_transect_download_callback(granule)
+      ### selected_granule_download_callback(granule)
       Pulls granule information from the database
     |
   }
 
   display_unavailable_dialogue: display_unavailable_dialogue()
-  selected_transect_callback -> display_unavailable_dialogue: {
+  selected_granule_callback -> display_unavailable_dialogue: {
     label: "granule[\"availability\"]=='u'"
   }
 
@@ -86,22 +86,22 @@ qiceradar_plugin: {
     |
   }
 
-  selected_transect_callback -> request_user_update_config: {
+  selected_granule_callback -> request_user_update_config: {
     label: "invalid root directory"
   }
 
   display_cannot_download_dialog: display_cannot_download_dialog()
-  selected_transect_callback -> display_cannot_download_dialog: {
+  selected_granule_callback -> display_cannot_download_dialog: {
     label: "cannot download"
   }
 
   display_already_downloaded_dialog: display_already_downloaded_dialog()
-  selected_transect_callback -> display_already_downloaded_dialog: {
+  selected_granule_callback -> display_already_downloaded_dialog: {
     label: "data already downloaded"
   }
 
   launch_radar_downloader: launch_radar_downloader()
-  selected_transect_callback -> launch_radar_downloader: {
+  selected_granule_callback -> launch_radar_downloader: {
     label: "ELSE"
   }
 

@@ -75,7 +75,7 @@ class QIceRadarSelectionWidget(QtWidgets.QDialog):
     widget; the list of transects to choose between is calculated elsewhere
     """
 
-    selected_radargram = QtCore.pyqtSignal(str)
+    selected_granule = QtCore.pyqtSignal(str)
 
     def __init__(self, iface: QgisInterface, transects: List[str]) -> None:
         super(QIceRadarSelectionWidget, self).__init__()
@@ -87,7 +87,7 @@ class QIceRadarSelectionWidget(QtWidgets.QDialog):
         for rb in self.transect_radiobuttons:
             if rb.isChecked():
                 self.close()
-                self.selected_radargram.emit(rb.text())
+                self.selected_granule.emit(rb.text())
 
     def setup_ui(self) -> None:
         self.radio_vbox = QtWidgets.QVBoxLayout()
