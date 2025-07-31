@@ -27,25 +27,39 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+from typing import Callable
+
 import PyQt5.QtWidgets as QtWidgets
 
+from .plotutils.pyqt_utils import HLine
 from .qiceradar_symbology_widget import SymbologyWidget
 
 
 class ControlsWindow(QtWidgets.QMainWindow):
-    def __init__(self, symbology_widget: SymbologyWidget) -> None:
+    def __init__(
+        self, symbology_widget: SymbologyWidget, config_cb: Callable[[], None]
+    ) -> None:
         super().__init__()
         self.symbology_widget = symbology_widget
+        self.config_cb = config_cb
         self.setWindowTitle("QIceRadar Controls")
         self.setup_ui()
 
     def setup_ui(self) -> None:
         central_widget = QtWidgets.QWidget()
 
-        hbox = QtWidgets.QHBoxLayout()
-        hbox.addWidget(self.symbology_widget)
-        hbox.addStretch(1)
+        config_button = QtWidgets.QPushButton()
+        config_button.setText("Open QIceRadar Config")
+        config_button.pressed.connect(self.config_cb)
 
-        central_widget.setLayout(hbox)
+        hline = HLine()
+
+        vbox = QtWidgets.QVBoxLayout()
+        vbox.addWidget(self.symbology_widget)
+        vbox.addWidget(hline)
+        vbox.addWidget(config_button)
+        vbox.addStretch(1)
+
+        central_widget.setLayout(vbox)
 
         self.setCentralWidget(central_widget)

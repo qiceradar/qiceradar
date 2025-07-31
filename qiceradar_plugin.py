@@ -378,7 +378,9 @@ class QIceRadarPlugin(QtCore.QObject):
             self.on_categorized_style_changed
         )
 
-        self.controls_window = ControlsWindow(self.symbology_widget)
+        self.controls_window = ControlsWindow(
+            self.symbology_widget, self.handle_configure_signal
+        )
         self.controls_dock_widget = QgsDockWidget("QIceRadar Controls")
         self.controls_dock_widget.setWidget(self.controls_window)
         self.iface.addDockWidget(

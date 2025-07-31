@@ -168,7 +168,7 @@ class SymbologyWidget(QtWidgets.QWidget):
     def setup_ui(self) -> None:
         label = QtWidgets.QLabel("Layer Styles")
         label.setAlignment(QtCore.Qt.AlignCenter)
-        reset_button = QtWidgets.QPushButton("Reset Defaults")
+        reset_button = QtWidgets.QPushButton("Reset Default Styles")
         reset_button.clicked.connect(self.reset_styles_to_default)
 
         vbox = QtWidgets.QVBoxLayout()
