@@ -182,7 +182,7 @@ class PlotParams:
         self.product = radar_data.available_products[0]
 
         self.cmap = "gray"
-        self.clim = (0, 1)  # what's currently displayed
+        self.clim: Tuple[float, float] = (0, 1)  # what's currently displayed
         self.cmin = 0  # min val from radar
         self.cmax = 1  # max val from radar
 
@@ -1156,7 +1156,7 @@ class RadarWindow(QtWidgets.QMainWindow):
 
         self.update_cursor(trace, sample)
 
-    def _on_clim_slider_changed(self, clim: Tuple[int, int]) -> None:
+    def _on_clim_slider_changed(self, clim: Tuple[float, float]) -> None:
         """
         TODO
         """
