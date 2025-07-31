@@ -42,6 +42,8 @@ from PyQt5.QtCore import Qt
 from qgis.core import QgsMessageLog
 from qgis.gui import QgisInterface
 
+from .datautils import db_utils
+
 
 def format_bytes(filesize: int) -> str:
     filesize_kb = filesize / (1024)
@@ -76,30 +78,16 @@ class DownloadConfirmationDialog(QtWidgets.QDialog):
     # TODO: This should be given all the info it needs;
     def __init__(
         self,
-        dest_filepath: pathlib.Path,
-        institution: str,
-        campaign: str,
-        granule_name: str,
-        download_method: str,
-        url: str,
-        filesize: int,
+        selected_granule_name: str,
+        rootdir: pathlib.Path,
+        segment_granules: Dict[str, db_utils.DatabaseGranule],
     ) -> None:
         super(DownloadConfirmationDialog, self).__init__()
 
-        self.dest_filepath = dest_filepath
-        self.institution = institution
-        self.campaign = campaign
-        self.granule_name = granule_name
+        self.selected_granule_name = selected_granule_name
+        self.rootdir = rootdir
+        self.segment_granules = segment_granules
 
-        self.download_method = download_method
-        self.url = url
-        self.filesize = filesize
-
-        # TODO: We need to check whether the full granule_filepath can be created
-        #  If not, should pop up box with error, whose 'OK' button pops up config
-        #  widget.
-        #  I think that logic may fit better elsewhere, though one option would
-        #  be to check it when the "Download" button is pressed.
         self.setup_ui()
 
     def setup_ui(self) -> None:
@@ -124,36 +112,49 @@ class DownloadConfirmationDialog(QtWidgets.QDialog):
 
         The requested granule is _______ (MB/GB)
         """
+        db_granule = self.segment_granules[self.selected_granule_name]
+        num_granules = len(self.segment_granules)
 
-        self.intro_text = QtWidgets.QLabel(
-            "".join(
-                [
-                    "You requested download of: \n\n",
-                    f"{self.granule_name}",
-                ]
-            )
+        intro_text = "".join(
+            [
+                "You asked to download: \n\n",
+                f"{db_granule.granule_name} \n",
+                f"(The full segment has {num_granules} granules)",
+            ]
         )
+
+        filesize_str = format_bytes(db_granule.filesize)
+        total_size = sum([gg.filesize for gg in self.segment_granules.values()])
+        total_size_str = format_bytes(total_size)
+        dest_filepath = pathlib.Path(self.rootdir, db_granule.relative_path)
+        filesize_text = "".join(
+            [
+                f"The requested granule is {filesize_str}.\n\n",
+                f"(The full segment is {total_size_str})",
+            ]
+        )
+
+        download_text = "".join(
+            [
+                "The granule can be downloaded from: \n",
+                db_granule.url,
+                "\n\n And will be saved to: \n",
+                str(dest_filepath),
+                "\n",
+            ]
+        )
+
+        self.intro_label = QtWidgets.QLabel(intro_text)
+        self.filesize_label = QtWidgets.QLabel(filesize_text)
 
         self.text_scroll = QtWidgets.QScrollArea()
         self.text_scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.text_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOn)
-        filesize_str = format_bytes(self.filesize)
-        self.info_label = QtWidgets.QLabel(
-            "".join(
-                [
-                    f"The requested granule is {filesize_str}.\n\n",
-                    "It can be downloaded from: \n",
-                    self.url,
-                    "\n\n And will be saved to: \n",
-                    str(self.dest_filepath),
-                    "\n",
-                ]
-            )
-        )
-        self.info_label.setTextInteractionFlags(
+        self.download_label = QtWidgets.QLabel(download_text)
+        self.download_label.setTextInteractionFlags(
             QtCore.Qt.TextInteractionFlag.TextSelectableByMouse
         )
-        self.text_scroll.setWidget(self.info_label)
+        self.text_scroll.setWidget(self.download_label)
 
         # TODO: I don't love this. Better to only create the config
         #   widget if/when needed. Add indirection via self.handle_config_button_clicked
@@ -186,7 +187,11 @@ class DownloadConfirmationDialog(QtWidgets.QDialog):
         self.button_hbox.addWidget(self.download_granule_pushbutton)
 
         self.vbox_layout = QtWidgets.QVBoxLayout()
-        self.vbox_layout.addWidget(self.intro_text)
+        self.vbox_layout.addWidget(self.intro_label)
+        self.vbox_layout.addStretch(1)
+        self.vbox_layout.addWidget(HorizontalLine())
+        self.vbox_layout.addStretch(1)
+        self.vbox_layout.addWidget(self.filesize_label)
         self.vbox_layout.addStretch(1)
         self.vbox_layout.addWidget(HorizontalLine())
         self.vbox_layout.addStretch(1)

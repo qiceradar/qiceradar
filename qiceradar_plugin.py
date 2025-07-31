@@ -885,16 +885,8 @@ class QIceRadarPlugin(QtCore.QObject):
             else:
                 headers = {"Authorization": f"Bearer {self.config.nsidc_token}"}
 
-        dest_filepath = pathlib.Path(rootdir, db_granule.relative_path)
-
         dcd = DownloadConfirmationDialog(
-            dest_filepath,
-            db_granule.institution,
-            db_granule.db_campaign,
-            db_granule.granule_name,
-            db_granule.download_method,
-            db_granule.url,
-            db_granule.filesize,
+            selected_granule_name, rootdir, segment_granules
         )
         dcd.configure.connect(self.handle_configure_signal)
 
