@@ -903,7 +903,7 @@ class QIceRadarPlugin(QtCore.QObject):
             url=db_granule.url,
             fp=dest_filepath,
             fs=db_granule.filesize,
-            hh=headers: self.start_download(gg, url, fp, fs, hh)
+            hh=headers: self.start_download([(gg, url, fp, fs)], hh)
         )
         dcd.run()
 
@@ -1417,15 +1417,18 @@ class QIceRadarPlugin(QtCore.QObject):
 
     def start_download(
         self,
-        granule: str,
-        url: str,
-        destination_filepath: pathlib.Path,
-        filesize: int,
+        granules: List[Tuple[str, str, pathlib.Path, int]],
         headers: Dict[str, str],
     ) -> None:
         """
         After the confirmation dialog has finished, this section
-        actually kicks off the download
+        actually kicks off the download.
+
+        Granules is a list of tuples; each granule has:
+        * granule: str,
+        * url: str,
+        * destination_filepath: pathlib.Path,
+        * filesize: int,
         """
         if self.download_dock_widget is None or self.download_window is None:
             self.download_window = DownloadWindow(self.iface)
@@ -1435,15 +1438,17 @@ class QIceRadarPlugin(QtCore.QObject):
             self.download_dock_widget = QgsDockWidget("QIceRadar Downloader")
             self.download_dock_widget.setWidget(self.download_window)
             # self.iface.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.download_dock_widget)
+            # NB: I like it on the right, not bottom, and pretty much always want it tabified with those other panels ...
             self.iface.addTabifiedDockWidget(
-                QtCore.Qt.BottomDockWidgetArea,
+                QtCore.Qt.RightDockWidgetArea,
                 self.download_dock_widget,
                 tabifyWith=["PythonConsole", "MessageLog"],
                 raiseTab=True,
             )
         # TODO: add downloadTransectWidget to the download window!
-        self.download_window.download(
-            granule, url, destination_filepath, filesize, headers
-        )
+        for granule, url, destination_filepath, filesize in granules:
+            self.download_window.download(
+                granule, url, destination_filepath, filesize, headers
+            )
         # Bring to front again, in case user closed it
         self.download_dock_widget.setUserVisible(True)
