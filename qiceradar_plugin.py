@@ -951,7 +951,7 @@ class QIceRadarPlugin(QtCore.QObject):
             QgsMessageLog.logMessage(
                 f"Could not find existing group for granule: {granule_name}"
             )
-            granule_group = self.radar_viewer_group.addGroup(granule_name)
+            granule_group = self.radar_viewer_group.insertGroup(0, granule_name)
         else:
             QgsMessageLog.logMessage(
                 f"Found existing group for granule: {granule_name}"
