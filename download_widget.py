@@ -250,7 +250,7 @@ class DownloadWindow(QtWidgets.QMainWindow):
 
     def download(
         self,
-        granule: str,
+        granule_name: str,
         url: str,
         destination_filepath: pathlib.Path,
         filesize: int,
@@ -259,18 +259,18 @@ class DownloadWindow(QtWidgets.QMainWindow):
         # TODO: This means that once a download has been canceled, you won't
         #   be able to retry it until the plugin is reloaded.
         # Consider allowing multiple downloads? (or adding a "retry" button?)
-        if granule in self.download_widgets:
+        if granule_name in self.download_widgets:
             if (
-                self.download_widgets[granule].canceled
-                or self.download_widgets[granule].failed
+                self.download_widgets[granule_name].canceled
+                or self.download_widgets[granule_name].failed
             ):
                 # OK, we can retry
-                QgsMessageLog.logMessage(f"Retrying download of {granule}")
-            elif self.download_widgets[granule].finished:
-                QgsMessageLog.logMessage(f"Already downloaded {granule}")
+                QgsMessageLog.logMessage(f"Retrying download of {granule_name}")
+            elif self.download_widgets[granule_name].finished:
+                QgsMessageLog.logMessage(f"Already downloaded {granule_name}")
                 return
             else:
-                print(f"Currently downloading {granule}")
+                print(f"Currently downloading {granule_name}")
                 return
 
         try:
@@ -284,10 +284,17 @@ class DownloadWindow(QtWidgets.QMainWindow):
             QgsMessageLog.logMessage(f"Exception encountered in mkdir: {ex}")
             # TODO: This needs to break out, not continue!!
 
-        print(f"Downloading {granule}")
-        widget = DownloadWidget(granule, url, filesize, destination_filepath, headers)
-        self.download_widgets[granule] = widget
-        self.download_widgets[granule].download_finished.connect(
+        already_downloaded = destination_filepath.is_file()
+        if already_downloaded:
+            QgsMessageLog.logMessage(f"Already downloaded {granule_name} ... skipping")
+            return
+
+        print(f"Downloading {granule_name}")
+        widget = DownloadWidget(
+            granule_name, url, filesize, destination_filepath, headers
+        )
+        self.download_widgets[granule_name] = widget
+        self.download_widgets[granule_name].download_finished.connect(
             self.download_finished.emit
         )
         widget.run()

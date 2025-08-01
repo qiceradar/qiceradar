@@ -225,6 +225,35 @@ class GranuleMetadata:
         database_filepath = layer.source().split("|")[0]
         return layer_attributes, database_filepath
 
+    def get_segment_granules(self) -> Dict[str, db_utils.DatabaseGranule]:
+        """
+        Return dict of granules that are in the same segment as this granule.
+        """
+        assert self.db_granule is not None
+        sql_cmd = (
+            "SELECT * FROM granules where "
+            f"campaign is '{self.db_granule.db_campaign}' and "
+            f"institution is '{self.db_granule.institution}' and "
+            f"segment is '{self.db_granule.segment}' and "
+            f"data_product is '{self.db_granule.product}' "
+        )
+        QgsMessageLog.logMessage(f"sql_cmd: {sql_cmd}")
+
+        connection = sqlite3.connect(self.database_filepath)
+        cursor = connection.cursor()
+        result = cursor.execute(sql_cmd)
+        rows = result.fetchall()
+        segment_granules = {}
+        for row in rows:
+            try:
+                segment_granules[row[0]] = db_utils.DatabaseGranule(*row)
+            except Exception:
+                QgsMessageLog.logMessage(
+                    f"Invalid response {rows} from command {sql_cmd}"
+                )
+
+        return segment_granules
+
     def load_data_from_database(
         self, granule_name: str, database_filepath: str
     ) -> None:
@@ -794,8 +823,7 @@ class QIceRadarPlugin(QtCore.QObject):
             return
 
         # TODO: refactor to not reach in and directly use db_granule
-        assert granule_metadata.db_granule is not None
-        segment_granules = {granule_name: granule_metadata.db_granule}
+        segment_granules = granule_metadata.get_segment_granules()
         self.launch_radar_downloader(
             granule_name, self.config.rootdir, segment_granules
         )
@@ -894,7 +922,7 @@ class QIceRadarPlugin(QtCore.QObject):
             (
                 db_granule.granule_name,
                 db_granule.url,
-                os.path.join(rootdir, db_granule.relative_path),
+                pathlib.Path(rootdir, db_granule.relative_path),
                 db_granule.filesize,
             )
         ]
@@ -906,7 +934,7 @@ class QIceRadarPlugin(QtCore.QObject):
             (
                 db.granule_name,
                 db.url,
-                os.path.join(rootdir, db.relative_path),
+                pathlib.Path(rootdir, db.relative_path),
                 db.filesize,
             )
             for db in segment_granules.values()
