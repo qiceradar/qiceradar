@@ -19,6 +19,8 @@ QIceRadar is funded by NSF's CSSI program (#2209726).
 
 ([Developers Guide](docs/developers.md))
 
+(WIP tutorial for [plotting radargrams](docs/plotting_radargrams.md) using QIceRadar libraries)
+
 #### References
 
 [1] Blankenship, D. D. et al.(2017). IceBridge HiCARS 2 L1B Time-Tagged Echo Strength Profiles, Version 1. Boulder, CO USA. NSIDC. https://doi.org/10.5067/0I7PFBVQOGO5.
