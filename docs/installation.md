@@ -19,8 +19,8 @@ Open QGIS, open the project that you want to add the index to, then drag `qicera
 This index has been compiled from the BedMAP3 data[1] (red lines) and coordinates extracted from the published radargrams (grey lines). Radar lines are grouped into surveys/campaigns and then into institutions, following the Bedmap3 classifications.
 
 The QIceRadar plugins depend on the structure of this data:
-* Import all features; selecting individual features to import will not work with the plugins. (If necessary, you can delete layers/institution groups after importing.)
-* Do not rename the top-level group. If you do so, the plugin won't be able to find the data. It should be "ANTARCTIC QIceRadar Index"
+* If a dialog pops up, select "import all features"; selecting individual features to import will not work with the plugins. (If necessary, you can delete layers/institution groups after importing.)
+* Do not rename the top-level group ("ANTARCTIC QIceRadar Index"). If you do so, the plugin won't be able to find the data.
 
 
 ## Install Plugin
