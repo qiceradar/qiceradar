@@ -1,0 +1,15 @@
+# These were NOT installed by default with MacOS 3.44 LTR
+h5py >= 2.10.0
+matplotlib >= 3.3.0
+netCDF4 >= 1.5.4
+
+# We also rely on these, but they were installed with QGIS
+# For now, using minimum versions from a working 3.40 LTR install on MacOS
+numpy >= 1.20.1
+pyproj >= 3.2.0
+PyQt5 >= 5.15.4
+PyYAML >= 5.3.1
+requests >= 2.23.0
+scipy >= 1.5.1
+
+
