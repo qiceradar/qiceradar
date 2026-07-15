@@ -30,26 +30,30 @@
 import pathlib
 from typing import Any, Tuple
 
-import netCDF4 as nc
 import numpy as np
 import pyproj
 
+# We cannot use h5netcdf for UTIG's data since they have released it in the
+# "classic" pre-HDF5 netCDF format. netCDF4 supported this, as does scipy.io.
+# scipy.io's netcdf_file is based on pupynere under the hood; we've chosen to
+# directly vendor pupynere to minimize external dependencies.
+from pupynere import netcdf_file
+
 
 def load_radargram(filepath: pathlib.Path) -> Tuple[Any, Any, Any, Any, Any]:
-    # Starting with AGASEA, then moving on ...
-    dd = nc.Dataset(filepath, "r")
+    dd = netcdf_file(str(filepath), "r", mmap=False)
 
     lon = None
     if "longitude" in dd.variables:
-        lon = dd.variables["longitude"][:].data
+        lon = dd.variables["longitude"][:]
     elif "lon" in dd.variables:
-        lon = dd.variables["lon"][:].data
+        lon = dd.variables["lon"][:]
 
     lat = None
     if "latitude" in dd.variables:
-        lat = dd.variables["latitude"][:].data
+        lat = dd.variables["latitude"][:]
     elif "lat" in dd.variables:
-        lat = dd.variables["lat"][:].data
+        lat = dd.variables["lat"][:]
 
     if lat is None or lon is None:
         msg = f"Could not find lon/lat in {filepath}. Vars are {dd.variables.keys()}"
@@ -62,10 +66,10 @@ def load_radargram(filepath: pathlib.Path) -> Tuple[Any, Any, Any, Any, Any]:
     fast_time_us = None
     if "fast-time" in dd.variables:
         # AGASEA
-        fast_time_us = dd.variables["fast-time"][:].data
+        fast_time_us = dd.variables["fast-time"][:]
     elif "fasttime" in dd.variables:
         # EAGLE, OIA, ICECAP, GIMBLE, COLDEX
-        fast_time_us = dd.variables["fasttime"][:].data
+        fast_time_us = dd.variables["fasttime"][:]
     else:
         raise Exception(
             f"Could not find fast time data in {filepath}. Vars are: {dd.variables.keys()}"
@@ -80,13 +84,13 @@ def load_radargram(filepath: pathlib.Path) -> Tuple[Any, Any, Any, Any, Any]:
     radargram = None
     if "data_hi_gain" in dd.variables:
         # AGASEA
-        radargram = dd.variables["data_hi_gain"][:].data
+        radargram = dd.variables["data_hi_gain"][:]
     elif "amplitude_hi_gain" in dd.variables:
         # EAGLE
-        radargram = dd.variables["amplitude_hi_gain"][:].data
+        radargram = dd.variables["amplitude_hi_gain"][:]
     elif "amplitude_high_gain" in dd.variables:
         # OIA, ICECAP, GIMBLE, COLDEX
-        radargram = dd.variables["amplitude_high_gain"][:].data
+        radargram = dd.variables["amplitude_high_gain"][:]
     else:
         raise Exception(
             f"Could not find radar data in {filepath}. Vars are: {dd.variables.keys()}"
