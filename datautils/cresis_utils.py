@@ -28,10 +28,11 @@
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import pathlib
+import sys
 from typing import Any, Tuple
 
-import h5py
 import numpy as np
+import pyfive
 import scipy.io
 
 
@@ -47,10 +48,10 @@ def load_radargram(filepath: pathlib.Path) -> Tuple[Any, Any, Any, Any, Any]:
     Additionally, a single season reported complex radargrams; for
     that one, we display the magnitude.
     """
-
     print(f"load_radargram({filepath})")
     try:
-        data = h5py.File(filepath, "r")
+        # data = h5py.File(filepath, "r")
+        data = pyfive.File(filepath, "r")
         return extract_radargram_h5py(data)
     except OSError:
         print(f"Couldn't open {filepath} with h5py library; trying scipy")
