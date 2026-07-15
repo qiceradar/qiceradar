@@ -62,7 +62,7 @@ def load_radargram(filepath: pathlib.Path) -> Tuple[Any, Any, Any, Any, Any]:
 
 
 def extract_radargram_h5py(data):
-    radargram = data["Data"]
+    radargram = data["Data"][:]
     radargram = np.log(np.array(radargram))
 
     lat = data["Latitude"][:].flatten()
