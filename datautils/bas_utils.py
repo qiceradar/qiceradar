@@ -30,7 +30,7 @@
 import pathlib
 from typing import Any, Tuple
 
-import netCDF4 as nc
+import h5netcdf.legacyapi as nc
 import numpy as np
 
 # All institution-specific Radargram classes will need to have
@@ -55,7 +55,7 @@ class BasRadargram:
 # At least for now, we return the data as np.ndarray, which isn't yet
 # well supported in mypy.
 def load_chirp_data(filepath: pathlib.Path) -> Tuple[Any, Any, Any, Any, Any]:
-    dd = nc.Dataset(filepath, "r")
+    dd = nc.Dataset(filepath, "r", backend="pyfive")
 
     # NOTE: I'm torn on whether to use campaign vs. data fields to make this decision.
     #    I wound up choosing campaign since the presence of PriNumber isn't a good signal
@@ -68,35 +68,35 @@ def load_chirp_data(filepath: pathlib.Path) -> Tuple[Any, Any, Any, Any, Any]:
     if dd.campaign == "IMAFI":
         # The IMAFI season had two different versions of the chirp product: cHG, DLRsar
         # For now, arbitrarily picking cHG
-        chirp_data = dd.variables["chirp_cHG_data"][:].data.transpose()
+        chirp_data = dd.variables["chirp_cHG_data"][:].transpose()
     elif dd.campaign == "POLARGAP":
         # TODO: add support switching between these products?
         # The POLARGAP season had polarised_chirp_{PPVV,SSHH}_data
         # (and polarised_pulse_data) for flights 1-23. After that, they
         # only have chirp_data.
         try:
-            chirp_data = dd.variables["polarised_chirp_PPVV_data"][:].data.transpose()
+            chirp_data = dd.variables["polarised_chirp_PPVV_data"][:].transpose()
         except KeyError:
-            chirp_data = dd.variables["chirp_data"][:].data.transpose()
+            chirp_data = dd.variables["chirp_data"][:].transpose()
     else:
-        chirp_data = dd.variables["chirp_data"][:].data.transpose()
+        chirp_data = dd.variables["chirp_data"][:].transpose()
 
     # NB: BAS tutorial recommends converting to dB here: chirp = 10*np.log10(chirp)
     # QUESTION: However, the metadata says it's already in dBm?
     chirp_data = np.log10(chirp_data)
 
     # These are in PS71 (specified in 'projection' ncattrs)
-    xx = dd.variables["x_coordinates"][:].data
-    yy = dd.variables["y_coordinates"][:].data
-    utc = dd.variables["UTC_time_layerData"][:].data
+    xx = dd.variables["x_coordinates"][:]
+    yy = dd.variables["y_coordinates"][:]
+    utc = dd.variables["UTC_time_layerData"][:]
     # There was an error in the polargap data export.
     if dd.campaign == "POLARGAP":
         utc = None
-    lon = dd.variables["longitude_layerData"][:].data
-    lat = dd.variables["latitude_layerData"][:].data
+    lon = dd.variables["longitude_layerData"][:]
+    lat = dd.variables["latitude_layerData"][:]
 
     # In microseconds
-    fast_time = dd.variables["fast_time"][:].data
+    fast_time = dd.variables["fast_time"][:]
 
     # Handle pulse <-> chirp interpolation, if necessary
     # pick_traces should be the variable that matches the {x, y}_coordinates and {srf, bed}_picks arrays
@@ -107,10 +107,10 @@ def load_chirp_data(filepath: pathlib.Path) -> Tuple[Any, Any, Any, Any, Any]:
         # Chirp and Pulse traces do not align; PriNumber_{pulse, chirp} gives effective timestamps on the same "clock" for both.
         # All other data fields are provided for pulse trace numbers, and we need to find the equivalent chirp trace
         # for plotting on the chirp radargram.
-        # traces_chirp = dd.variables["traces_chirp"][:].data
-        traces_pulse = dd.variables["traces_pulse"][:].data
-        pri_chirp = dd.variables["PriNumber_chirp"][:].data
-        pri_pulse = dd.variables["PriNumber_pulse"][:].data
+        # traces_chirp = dd.variables["traces_chirp"][:]
+        traces_pulse = dd.variables["traces_pulse"][:]
+        pri_chirp = dd.variables["PriNumber_chirp"][:]
+        pri_pulse = dd.variables["PriNumber_pulse"][:]
 
         # Figure out the equivalent pulse trace for every chirp trace,
         # then find positions for those
