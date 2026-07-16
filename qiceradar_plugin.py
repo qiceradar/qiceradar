@@ -885,6 +885,8 @@ class QIceRadarPlugin(QtCore.QObject):
                 f"Programmatically updating out-of-date download URL: {old_url} -> {url}"
             )
             db_granule.url = url
+            msg = "Database has out-of-date URL; please re-download from Zenodo! https://doi.org/10.5281/zenodo.12123013"
+            self.message_bar.pushMessage(msg, level=Qgis.Warning, duration=10)
 
         if db_granule.download_method == "nsidc":
             if not nsidc_token_is_valid(self.config):
