@@ -31,7 +31,9 @@ import copy
 import os
 import pathlib
 import shutil
+import socket
 import tempfile
+import time
 from typing import Dict, Optional
 
 import PyQt5.QtCore as QtCore
@@ -733,6 +735,172 @@ class RequestsDownloadWorker(BaseDownloadWorker):
         self.cancel_requested = True
 
 
+class UrllibDownloadWorker(BaseDownloadWorker):
+    """
+    Download worker using urllib.request from the standard library.
+    Used for AWI/Pangaea downloads where the requests library fails.
+
+    The chunk-by-chunk download loop follows the same pattern as
+    RequestsDownloadWorker, with the same pause/resume/cancel flag mechanism.
+    """
+
+    def __init__(self, url: str, destination_filepath: pathlib.Path) -> None:
+        super().__init__(url, destination_filepath)
+        self.pause_requested = False
+        self.cancel_requested = False
+        self.downloading = False
+        self.bytes_received = 0
+        self.chunk_timeout = 10
+        # Pangaea may need to retrieve data from tape before serving it,
+        # returning HTTP 503 until the data is staged. Use a longer timeout
+        # for the initial connection and retry on 503.
+        self.connect_timeout = 60
+        self.max_retries = 10
+        self.retry_delay = 30  # seconds between retries on 503
+        self.temp_file = tempfile.NamedTemporaryFile(delete=False)
+        print(f"UrllibDownloadWorker saving to {self.temp_file.name}")
+
+    def resume_download(self) -> None:
+        self.resumed.emit()
+        self.run()
+
+    def run(self) -> None:
+        import ssl
+        import urllib.error
+        import urllib.request
+
+        if self.downloading:
+            print("Error! called run() when worker is already running.")
+            return
+        self.pause_requested = False
+        print("UrllibDownloadWorker.run()")
+
+        headers = {"User-Agent": "Mozilla/5.0"}
+        if self.bytes_received > 0:
+            headers["Range"] = f"bytes={self.bytes_received}-"
+
+        ctx = ssl.create_default_context()
+
+        # Retry loop to handle Pangaea's tape-backed storage.
+        # The server returns 503 while data is being retrieved from tape.
+        response = None
+        for attempt in range(self.max_retries):
+            if self.cancel_requested:
+                self.canceled.emit()
+                return
+            req = urllib.request.Request(self.url, headers=headers)
+            try:
+                response = urllib.request.urlopen(
+                    req, context=ctx, timeout=self.connect_timeout
+                )
+            except urllib.error.HTTPError as ex:
+                if ex.code == 503 and attempt < self.max_retries - 1:
+                    msg = (
+                        f"Server returned 503 (data may be on tape). "
+                        f"Retrying in {self.retry_delay}s "
+                        f"(attempt {attempt + 1}/{self.max_retries})..."
+                    )
+                    print(msg)
+                    QgsMessageLog.logMessage(msg)
+                    time.sleep(self.retry_delay)
+                    continue
+                QgsMessageLog.logMessage(f"UrllibDownloadWorker.run: HTTP {ex.code}")
+                print(f"UrllibDownloadWorker.run: HTTP {ex.code}: {ex}")
+                self.failed.emit(str(ex))
+                return
+            except Exception as ex:
+                QgsMessageLog.logMessage("UrllibDownloadWorker.run got exception!")
+                QgsMessageLog.logMessage(f"{ex}")
+                print(f"UrllibDownloadWorker.run got exception! {ex}")
+                self.failed.emit(str(ex))
+                return
+            # Got a non-error response, stop retrying.
+            break
+
+        if response is None:
+            self.failed.emit("No response received")
+            return
+
+        status = response.status
+        print(f"Response status code: {status}")
+        if status == 200:
+            QgsMessageLog.logMessage(f"Starting download of {self.url}")
+            resuming = False
+        elif status == 206:
+            QgsMessageLog.logMessage(f"Resuming download of {self.url}")
+            resuming = True
+        else:
+            msg = f"Download failed! Code {status}, url: {self.url}"
+            QgsMessageLog.logMessage(msg)
+            self.failed.emit(msg)
+            return
+
+        self.downloading = True
+        self._download(response, resuming)
+
+    def _download(self, response: object, resuming: bool) -> None:
+        chunk_size = 4096
+        if resuming:
+            permissions = "ab"
+        else:
+            permissions = "wb"
+            self.bytes_received = 0
+
+        with open(self.temp_file.name, permissions) as fp:
+            try:
+                while True:
+                    QtWidgets.QApplication.processEvents()
+                    if self.cancel_requested or self.pause_requested:
+                        break
+                    chunk = response.read(chunk_size)
+                    if not chunk:
+                        break
+                    self.bytes_received += len(chunk)
+                    fp.write(chunk)
+                    self.progress.emit(self.bytes_received)
+            except socket.timeout:
+                print("UrllibDownloadWorker._download: timeout.")
+                self.paused.emit()
+                self.downloading = False
+                return
+            except Exception as ex:
+                print(f"UrllibDownloadWorker._download: {ex}")
+                self.failed.emit(str(ex))
+                self.downloading = False
+                return
+
+        if self.cancel_requested:
+            self.canceled.emit()
+        elif self.pause_requested:
+            self.paused.emit()
+        else:
+            print(
+                f"UrllibDownloadWorker finished! Moving data to {self.destination_filepath}"
+            )
+            try:
+                shutil.move(self.temp_file.name, self.destination_filepath)
+            except Exception as move_ex:
+                QgsMessageLog.logMessage("Unable to move file; trying to copy.")
+                try:
+                    shutil.copy(self.temp_file.name, self.destination_filepath)
+                except Exception as copy_ex:
+                    if os.path.isfile(self.destination_filepath):
+                        os.remove(self.destination_filepath)
+                    error_msg = str(move_ex) + "\n\n\n" + str(copy_ex)
+                    self.failed.emit(error_msg)
+        self.downloading = False
+        if not (self.cancel_requested or self.pause_requested):
+            self.finished.emit()
+
+    def pause_download(self) -> None:
+        print("UrllibDownloadWorker: pause_download")
+        self.pause_requested = True
+
+    def cancel_download(self) -> None:
+        print("UrllibDownloadWorker: cancel_download")
+        self.cancel_requested = True
+
+
 def create_download_worker(
     download_method: str,
     url: str,
@@ -747,7 +915,9 @@ def create_download_worker(
     if download_method == "nsidc":
         headers = {"Authorization": f"Bearer {config.nsidc_token}"}
         return RequestsDownloadWorker(url, destination_filepath, headers)
-    elif download_method in ("wget", "curl"):
+    elif download_method == "wget":
         return RequestsDownloadWorker(url, destination_filepath, headers={})
+    elif download_method == "curl":
+        return UrllibDownloadWorker(url, destination_filepath)
     else:
         raise ValueError(f"Unknown download_method: {download_method}")
