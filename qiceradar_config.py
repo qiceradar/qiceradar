@@ -66,7 +66,7 @@ def rootdir_is_valid(config: UserConfig) -> bool:
 
 
 def nsidc_token_is_valid(config: UserConfig) -> bool:
-    test_url = "https://n5eil01u.ecs.nsidc.org/ICEBRIDGE/IR1HI1B.001/2009.01.02/IR1HI1B_2009002_MCM_JKB1a_DGC02a_000.nc"
+    test_url = "https://data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-protected/ICEBRIDGE/IR1HI1B/1/2009/01/02/IR1HI1B_2009002_MCM_JKB1a_DGC02a_000.nc"
     headers = {"Authorization": f"Bearer {config.nsidc_token}"}
     try:
         req = requests.get(test_url, stream=True, headers=headers)
