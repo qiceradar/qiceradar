@@ -42,6 +42,8 @@ from PyQt5.QtCore import Qt
 from qgis.core import QgsMessageLog
 from qgis.gui import QgisInterface
 
+from .qiceradar_config import UserConfig
+
 
 def format_bytes(filesize: int) -> str:
     filesize_kb = filesize / (1024)
@@ -240,7 +242,8 @@ class DownloadWindow(QtWidgets.QMainWindow):
         url: str,
         destination_filepath: pathlib.Path,
         filesize: int,
-        headers: Dict[str, str],
+        download_method: str,
+        config: UserConfig,
     ) -> None:
         # TODO: This means that once a download has been canceled, you won't
         #   be able to retry it until the plugin is reloaded.
@@ -260,7 +263,9 @@ class DownloadWindow(QtWidgets.QMainWindow):
                 return
 
         print(f"Downloading {granule}")
-        widget = DownloadWidget(granule, url, filesize, destination_filepath, headers)
+        widget = DownloadWidget(
+            granule, url, filesize, destination_filepath, download_method, config
+        )
         self.download_widgets[granule] = widget
         self.download_widgets[granule].download_finished.connect(
             self.download_finished.emit
@@ -284,13 +289,15 @@ class DownloadWidget(QtWidgets.QWidget):
         url: str,
         filesize: int,
         destination_filepath: pathlib.Path,
-        headers: Dict[str, str],
+        download_method: str,
+        config: UserConfig,
     ) -> None:
         super().__init__()
         self.granule = granule
         self.url = url
         self.filesize = filesize
-        self.headers = headers
+        self.download_method = download_method
+        self.config = config
         self.destination_filepath = destination_filepath
         self.canceled = False
         self.failed = False
@@ -458,7 +465,9 @@ class DownloadWidget(QtWidgets.QWidget):
 
     def run(self) -> None:
         self.download_worker_thread = QtCore.QThread()
-        self.worker = DownloadWorker(self.url, self.headers, self.destination_filepath)
+        self.worker = create_download_worker(
+            self.download_method, self.url, self.destination_filepath, self.config
+        )
         self.worker.moveToThread(self.download_worker_thread)
 
         self.download_worker_thread.started.connect(self.worker.run)
@@ -466,7 +475,6 @@ class DownloadWidget(QtWidgets.QWidget):
         self.download_worker_thread.finished.connect(
             self.download_worker_thread.deleteLater
         )
-        # self.thread.finished.connect(self.handle_thread_finished)
 
         # Hook up signals from the worker to updates in the widget
         self.worker.paused.connect(self.handle_paused)
@@ -509,9 +517,22 @@ class DownloadWidget(QtWidgets.QWidget):
         message_box.exec()
 
 
-class DownloadWorker(QtCore.QObject):
+class BaseDownloadWorker(QtCore.QObject):
     """
-    The DownloadWorker class actually handles the download.
+    Abstract base for download workers, which are responsible for handling
+    the download of a single radargram granule.
+
+    The intent is that all workers must support emitting finished/failed/canceled,
+    while pause/resume + progress should be dependent on whether the underlying
+    backend supports those features.
+
+    TODO(LEL): so far, we only have backends that implement the full functionality,
+        so if we wind up with ones that can't meaningfully resume, we'll have to
+        test that that's handled properly. (I suspect the way to do it is for them
+        to implement `handle_pause` but then just emit `canceled` in response.
+
+    Note: Can't use abc.ABC here due to metaclass conflict with QObject.
+    Subclasses must override run, pause_download, resume_download, cancel_download.
     """
 
     paused = QtCore.pyqtSignal()
@@ -522,15 +543,45 @@ class DownloadWorker(QtCore.QObject):
     # Qt's signals use an int32 if I specify "int" here, so use "object"
     progress = QtCore.pyqtSignal(object)
 
-    def __init__(
-        self, url: str, headers: Dict[str, str], destination_filepath: pathlib.Path
-    ) -> None:
+    def __init__(self, url: str, destination_filepath: pathlib.Path) -> None:
         super().__init__()
         self.url = url
-        self.headers = headers
         self.destination_filepath = destination_filepath
+
+    def run(self) -> None:
+        """Start or restart the download. Connected to thread.started."""
+        raise NotImplementedError
+
+    def pause_download(self) -> None:
+        """Handle pause request from UI."""
+        raise NotImplementedError
+
+    def resume_download(self) -> None:
+        """Handle resume request from UI."""
+        raise NotImplementedError
+
+    def cancel_download(self) -> None:
+        """Handle cancel request from UI."""
+        raise NotImplementedError
+
+
+class RequestsDownloadWorker(BaseDownloadWorker):
+    """
+    Download worker using the requests library.
+    Used for NSIDC and BAS (wget) downloads.
+
+    TODO(LEL): I'm considering subclassing this to create a one-to-one mapping from
+        download methods to DownloadWorker classes. Then, BasDownloadWorker and
+        NsidcDownloadWorker would handle their own header construction, rather
+        than having that live in the factory.
+    """
+
+    def __init__(
+        self, url: str, destination_filepath: pathlib.Path, headers: Dict[str, str]
+    ) -> None:
+        super().__init__(url, destination_filepath)
+        self.headers = headers
         self.pause_requested = False
-        self.resume_requested = False
         self.cancel_requested = False
         self.downloading = False
         self.bytes_received = 0
@@ -551,7 +602,8 @@ class DownloadWorker(QtCore.QObject):
         if self.downloading:
             print("Error! called run() when worker is already running.")
             return
-        # This is needed in order to use the same function for
+        # Reset pause_requested in case this run() call was triggered by
+        # a resume, since we use the same method for resuming and the initial run.
         self.pause_requested = False
         print("DownloadWorker.run()")
         # At least for BAS's data center, Accept-Ranges is set in GET but not HEAD,
@@ -635,9 +687,6 @@ class DownloadWorker(QtCore.QObject):
                 print("DownloadWorker.download: ReadTimeout.")
                 print(ex)
                 # Pausing so user can re-try.
-                # Would it be better to make use of the existing
-                # machinery for pausing, and just set
-                # self.pause_requested = True ??
                 self.paused.emit()
                 self.downloading = False
                 return
@@ -682,3 +731,22 @@ class DownloadWorker(QtCore.QObject):
     def cancel_download(self) -> None:
         print("DownloadWorker: cancel_download")
         self.cancel_requested = True
+
+
+def create_download_worker(
+    download_method: str,
+    url: str,
+    destination_filepath: pathlib.Path,
+    config: UserConfig,
+) -> BaseDownloadWorker:
+    """
+    Factory that creates the appropriate download worker based on download_method.
+    This is the only place that maps download_method strings to worker classes.
+    """
+    if download_method == "nsidc":
+        headers = {"Authorization": f"Bearer {config.nsidc_token}"}
+        return RequestsDownloadWorker(url, destination_filepath, headers)
+    elif download_method in ("wget", "curl"):
+        return RequestsDownloadWorker(url, destination_filepath, headers={})
+    else:
+        raise ValueError(f"Unknown download_method: {download_method}")
