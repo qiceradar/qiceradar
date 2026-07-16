@@ -743,6 +743,7 @@ def create_download_worker(
     Factory that creates the appropriate download worker based on download_method.
     This is the only place that maps download_method strings to worker classes.
     """
+
     if download_method == "nsidc":
         headers = {"Authorization": f"Bearer {config.nsidc_token}"}
         return RequestsDownloadWorker(url, destination_filepath, headers)

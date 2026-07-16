@@ -862,6 +862,30 @@ class QIceRadarPlugin(QtCore.QObject):
             #   download step, maybe pop up the config dialog here?
             QgsMessageLog.logMessage(f"Exception encountered in mkdir: {ex}")
 
+        # NASA migrated their cloud data access; I want to be able to test download
+        # without updating the database (will do that next.)
+        url = db_granule.url
+        if "n5eil01u" in url:
+            old_url = url
+            url = url.replace(
+                "n5eil01u.ecs.nsidc.org",
+                "data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-protected",
+            )
+            # In addition to the URL, they changed the organization.
+            import re
+
+            # 2009.01.02 -> 2009/01/02
+            date_pattern = r"(\d{4})\.(\d{2})\.(\d{2})"
+            url = re.sub(date_pattern, r"\1/\2/\3", url)
+            # ICEBRIDGE/IR1HI1B.001 -> ICEBRIDGE/IR1HI1B/1
+            set_pattern = r"(ICEBRIDGE/[A-Za-z0-9]+)\.(\d+)"
+            url = re.sub(set_pattern, lambda m: f"{m.group(1)}/{int(m.group(2))}", url)
+
+            print(
+                f"Programmatically updating out-of-date download URL: {old_url} -> {url}"
+            )
+            db_granule.url = url
+
         if db_granule.download_method == "nsidc":
             if not nsidc_token_is_valid(self.config):
                 # TODO: I'm experimenting with using the MessageBar
