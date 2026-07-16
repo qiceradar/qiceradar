@@ -862,11 +862,6 @@ class QIceRadarPlugin(QtCore.QObject):
             #   download step, maybe pop up the config dialog here?
             QgsMessageLog.logMessage(f"Exception encountered in mkdir: {ex}")
 
-        # I really don't like creating headers here, because it exposes
-        # the DownloadWorker's implementation details of using requests.
-        # Consider refactoring if we wind up with more methods that
-        # don't just need additional headers passed to requests.get
-        headers = {}
         if db_granule.download_method == "nsidc":
             if not nsidc_token_is_valid(self.config):
                 # TODO: I'm experimenting with using the MessageBar
@@ -884,8 +879,6 @@ class QIceRadarPlugin(QtCore.QObject):
                 widget.layout().addWidget(button)
                 self.message_bar.pushWidget(widget, Qgis.Warning)
                 return
-            else:
-                headers = {"Authorization": f"Bearer {self.config.nsidc_token}"}
 
         dcd = DownloadConfirmationDialog(
             dest_filepath,
@@ -903,7 +896,7 @@ class QIceRadarPlugin(QtCore.QObject):
             url=db_granule.url,
             fp=dest_filepath,
             fs=db_granule.filesize,
-            hh=headers: self.start_download(gg, url, fp, fs, hh)
+            dm=db_granule.download_method: self.start_download(gg, url, fp, fs, dm)
         )
         dcd.run()
 
@@ -1421,7 +1414,7 @@ class QIceRadarPlugin(QtCore.QObject):
         url: str,
         destination_filepath: pathlib.Path,
         filesize: int,
-        headers: Dict[str, str],
+        download_method: str,
     ) -> None:
         """
         After the confirmation dialog has finished, this section
@@ -1443,7 +1436,7 @@ class QIceRadarPlugin(QtCore.QObject):
             )
         # TODO: add downloadTransectWidget to the download window!
         self.download_window.download(
-            granule, url, destination_filepath, filesize, headers
+            granule, url, destination_filepath, filesize, download_method, self.config
         )
         # Bring to front again, in case user closed it
         self.download_dock_widget.setUserVisible(True)
