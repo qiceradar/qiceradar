@@ -30,8 +30,11 @@
 import pathlib
 from typing import Any, Tuple
 
-import netCDF4 as nc
+# import h5netcdf.legacyapi as nc
 import numpy as np
+
+# At least JuRaS_2018 uses classic netCDF, not the HDF5-backed one.
+from pupynere import netcdf_file
 
 # All institution-specific Radargram classes will need to have
 # * get_track: returns lat, lon arrays
@@ -55,7 +58,8 @@ class AwiRadargram:
 # At least for now, we return the data as np.ndarray, which isn't yet
 # well supported in mypy.
 def load_netcdf(filepath: pathlib.Path) -> Tuple[Any, Any, Any, Any, Any]:
-    dd = nc.Dataset(filepath, "r")
+    # dd = nc.Dataset(filepath, "r", backend="pyfive")
+    dd = netcdf_file(str(filepath), "r", mmap=False)
 
     data = np.flipud(dd.variables["WAVEFORM"][:]).transpose()
     utc = dd.variables["TIME"][:]
