@@ -385,9 +385,8 @@ class DownloadWidget(QtWidgets.QWidget):
         layout.addWidget(self.progress_bar)
         layout.addWidget(self.progress_label)
         layout.addWidget(self.percent_label)
-        # TODO: figure out how to get
-        # layout.addWidget(self.pause_button)
-        # layout.addWidget(self.resume_button)
+        layout.addWidget(self.pause_button)
+        layout.addWidget(self.resume_button)
         layout.addWidget(self.cancel_button)
         layout.addWidget(self.help_button)
         self.setLayout(layout)
@@ -764,6 +763,26 @@ class UrllibDownloadWorker(BaseDownloadWorker):
         self.resumed.emit()
         self.run()
 
+    def _interruptible_sleep(self, seconds: float) -> bool:
+        """Sleep in short intervals, processing Qt events between them.
+
+        Returns True if interrupted by pause or cancel (and emits the
+        appropriate signal), False if the full duration elapsed.
+        """
+        elapsed = 0.0
+        interval = 0.5
+        while elapsed < seconds:
+            time.sleep(min(interval, seconds - elapsed))
+            elapsed += interval
+            QtWidgets.QApplication.processEvents()
+            if self.cancel_requested:
+                self.canceled.emit()
+                return True
+            if self.pause_requested:
+                self.paused.emit()
+                return True
+        return False
+
     def run(self) -> None:
         import ssl
         import urllib.error
@@ -785,8 +804,12 @@ class UrllibDownloadWorker(BaseDownloadWorker):
         # The server returns 503 while data is being retrieved from tape.
         response = None
         for attempt in range(self.max_retries):
+            QtWidgets.QApplication.processEvents()
             if self.cancel_requested:
                 self.canceled.emit()
+                return
+            if self.pause_requested:
+                self.paused.emit()
                 return
             req = urllib.request.Request(self.url, headers=headers)
             try:
@@ -802,7 +825,11 @@ class UrllibDownloadWorker(BaseDownloadWorker):
                     )
                     print(msg)
                     QgsMessageLog.logMessage(msg)
-                    time.sleep(self.retry_delay)
+                    # Sleep in short intervals so we stay responsive
+                    # to pause/cancel from the UI.
+                    if self._interruptible_sleep(self.retry_delay):
+                        # the _interruptible_sleep call will have emitted paused/canceled
+                        return
                     continue
                 QgsMessageLog.logMessage(f"UrllibDownloadWorker.run: HTTP {ex.code}")
                 print(f"UrllibDownloadWorker.run: HTTP {ex.code}: {ex}")
