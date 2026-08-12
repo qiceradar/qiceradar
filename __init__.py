@@ -6,7 +6,8 @@ import sys
 # For now, this includes:
 # * pyfive (pure python replacement to h5py)
 external_dir = pathlib.Path(__file__).resolve().parent / "external"
-sys.path.insert(0, str(external_dir / "pyfive"))
+if external_dir not in sys.path:
+    sys.path.insert(0, str(external_dir))
 
 
 def classFactory(iface):
