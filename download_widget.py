@@ -358,6 +358,7 @@ class DownloadWidget(QtWidgets.QWidget):
         # mActionPlay.svg
         # mTaskCancel.svg
         self.pause_button = QtWidgets.QPushButton("Pause")
+        self.pause_button.setEnabled(False)
         self.resume_button = QtWidgets.QPushButton("Resume")
         self.resume_button.setEnabled(False)
         self.cancel_button = QtWidgets.QPushButton("Cancel")
@@ -472,6 +473,8 @@ class DownloadWidget(QtWidgets.QWidget):
         self.worker = create_download_worker(
             self.download_method, self.url, self.destination_filepath, self.config
         )
+        if self.worker.supports_pause():
+            self.pause_button.setEnabled(True)
         self.worker.moveToThread(self.download_worker_thread)
 
         self.download_worker_thread.started.connect(self.worker.run)
@@ -567,10 +570,19 @@ class BaseDownloadWorker(QtCore.QObject):
         """Handle cancel request from UI."""
         raise NotImplementedError
 
+    def supports_pause(self) -> bool:
+        """Used by the widget to decide whether to enable the Pause buton."""
+        raise NotImplementedError
+
 
 class S3DownloadWorker(BaseDownloadWorker):
     """
     Download worker using boto3 to download from AAD s3 bucket.
+
+    Uses boto3's Callback parameter to report progress and check for
+    pause/cancel requests during the download. When the user requests
+    a pause or cancel, the callback raises an exception to interrupt
+    the blocking download_file() call.
     """
 
     def __init__(
@@ -588,14 +600,30 @@ class S3DownloadWorker(BaseDownloadWorker):
         self.s3_filepath = s3_filepath
         self.access_key = access_key
         self.secret_key = secret_key
+        self.pause_requested = False
+        self.cancel_requested = False
+        self.downloading = False
+        self.bytes_received = 0
+        self.temp_file = tempfile.NamedTemporaryFile(delete=False)
+        print(f"S3DownloadWorker saving to {self.temp_file.name}")
+
+    def _progress_callback(self, bytes_transferred: int) -> None:
+        self.bytes_received += bytes_transferred
+        print(f"progress callback! {self.bytes_received} bytes_received")
+        self.progress.emit(self.bytes_received)
+        QtWidgets.QApplication.processEvents()
+        if self.cancel_requested or self.pause_requested:
+            raise InterruptedError("Download interrupted by user")
+
+    def supports_pause(self) -> bool:
+        return False
 
     def run(self) -> None:
-        """ """
         if self.downloading:
             print("Error! called run() when worker is already running.")
             return
         self.pause_requested = False
-        print("DownloadWorker.run()")
+        print("S3DownloadWorker.run() (ln. 616)")
 
         s3_client = boto3.client(
             "s3",
@@ -603,29 +631,67 @@ class S3DownloadWorker(BaseDownloadWorker):
             aws_secret_access_key=self.secret_key,
             endpoint_url=self.endpoint_url,
         )
-
+        print(f"created client {s3_client}")
         self.downloading = True
+        self.bytes_received = 0
+        # Disable boto3's internal thread pool so that the download
+        # (and our progress callback) runs in this worker thread.
+        # This lets processEvents() in the callback deliver queued
+        # pause/cancel signals from the UI.
+        transfer_config = boto3.s3.transfer.TransferConfig(use_threads=False)
+        print(f"transfer_config={transfer_config}")
         try:
-            s3_client.download_file(self.bucket, self.s3_filepath, self.temp_file.name)
+            s3_client.download_file(
+                self.bucket,
+                self.s3_filepath,
+                self.temp_file.name,
+                Callback=self._progress_callback,
+                Config=transfer_config,
+            )
         except Exception as ex:
-            print("DownloadWorker.download")
-            print(ex)
-            self.failed.emit(str(ex))
+            if not (self.cancel_requested or self.pause_requested):
+                print(f"S3DownloadWorker.run: {ex}")
+                self.failed.emit(str(ex))
+                self.downloading = False
+                return
 
-        # May have broken out of above loop if cancel or pause was requested
+        print("ln. 648")
+
         if self.cancel_requested:
             self.canceled.emit()
         elif self.pause_requested:
             self.paused.emit()
         else:
             print(
-                f"DownloadWorkerS3 finished! Moving data to {self.destination_filepath}"
+                f"S3DownloadWorker finished! Moving data to {self.destination_filepath}"
             )
-            self.move_or_copy_downloaded_file(
-                self.temp_file.name, self.destination_filepath
-            )
+            try:
+                shutil.move(self.temp_file.name, self.destination_filepath)
+            except Exception as move_ex:
+                QgsMessageLog.logMessage("Unable to move file; trying to copy.")
+                try:
+                    shutil.copy(self.temp_file.name, self.destination_filepath)
+                except Exception as copy_ex:
+                    if os.path.isfile(self.destination_filepath):
+                        os.remove(self.destination_filepath)
+                    error_msg = str(move_ex) + "\n\n\n" + str(copy_ex)
+                    self.failed.emit(error_msg)
+                    self.downloading = False
+                    return
             self.finished.emit()
         self.downloading = False
+
+    def pause_download(self) -> None:
+        print("S3DownloadWorker: pause_download")
+        self.pause_requested = True
+
+    def resume_download(self) -> None:
+        self.resumed.emit()
+        self.run()
+
+    def cancel_download(self) -> None:
+        print("S3DownloadWorker: cancel_download")
+        self.cancel_requested = True
 
 
 class RequestsDownloadWorker(BaseDownloadWorker):
@@ -653,6 +719,9 @@ class RequestsDownloadWorker(BaseDownloadWorker):
         self.timeout = 10  # TODO: Up this for production
         self.temp_file = tempfile.NamedTemporaryFile(delete=False)
         print(f"DownloadWorker saving to {self.temp_file.name}")
+
+    def supports_pause(self) -> bool:
+        return True
 
     def resume_download(self) -> None:
         self.resumed.emit()
@@ -822,6 +891,9 @@ class UrllibDownloadWorker(BaseDownloadWorker):
         self.retry_delay = 30  # seconds between retries on 503
         self.temp_file = tempfile.NamedTemporaryFile(delete=False)
         print(f"UrllibDownloadWorker saving to {self.temp_file.name}")
+
+    def supports_pause(self) -> bool:
+        return True
 
     def resume_download(self) -> None:
         self.resumed.emit()
