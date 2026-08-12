@@ -277,6 +277,7 @@ class QIceRadarPlugin(QtCore.QObject):
         "aad_oia",
         "curl",
         "nsidc",
+        "pangaea",
         "tdr",
         "wget",
     ]

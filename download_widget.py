@@ -1087,6 +1087,153 @@ class UrllibDownloadWorker(BaseDownloadWorker):
         self.cancel_requested = True
 
 
+class PangaeaDownloadWorker(UrllibDownloadWorker):
+    """
+    Download worker for Pangaea datasets that may be stored on tape.
+
+    Extends UrllibDownloadWorker to handle the case where Pangaea returns
+    an HTML placeholder file (~10kB) instead of actual data when the
+    requested file needs to be loaded from tape. When a placeholder is
+    detected, the worker waits 45 seconds and retries the download.
+    """
+
+    TAPE_RETRY_WAIT = 45  # seconds
+    MAX_TAPE_RETRIES = 3
+
+    def __init__(self, url: str, destination_filepath: pathlib.Path) -> None:
+        super().__init__(url, destination_filepath)
+        self.tape_retries = 0
+
+    def get_help_msg(self):
+        msg = (
+            "Downloading from Pangaea. Files may be stored on tape and\n"
+            "require extra time to retrieve. The download will automatically\n"
+            "retry if a temporary placeholder file is received.\n\n"
+            "You can manually download this radargram (e.g. using Chrome) from: \n\n"
+            f"{self.url}\n\n"
+            "and save it to: \n\n"
+            f"{self.destination_filepath}"
+        )
+        return msg
+
+    @staticmethod
+    def _is_valid_netcdf(filepath: str) -> bool:
+        """Check if file starts with NetCDF/HDF5 magic bytes."""
+        try:
+            with open(filepath, "rb") as f:
+                magic = f.read(4)
+            return magic == b"\x89HDF" or magic[:3] == b"CDF"
+        except Exception:
+            return False
+
+    @staticmethod
+    def _is_tape_placeholder(filepath: str) -> bool:
+        """Check if file is an HTML placeholder returned when data is on tape."""
+        try:
+            with open(filepath, "r", errors="ignore") as f:
+                head = f.read(1024)
+            return "<!doctype html>" in head.lower()
+        except Exception:
+            return False
+
+    def _download(self, response: object, resuming: bool) -> None:
+        chunk_size = 4096
+        if resuming:
+            permissions = "ab"
+        else:
+            permissions = "wb"
+            self.bytes_received = 0
+
+        with open(self.temp_file.name, permissions) as fp:
+            try:
+                while True:
+                    QtWidgets.QApplication.processEvents()
+                    if self.cancel_requested or self.pause_requested:
+                        break
+                    chunk = response.read(chunk_size)
+                    if not chunk:
+                        break
+                    self.bytes_received += len(chunk)
+                    fp.write(chunk)
+                    self.progress.emit(self.bytes_received)
+            except socket.timeout:
+                print("PangaeaDownloadWorker._download: timeout.")
+                self.paused.emit()
+                self.downloading = False
+                return
+            except Exception as ex:
+                print(f"PangaeaDownloadWorker._download: {ex}")
+                self.failed.emit(str(ex))
+                self.downloading = False
+                return
+
+        if self.cancel_requested:
+            self.canceled.emit()
+        elif self.pause_requested:
+            self.paused.emit()
+        else:
+            # Check if the downloaded file is valid or a tape placeholder.
+            if self._is_tape_placeholder(self.temp_file.name):
+                os.remove(self.temp_file.name)
+                self.tape_retries += 1
+                if self.tape_retries > self.MAX_TAPE_RETRIES:
+                    msg = (
+                        f"Giving up after {self.MAX_TAPE_RETRIES} tape retries. "
+                        f"The file may need more time to be staged from tape. "
+                        f"Try again later."
+                    )
+                    print(msg)
+                    self.failed.emit(msg)
+                    self.downloading = False
+                    return
+
+                msg = (
+                    f"Received HTML placeholder (data is on tape). "
+                    f"Retrying in {self.TAPE_RETRY_WAIT}s "
+                    f"(tape retry {self.tape_retries}/{self.MAX_TAPE_RETRIES})..."
+                )
+                print(msg)
+                QgsMessageLog.logMessage(msg)
+
+                # Reset for retry
+                self.bytes_received = 0
+                self.downloading = False
+                self.temp_file = tempfile.NamedTemporaryFile(delete=False)
+
+                if self._interruptible_sleep(self.TAPE_RETRY_WAIT):
+                    return
+
+                # Retry the download from scratch
+                self.run()
+                return
+            elif not self._is_valid_netcdf(self.temp_file.name):
+                os.remove(self.temp_file.name)
+                msg = "Downloaded file is neither valid NetCDF nor a known placeholder."
+                print(msg)
+                self.failed.emit(msg)
+                self.downloading = False
+                return
+
+            # File is valid NetCDF - move to destination
+            print(
+                f"PangaeaDownloadWorker finished! Moving data to {self.destination_filepath}"
+            )
+            try:
+                shutil.move(self.temp_file.name, self.destination_filepath)
+            except Exception as move_ex:
+                QgsMessageLog.logMessage("Unable to move file; trying to copy.")
+                try:
+                    shutil.copy(self.temp_file.name, self.destination_filepath)
+                except Exception as copy_ex:
+                    if os.path.isfile(self.destination_filepath):
+                        os.remove(self.destination_filepath)
+                    error_msg = str(move_ex) + "\n\n\n" + str(copy_ex)
+                    self.failed.emit(error_msg)
+        self.downloading = False
+        if not (self.cancel_requested or self.pause_requested):
+            self.finished.emit()
+
+
 def create_download_worker(
     download_method: str,
     url: str,
@@ -1112,6 +1259,8 @@ def create_download_worker(
         return RequestsDownloadWorker(url, destination_filepath, headers={})
     elif download_method == "curl":
         return UrllibDownloadWorker(url, destination_filepath)
+    elif download_method == "pangaea":
+        return PangaeaDownloadWorker(url, destination_filepath)
     elif download_method == "aad_oia":
         return S3DownloadWorker(
             aad_endpoint_url,
