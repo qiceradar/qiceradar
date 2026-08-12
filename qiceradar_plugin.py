@@ -802,6 +802,12 @@ class QIceRadarPlugin(QtCore.QObject):
                 QIceRadarDialogs.display_krt1_download_instructions(
                     granule_name, krt1_path
                 )
+            elif download_method == "usapdc_agasea":
+                granule_path = self.config.rootdir / granule_metadata.relative_path()
+                agasea_path = granule_path.parent
+                QIceRadarDialogs.display_agasea_download_instructions(
+                    granule_name, granule_path
+                )
             else:
                 QIceRadarDialogs.display_cannot_download_dialog(granule_name)
             return
