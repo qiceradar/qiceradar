@@ -63,6 +63,7 @@ class QIceRadarDialogs:
         message_box.setTextFormat(QtCore.Qt.RichText)
         message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
         message_box.setText(msg)
+
         message_box.exec()
 
     @classmethod
@@ -111,12 +112,16 @@ class QIceRadarDialogs:
         message_box.exec()
 
     @classmethod
-    def display_already_downloaded_dialog(cls, granule_name: str) -> None:
+    def display_already_downloaded_dialog(cls, granule_name: str, transect_filepath: pathlib.Path) -> None:
         # TODO: Should make this impossible by filtering the selection
         #   based on un-downloaded transects.
         #   I *could* make the unavailable impossible, but I want to display info
         #   about them, and a 3rd tooltip doesn't make sense.
-        msg = f"Already downloaded requested data!<br>Granule: {granule_name}<br>"
+        msg = ("Already downloaded requested data!<br>"
+               f"Granule: {granule_name}<br>"
+               "<br>"
+               "If you would like to re-download, first remove the file: <br>"
+               f"{transect_filepath}")
         message_box = QtWidgets.QMessageBox()
         message_box.setTextFormat(QtCore.Qt.RichText)
         message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
