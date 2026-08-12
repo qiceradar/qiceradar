@@ -36,6 +36,7 @@ import tempfile
 import time
 from typing import Dict, Optional
 
+import boto3
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
 import PyQt5.QtWidgets as QtWidgets
@@ -306,6 +307,7 @@ class DownloadWidget(QtWidgets.QWidget):
         self.failed = False
         self.finished = False
 
+        # TODO: Possibly not valid for all? Consider fixing this
         self.help_msg = (
             "You can manually download this radargram (e.g. using Chrome) from: \n\n"
             f"{self.url}\n\n"
@@ -545,9 +547,8 @@ class BaseDownloadWorker(QtCore.QObject):
     # Qt's signals use an int32 if I specify "int" here, so use "object"
     progress = QtCore.pyqtSignal(object)
 
-    def __init__(self, url: str, destination_filepath: pathlib.Path) -> None:
+    def __init__(self, destination_filepath: pathlib.Path) -> None:
         super().__init__()
-        self.url = url
         self.destination_filepath = destination_filepath
 
     def run(self) -> None:
@@ -567,6 +568,66 @@ class BaseDownloadWorker(QtCore.QObject):
         raise NotImplementedError
 
 
+class S3DownloadWorker(BaseDownloadWorker):
+    """
+    Download worker using boto3 to download from AAD s3 bucket.
+    """
+
+    def __init__(
+        self,
+        endpoint_url: str,
+        bucket: str,
+        s3_filepath: str,
+        destination_filepath: pathlib.Path,
+        access_key: str,
+        secret_key: str,
+    ) -> None:
+        super(S3DownloadWorker, self).__init__(destination_filepath)
+        self.endpoint_url = endpoint_url
+        self.bucket = bucket
+        self.s3_filepath = s3_filepath
+        self.access_key = access_key
+        self.secret_key = secret_key
+
+    def run(self) -> None:
+        """ """
+        if self.downloading:
+            print("Error! called run() when worker is already running.")
+            return
+        self.pause_requested = False
+        print("DownloadWorker.run()")
+
+        s3_client = boto3.client(
+            "s3",
+            aws_access_key_id=self.access_key,
+            aws_secret_access_key=self.secret_key,
+            endpoint_url=self.endpoint_url,
+        )
+
+        self.downloading = True
+        try:
+            s3_client.download_file(self.bucket, self.s3_filepath, self.temp_file.name)
+        except Exception as ex:
+            print("DownloadWorker.download")
+            print(ex)
+            self.failed.emit(str(ex))
+
+        # May have broken out of above loop if cancel or pause was requested
+        if self.cancel_requested:
+            self.canceled.emit()
+        elif self.pause_requested:
+            self.paused.emit()
+        else:
+            print(
+                f"DownloadWorkerS3 finished! Moving data to {self.destination_filepath}"
+            )
+            self.move_or_copy_downloaded_file(
+                self.temp_file.name, self.destination_filepath
+            )
+            self.finished.emit()
+        self.downloading = False
+
+
 class RequestsDownloadWorker(BaseDownloadWorker):
     """
     Download worker using the requests library.
@@ -581,7 +642,8 @@ class RequestsDownloadWorker(BaseDownloadWorker):
     def __init__(
         self, url: str, destination_filepath: pathlib.Path, headers: Dict[str, str]
     ) -> None:
-        super().__init__(url, destination_filepath)
+        super().__init__(destination_filepath)
+        self.url = url
         self.headers = headers
         self.pause_requested = False
         self.cancel_requested = False
@@ -745,7 +807,8 @@ class UrllibDownloadWorker(BaseDownloadWorker):
     """
 
     def __init__(self, url: str, destination_filepath: pathlib.Path) -> None:
-        super().__init__(url, destination_filepath)
+        super().__init__(destination_filepath)
+        self.url = url
         self.pause_requested = False
         self.cancel_requested = False
         self.downloading = False
@@ -939,6 +1002,8 @@ def create_download_worker(
     Factory that creates the appropriate download worker based on download_method.
     This is the only place that maps download_method strings to worker classes.
     """
+    aad_endpoint_url = "https://transfer.data.aad.gov.au"
+    aad_s3_bucket = "aadc-datasets"
 
     if download_method == "nsidc":
         headers = {"Authorization": f"Bearer {config.nsidc_token}"}
@@ -952,5 +1017,23 @@ def create_download_worker(
         return RequestsDownloadWorker(url, destination_filepath, headers={})
     elif download_method == "curl":
         return UrllibDownloadWorker(url, destination_filepath)
+    elif download_method == "aad_oia":
+        return S3DownloadWorker(
+            aad_endpoint_url,
+            aad_s3_bucket,
+            url,  # s3_filepath...
+            destination_filepath,
+            config.aad_oia_access_key,
+            config.aad_oia_secret_key,
+        )
+    elif download_method == "aad_eagle":
+        return S3DownloadWorker(
+            aad_endpoint_url,
+            aad_s3_bucket,
+            url,
+            destination_filepath,
+            config.aad_eagle_access_key,
+            config.aad_eagle_secret_key,
+        )
     else:
         raise ValueError(f"Unknown download_method: {download_method}")

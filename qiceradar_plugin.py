@@ -272,7 +272,14 @@ class QIceRadarPlugin(QtCore.QObject):
     # TODO: Probably better to get this from the radar_downloader,
     # though right now, the filtering on download methods happens in
     # launch_radar_downloader
-    supported_download_methods = ["curl", "nsidc", "tdr", "wget"]
+    supported_download_methods = [
+        "aad_eagle",
+        "aad_oia",
+        "curl",
+        "nsidc",
+        "tdr",
+        "wget",
+    ]
 
     def __init__(self, iface: QgisInterface) -> None:
         """
