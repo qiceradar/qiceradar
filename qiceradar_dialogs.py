@@ -67,6 +67,34 @@ class QIceRadarDialogs:
         message_box.exec()
 
     @classmethod
+    def display_agasea_download_instructions(
+        cls, granule_name: str, granule_path: pathlib.Path
+    ) -> None:
+        msg = (
+            "The UTIG AGASEA survey of the Thwaites catchment <br>"
+            "is hosted at the USAP-DC here: <br>"
+            '<a href="https://www.usap-dc.org/view/dataset/601436">https://www.usap-dc.org/view/dataset/601436</a> <br>'
+            "Unfortunately, is not available for automated download.<br>"
+            "<br>"
+            f"You selected granule: {granule_name} <br>"
+            "<br>"
+            "If you wish to use this data, send an email to: <br>"
+            "info@usap-dc.org <br>"
+            "in order to arrange a download. <br>"
+            "<br>"
+            "Once you have the data, copy the .nc for this segment to: <br>"
+            f"{granule_path} <br>"
+            "<br>"
+            "(We preserve the segment/granule structure of the full dataset as provided by USAP-DC)<br>"
+        )
+
+        message_box = QtWidgets.QMessageBox()
+        message_box.setTextFormat(QtCore.Qt.RichText)
+        message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+        message_box.setText(msg)
+        message_box.exec()
+
+    @classmethod
     def display_krt1_download_instructions(
         cls, granule_name: str, krt1_path: pathlib.Path
     ) -> None:
