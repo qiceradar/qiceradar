@@ -63,10 +63,6 @@ def format_bytes(filesize: int) -> str:
 
 
 class DownloadConfirmationDialog(QtWidgets.QDialog):
-    closed = QtCore.pyqtSignal()
-    # Emitted when user wants to update configuration
-    configure = QtCore.pyqtSignal()
-    download_confirmed = QtCore.pyqtSignal()
     """
     Dialog box that shows user how large the download will be and
     where the file will be saved, before asking for confirmation to
@@ -75,6 +71,11 @@ class DownloadConfirmationDialog(QtWidgets.QDialog):
     On confirmation, tells the DownloadMangerWidget to start handling
     a new transect (creating the DownloadManagerWidget if necessary.)
     """
+
+    closed = QtCore.pyqtSignal()
+    # Emitted when user wants to update configuration
+    configure = QtCore.pyqtSignal()
+    download_confirmed = QtCore.pyqtSignal()
 
     # TODO: This should be given all the info it needs;
     def __init__(
@@ -941,6 +942,11 @@ def create_download_worker(
 
     if download_method == "nsidc":
         headers = {"Authorization": f"Bearer {config.nsidc_token}"}
+        return RequestsDownloadWorker(url, destination_filepath, headers)
+    elif download_method == "tdr":
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
         return RequestsDownloadWorker(url, destination_filepath, headers)
     elif download_method == "wget":
         return RequestsDownloadWorker(url, destination_filepath, headers={})
