@@ -67,6 +67,29 @@ class QIceRadarDialogs:
         message_box.exec()
 
     @classmethod
+    def display_krt1_download_instructions(
+        cls, granule_name: str, krt1_path: pathlib.Path
+    ) -> None:
+        msg = (
+            "The KOPRI KRT1 survey of the David active lakes <br>"
+            "is published as a 9.4G tarball, so QIceRadar cannot <br>"
+            "assist with downloading individual lines. <br>"
+            "<br>"
+            "If you wish to view this data, manually download <br>"
+            "DAVID_GLACIER_LAKES_2016.KHERA1B.tgz from: <br>"
+            '<a href="https://zenodo.org/records/3874655">https://zenodo.org/records/3874655</a> <br>'
+            "<br>"
+            "Unzip the tarball, and copy all .nc files to the directory: <br>"
+            f"{krt1_path} <br>"
+        )
+
+        message_box = QtWidgets.QMessageBox()
+        message_box.setTextFormat(QtCore.Qt.RichText)
+        message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+        message_box.setText(msg)
+        message_box.exec()
+
+    @classmethod
     def display_cannot_download_dialog(cls, granule_name: str) -> None:
         msg = (
             "This radargram is available, but we are not able to assist with downloading it."
@@ -112,16 +135,20 @@ class QIceRadarDialogs:
         message_box.exec()
 
     @classmethod
-    def display_already_downloaded_dialog(cls, granule_name: str, transect_filepath: pathlib.Path) -> None:
+    def display_already_downloaded_dialog(
+        cls, granule_name: str, transect_filepath: pathlib.Path
+    ) -> None:
         # TODO: Should make this impossible by filtering the selection
         #   based on un-downloaded transects.
         #   I *could* make the unavailable impossible, but I want to display info
         #   about them, and a 3rd tooltip doesn't make sense.
-        msg = ("Already downloaded requested data!<br>"
-               f"Granule: {granule_name}<br>"
-               "<br>"
-               "If you would like to re-download, first remove the file: <br>"
-               f"{transect_filepath}")
+        msg = (
+            "Already downloaded requested data!<br>"
+            f"Granule: {granule_name}<br>"
+            "<br>"
+            "If you would like to re-download, first remove the file: <br>"
+            f"{transect_filepath}"
+        )
         message_box = QtWidgets.QMessageBox()
         message_box.setTextFormat(QtCore.Qt.RichText)
         message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
@@ -131,11 +158,13 @@ class QIceRadarDialogs:
 
 class QIceRadarMustDownloadWidget(QtWidgets.QDialog):
     """
-    Barely more than a QMessageBox...
+    Barely more than a QMessageBox...but the @classmethods above cannot
+    emit signals, which is required for triggering a configuration update.
 
     * Display that user needs to download the radargram before viewing
     * Give the option to change configured data directory.
     """
+
     configure = QtCore.pyqtSignal()
 
     def __init__(self, granule_name: str, granule_filepath: pathlib.Path) -> None:
