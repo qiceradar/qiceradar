@@ -75,6 +75,7 @@ class QIceRadarSelectionWidget(QtWidgets.QDialog):
     widget; the list of transects to choose between is calculated elsewhere
     """
 
+    configure = QtCore.pyqtSignal()
     selected_radargram = QtCore.pyqtSignal(str)
 
     def __init__(self, iface: QgisInterface, transects: List[str]) -> None:
@@ -98,16 +99,27 @@ class QIceRadarSelectionWidget(QtWidgets.QDialog):
             self.radio_vbox.addWidget(rb)
 
         self.control_hbox = QtWidgets.QHBoxLayout()
+
         self.cancel_pushbutton = QtWidgets.QPushButton("Cancel")
         self.cancel_pushbutton.clicked.connect(self.close)
         self.control_hbox.addWidget(self.cancel_pushbutton)
         self.control_hbox.addStretch(1)
+
+        # Updating configuration changes state enough that we force user
+        # to start over with the selection widget
+        self.config_pushbutton = QtWidgets.QPushButton("Configure")
+        self.config_pushbutton.clicked.connect(self.close)
+        self.config_pushbutton.clicked.connect(self.configure)
+        self.control_hbox.addWidget(self.config_pushbutton)
+        self.control_hbox.addStretch(1)
+
         self.ok_pushbutton = QtWidgets.QPushButton("OK")
         self.ok_pushbutton.clicked.connect(self.ok_pushbutton_clicked)
         self.control_hbox.addWidget(self.ok_pushbutton)
 
         self.vbox = QtWidgets.QVBoxLayout()
         self.vbox.addLayout(self.radio_vbox)
+
         self.vbox.addLayout(self.control_hbox)
         self.setLayout(self.vbox)
         self.setWindowTitle("Select Transect")

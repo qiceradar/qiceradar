@@ -31,7 +31,9 @@ import copy
 import os
 import pathlib
 import shutil
+import socket
 import tempfile
+import time
 from typing import Dict, Optional
 
 import PyQt5.QtCore as QtCore
@@ -41,6 +43,8 @@ import requests  # for downloading files
 from PyQt5.QtCore import Qt
 from qgis.core import QgsMessageLog
 from qgis.gui import QgisInterface
+
+from .qiceradar_config import UserConfig
 
 
 def format_bytes(filesize: int) -> str:
@@ -59,10 +63,6 @@ def format_bytes(filesize: int) -> str:
 
 
 class DownloadConfirmationDialog(QtWidgets.QDialog):
-    closed = QtCore.pyqtSignal()
-    # Emitted when user wants to update configuration
-    configure = QtCore.pyqtSignal()
-    download_confirmed = QtCore.pyqtSignal()
     """
     Dialog box that shows user how large the download will be and
     where the file will be saved, before asking for confirmation to
@@ -71,6 +71,11 @@ class DownloadConfirmationDialog(QtWidgets.QDialog):
     On confirmation, tells the DownloadMangerWidget to start handling
     a new transect (creating the DownloadManagerWidget if necessary.)
     """
+
+    closed = QtCore.pyqtSignal()
+    # Emitted when user wants to update configuration
+    configure = QtCore.pyqtSignal()
+    download_confirmed = QtCore.pyqtSignal()
 
     # TODO: This should be given all the info it needs;
     def __init__(
@@ -240,7 +245,8 @@ class DownloadWindow(QtWidgets.QMainWindow):
         url: str,
         destination_filepath: pathlib.Path,
         filesize: int,
-        headers: Dict[str, str],
+        download_method: str,
+        config: UserConfig,
     ) -> None:
         # TODO: This means that once a download has been canceled, you won't
         #   be able to retry it until the plugin is reloaded.
@@ -260,7 +266,9 @@ class DownloadWindow(QtWidgets.QMainWindow):
                 return
 
         print(f"Downloading {granule}")
-        widget = DownloadWidget(granule, url, filesize, destination_filepath, headers)
+        widget = DownloadWidget(
+            granule, url, filesize, destination_filepath, download_method, config
+        )
         self.download_widgets[granule] = widget
         self.download_widgets[granule].download_finished.connect(
             self.download_finished.emit
@@ -284,13 +292,15 @@ class DownloadWidget(QtWidgets.QWidget):
         url: str,
         filesize: int,
         destination_filepath: pathlib.Path,
-        headers: Dict[str, str],
+        download_method: str,
+        config: UserConfig,
     ) -> None:
         super().__init__()
         self.granule = granule
         self.url = url
         self.filesize = filesize
-        self.headers = headers
+        self.download_method = download_method
+        self.config = config
         self.destination_filepath = destination_filepath
         self.canceled = False
         self.failed = False
@@ -376,9 +386,8 @@ class DownloadWidget(QtWidgets.QWidget):
         layout.addWidget(self.progress_bar)
         layout.addWidget(self.progress_label)
         layout.addWidget(self.percent_label)
-        # TODO: figure out how to get
-        # layout.addWidget(self.pause_button)
-        # layout.addWidget(self.resume_button)
+        layout.addWidget(self.pause_button)
+        layout.addWidget(self.resume_button)
         layout.addWidget(self.cancel_button)
         layout.addWidget(self.help_button)
         self.setLayout(layout)
@@ -458,7 +467,9 @@ class DownloadWidget(QtWidgets.QWidget):
 
     def run(self) -> None:
         self.download_worker_thread = QtCore.QThread()
-        self.worker = DownloadWorker(self.url, self.headers, self.destination_filepath)
+        self.worker = create_download_worker(
+            self.download_method, self.url, self.destination_filepath, self.config
+        )
         self.worker.moveToThread(self.download_worker_thread)
 
         self.download_worker_thread.started.connect(self.worker.run)
@@ -466,7 +477,6 @@ class DownloadWidget(QtWidgets.QWidget):
         self.download_worker_thread.finished.connect(
             self.download_worker_thread.deleteLater
         )
-        # self.thread.finished.connect(self.handle_thread_finished)
 
         # Hook up signals from the worker to updates in the widget
         self.worker.paused.connect(self.handle_paused)
@@ -509,9 +519,22 @@ class DownloadWidget(QtWidgets.QWidget):
         message_box.exec()
 
 
-class DownloadWorker(QtCore.QObject):
+class BaseDownloadWorker(QtCore.QObject):
     """
-    The DownloadWorker class actually handles the download.
+    Abstract base for download workers, which are responsible for handling
+    the download of a single radargram granule.
+
+    The intent is that all workers must support emitting finished/failed/canceled,
+    while pause/resume + progress should be dependent on whether the underlying
+    backend supports those features.
+
+    TODO(LEL): so far, we only have backends that implement the full functionality,
+        so if we wind up with ones that can't meaningfully resume, we'll have to
+        test that that's handled properly. (I suspect the way to do it is for them
+        to implement `handle_pause` but then just emit `canceled` in response.
+
+    Note: Can't use abc.ABC here due to metaclass conflict with QObject.
+    Subclasses must override run, pause_download, resume_download, cancel_download.
     """
 
     paused = QtCore.pyqtSignal()
@@ -522,15 +545,45 @@ class DownloadWorker(QtCore.QObject):
     # Qt's signals use an int32 if I specify "int" here, so use "object"
     progress = QtCore.pyqtSignal(object)
 
-    def __init__(
-        self, url: str, headers: Dict[str, str], destination_filepath: pathlib.Path
-    ) -> None:
+    def __init__(self, url: str, destination_filepath: pathlib.Path) -> None:
         super().__init__()
         self.url = url
-        self.headers = headers
         self.destination_filepath = destination_filepath
+
+    def run(self) -> None:
+        """Start or restart the download. Connected to thread.started."""
+        raise NotImplementedError
+
+    def pause_download(self) -> None:
+        """Handle pause request from UI."""
+        raise NotImplementedError
+
+    def resume_download(self) -> None:
+        """Handle resume request from UI."""
+        raise NotImplementedError
+
+    def cancel_download(self) -> None:
+        """Handle cancel request from UI."""
+        raise NotImplementedError
+
+
+class RequestsDownloadWorker(BaseDownloadWorker):
+    """
+    Download worker using the requests library.
+    Used for NSIDC and BAS (wget) downloads.
+
+    TODO(LEL): I'm considering subclassing this to create a one-to-one mapping from
+        download methods to DownloadWorker classes. Then, BasDownloadWorker and
+        NsidcDownloadWorker would handle their own header construction, rather
+        than having that live in the factory.
+    """
+
+    def __init__(
+        self, url: str, destination_filepath: pathlib.Path, headers: Dict[str, str]
+    ) -> None:
+        super().__init__(url, destination_filepath)
+        self.headers = headers
         self.pause_requested = False
-        self.resume_requested = False
         self.cancel_requested = False
         self.downloading = False
         self.bytes_received = 0
@@ -551,7 +604,8 @@ class DownloadWorker(QtCore.QObject):
         if self.downloading:
             print("Error! called run() when worker is already running.")
             return
-        # This is needed in order to use the same function for
+        # Reset pause_requested in case this run() call was triggered by
+        # a resume, since we use the same method for resuming and the initial run.
         self.pause_requested = False
         print("DownloadWorker.run()")
         # At least for BAS's data center, Accept-Ranges is set in GET but not HEAD,
@@ -635,9 +689,6 @@ class DownloadWorker(QtCore.QObject):
                 print("DownloadWorker.download: ReadTimeout.")
                 print(ex)
                 # Pausing so user can re-try.
-                # Would it be better to make use of the existing
-                # machinery for pausing, and just set
-                # self.pause_requested = True ??
                 self.paused.emit()
                 self.downloading = False
                 return
@@ -682,3 +733,224 @@ class DownloadWorker(QtCore.QObject):
     def cancel_download(self) -> None:
         print("DownloadWorker: cancel_download")
         self.cancel_requested = True
+
+
+class UrllibDownloadWorker(BaseDownloadWorker):
+    """
+    Download worker using urllib.request from the standard library.
+    Used for AWI/Pangaea downloads where the requests library fails.
+
+    The chunk-by-chunk download loop follows the same pattern as
+    RequestsDownloadWorker, with the same pause/resume/cancel flag mechanism.
+    """
+
+    def __init__(self, url: str, destination_filepath: pathlib.Path) -> None:
+        super().__init__(url, destination_filepath)
+        self.pause_requested = False
+        self.cancel_requested = False
+        self.downloading = False
+        self.bytes_received = 0
+        self.chunk_timeout = 10
+        # Pangaea may need to retrieve data from tape before serving it,
+        # returning HTTP 503 until the data is staged. Use a longer timeout
+        # for the initial connection and retry on 503.
+        self.connect_timeout = 60
+        self.max_retries = 10
+        self.retry_delay = 30  # seconds between retries on 503
+        self.temp_file = tempfile.NamedTemporaryFile(delete=False)
+        print(f"UrllibDownloadWorker saving to {self.temp_file.name}")
+
+    def resume_download(self) -> None:
+        self.resumed.emit()
+        self.run()
+
+    def _interruptible_sleep(self, seconds: float) -> bool:
+        """Sleep in short intervals, processing Qt events between them.
+
+        Returns True if interrupted by pause or cancel (and emits the
+        appropriate signal), False if the full duration elapsed.
+        """
+        elapsed = 0.0
+        interval = 0.5
+        while elapsed < seconds:
+            time.sleep(min(interval, seconds - elapsed))
+            elapsed += interval
+            QtWidgets.QApplication.processEvents()
+            if self.cancel_requested:
+                self.canceled.emit()
+                return True
+            if self.pause_requested:
+                self.paused.emit()
+                return True
+        return False
+
+    def run(self) -> None:
+        import ssl
+        import urllib.error
+        import urllib.request
+
+        if self.downloading:
+            print("Error! called run() when worker is already running.")
+            return
+        self.pause_requested = False
+        print("UrllibDownloadWorker.run()")
+
+        headers = {"User-Agent": "Mozilla/5.0"}
+        if self.bytes_received > 0:
+            headers["Range"] = f"bytes={self.bytes_received}-"
+
+        ctx = ssl.create_default_context()
+
+        # Retry loop to handle Pangaea's tape-backed storage.
+        # The server returns 503 while data is being retrieved from tape.
+        response = None
+        for attempt in range(self.max_retries):
+            QtWidgets.QApplication.processEvents()
+            if self.cancel_requested:
+                self.canceled.emit()
+                return
+            if self.pause_requested:
+                self.paused.emit()
+                return
+            req = urllib.request.Request(self.url, headers=headers)
+            try:
+                response = urllib.request.urlopen(
+                    req, context=ctx, timeout=self.connect_timeout
+                )
+            except urllib.error.HTTPError as ex:
+                if ex.code == 503 and attempt < self.max_retries - 1:
+                    msg = (
+                        f"Server returned 503 (data may be on tape). "
+                        f"Retrying in {self.retry_delay}s "
+                        f"(attempt {attempt + 1}/{self.max_retries})..."
+                    )
+                    print(msg)
+                    QgsMessageLog.logMessage(msg)
+                    # Sleep in short intervals so we stay responsive
+                    # to pause/cancel from the UI.
+                    if self._interruptible_sleep(self.retry_delay):
+                        # the _interruptible_sleep call will have emitted paused/canceled
+                        return
+                    continue
+                QgsMessageLog.logMessage(f"UrllibDownloadWorker.run: HTTP {ex.code}")
+                print(f"UrllibDownloadWorker.run: HTTP {ex.code}: {ex}")
+                self.failed.emit(str(ex))
+                return
+            except Exception as ex:
+                QgsMessageLog.logMessage("UrllibDownloadWorker.run got exception!")
+                QgsMessageLog.logMessage(f"{ex}")
+                print(f"UrllibDownloadWorker.run got exception! {ex}")
+                self.failed.emit(str(ex))
+                return
+            # Got a non-error response, stop retrying.
+            break
+
+        if response is None:
+            self.failed.emit("No response received")
+            return
+
+        status = response.status
+        print(f"Response status code: {status}")
+        if status == 200:
+            QgsMessageLog.logMessage(f"Starting download of {self.url}")
+            resuming = False
+        elif status == 206:
+            QgsMessageLog.logMessage(f"Resuming download of {self.url}")
+            resuming = True
+        else:
+            msg = f"Download failed! Code {status}, url: {self.url}"
+            QgsMessageLog.logMessage(msg)
+            self.failed.emit(msg)
+            return
+
+        self.downloading = True
+        self._download(response, resuming)
+
+    def _download(self, response: object, resuming: bool) -> None:
+        chunk_size = 4096
+        if resuming:
+            permissions = "ab"
+        else:
+            permissions = "wb"
+            self.bytes_received = 0
+
+        with open(self.temp_file.name, permissions) as fp:
+            try:
+                while True:
+                    QtWidgets.QApplication.processEvents()
+                    if self.cancel_requested or self.pause_requested:
+                        break
+                    chunk = response.read(chunk_size)
+                    if not chunk:
+                        break
+                    self.bytes_received += len(chunk)
+                    fp.write(chunk)
+                    self.progress.emit(self.bytes_received)
+            except socket.timeout:
+                print("UrllibDownloadWorker._download: timeout.")
+                self.paused.emit()
+                self.downloading = False
+                return
+            except Exception as ex:
+                print(f"UrllibDownloadWorker._download: {ex}")
+                self.failed.emit(str(ex))
+                self.downloading = False
+                return
+
+        if self.cancel_requested:
+            self.canceled.emit()
+        elif self.pause_requested:
+            self.paused.emit()
+        else:
+            print(
+                f"UrllibDownloadWorker finished! Moving data to {self.destination_filepath}"
+            )
+            try:
+                shutil.move(self.temp_file.name, self.destination_filepath)
+            except Exception as move_ex:
+                QgsMessageLog.logMessage("Unable to move file; trying to copy.")
+                try:
+                    shutil.copy(self.temp_file.name, self.destination_filepath)
+                except Exception as copy_ex:
+                    if os.path.isfile(self.destination_filepath):
+                        os.remove(self.destination_filepath)
+                    error_msg = str(move_ex) + "\n\n\n" + str(copy_ex)
+                    self.failed.emit(error_msg)
+        self.downloading = False
+        if not (self.cancel_requested or self.pause_requested):
+            self.finished.emit()
+
+    def pause_download(self) -> None:
+        print("UrllibDownloadWorker: pause_download")
+        self.pause_requested = True
+
+    def cancel_download(self) -> None:
+        print("UrllibDownloadWorker: cancel_download")
+        self.cancel_requested = True
+
+
+def create_download_worker(
+    download_method: str,
+    url: str,
+    destination_filepath: pathlib.Path,
+    config: UserConfig,
+) -> BaseDownloadWorker:
+    """
+    Factory that creates the appropriate download worker based on download_method.
+    This is the only place that maps download_method strings to worker classes.
+    """
+
+    if download_method == "nsidc":
+        headers = {"Authorization": f"Bearer {config.nsidc_token}"}
+        return RequestsDownloadWorker(url, destination_filepath, headers)
+    elif download_method == "tdr":
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        return RequestsDownloadWorker(url, destination_filepath, headers)
+    elif download_method == "wget":
+        return RequestsDownloadWorker(url, destination_filepath, headers={})
+    elif download_method == "curl":
+        return UrllibDownloadWorker(url, destination_filepath)
+    else:
+        raise ValueError(f"Unknown download_method: {download_method}")

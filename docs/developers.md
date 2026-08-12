@@ -31,6 +31,87 @@ Then, make sure it is installed in QGIS:
 * search for "qiceradar"
 * If not already checked, select it. You may need to click "Install Plugin"
 
+## Dependencies
+
+QGIS does not do a good job of handling conflicting dependencies between different installed plugins (h5py is particularly problematic), and the wide range of ways that users install QGIS means that helping a user install dependencies in a way that will be found by QGIS and not potentially pollute the rest of tehir system has been challenging.
+
+This [StackExchange question](https://gis.stackexchange.com/questions/196002/development-of-a-plugin-which-depends-on-an-external-python-library
+) is a great explanation of all the issues in cross-platform python package install; we had previously taken an approach like that to installing modules.
+
+Instead, we limit ourselves to dependencies that:
+* are part of a core python install: [Official Python module index](https://docs.python.org/3/py-modindex.html)
+* come bundled with QGIS (particularly  numpy and matplotlib): [QGIS3 python modules](https://github.com/qgis/QGIS/blob/master/.docker/qgis3-ubuntu-qt6-build-deps.dockerfile#L65)
+* are released under a permisive (BSD or MIT) license and can be distributed alongside the QIceRadar source code in the `external/` directory
+
+So far, we have vendored:
+
+
+**h5netcdf**
+partial replacement for netCDF4, for reading HDF5-backed netCDF files
+```
+pip install h5netcdf -t ./external --no-user
+```
+
+(This tried to also install `numpy`, but we don't want our own
+version of that ... QGIS is guaranteed to ship with numpy,
+so we'll use that one.)
+
+
+**pyfive**
+replacement for h5py, for reading HDF5 files
+  * we had to fix a bug/NYI feature for this to support HDF5 files generated
+    by matlab (.mat) (offset HDF5 header, since matlab header came first)
+
+Since this required making changes to their code, use pip to install from our forked repo
+
+My system install tools didn't work for this one, so I created a temporary
+uv environment to run the install:
+```
+cd external
+uv init .
+uv add pip
+pip install git+https://github.com/qiceradar/pyfive.git@main -t ./external --no-user
+
+```
+
+**boto3**
+Needed to access data provided by AAD
+```
+pip install boto3 -t ./external --no-user
+```
+
+**pupynere**
+Partial replacement for netCDF4, for reading the old non-HDF5 netCDF files.
+  * This is the library that the scipy.io.netcdf_file function was based on,
+    but we are trying to eliminate our scipy dependency
+  * We had to port it from python2 -> python3
+
+Since this required making changes to their code, use pip to install from our forked repo
+```
+pip install git+https://github.com/qiceradar/pupynere.git@main -t ./external --no-user
+```
+
+TODO: we still use scipy.io.loadmat; that is on the list to be replaced, possibly using https://github.com/nephics/mat4py
+
+## Data Formats
+
+### AWI
+Provides data in pre-HDF5 netCDF files
+* we use pupynere.netcdf_file
+
+### BAS
+Provides data in HDF5-backed netCDF files
+* We use h5netcdf with the pyfive backend to load these
+
+### CReSIS
+Provides data hosted on their website in `.mat` file
+* pre-Matlab7.3 files are imported using `scipy.io.loadmat`
+* post-Matlab7.3, the files are HDF5, and we use pyfive
+
+### UTIG
+Provides data in pre-HDF5 netCDF files
+* we use pupynere.netcdf_file
+
 
 ## Code structure
 

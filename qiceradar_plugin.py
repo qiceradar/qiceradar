@@ -75,7 +75,7 @@ from .qiceradar_config import (
 )
 from .qiceradar_config_widget import QIceRadarConfigWidget
 from .qiceradar_controls_window import ControlsWindow
-from .qiceradar_dialogs import QIceRadarDialogs
+from .qiceradar_dialogs import QIceRadarDialogs, QIceRadarMustDownloadWidget
 from .qiceradar_selection_widget import (
     QIceRadarSelectionTool,
     QIceRadarSelectionWidget,
@@ -133,7 +133,8 @@ class GranuleMetadata:
         return self.layer_attributes["institution"]
 
     def relative_path(self) -> str:
-        # Not all layers have this attribute set
+        # Not all layers have this attribute set; it's pulling from
+        # the per-campaign table, not the granule table.
         try:
             relative_path = self.layer_attributes["relative_path"]
             assert isinstance(relative_path, str)
@@ -269,9 +270,9 @@ class QIceRadarPlugin(QtCore.QObject):
         VIEW = enum.auto()
 
     # TODO: Probably better to get this from the radar_downloader,
-    # though right now, they filtering on download methods happens in
+    # though right now, the filtering on download methods happens in
     # launch_radar_downloader
-    supported_download_methods = ["nsidc", "wget"]
+    supported_download_methods = ["curl", "nsidc", "tdr", "wget"]
 
     def __init__(self, iface: QgisInterface) -> None:
         """
@@ -450,8 +451,15 @@ class QIceRadarPlugin(QtCore.QObject):
         once it has been validated. (The QDialog class doesn't seem to allow
         returning more complex values, so it needs to be done indirectly.)
         """
+        # If the data directory has changed, we need to update the rendering
+        # of what data has been downloaded.
+        needs_redraw = self.config.rootdir != config.rootdir
         self.config = config
         self.save_config()
+        if needs_redraw:
+            msg = "Updating track colors to reflect new root data directory"
+            self.message_bar.pushMessage(msg, level=Qgis.Info, duration=10)
+            self.update_index_layer_renderers()
 
     def save_config(self) -> None:
         # Can't dump a NamedTuple using yaml, so convert to a dict
@@ -780,7 +788,28 @@ class QIceRadarPlugin(QtCore.QObject):
             return
 
         if not granule_metadata.can_download_radargram():
-            QIceRadarDialogs.display_cannot_download_dialog(granule_name)
+            campaign = granule_metadata.campaign()
+            download_method = None
+            try:
+                download_method = granule_metadata.db_granule.download_method
+            except Exception:
+                pass
+
+            # if "KRT1" == campaign:
+            if download_method == "zenodo_krt1":
+                granule_path = self.config.rootdir / granule_metadata.relative_path()
+                krt1_path = granule_path.parent
+                QIceRadarDialogs.display_krt1_download_instructions(
+                    granule_name, krt1_path
+                )
+            elif download_method == "usapdc_agasea":
+                granule_path = self.config.rootdir / granule_metadata.relative_path()
+                agasea_path = granule_path.parent
+                QIceRadarDialogs.display_agasea_download_instructions(
+                    granule_name, granule_path
+                )
+            else:
+                QIceRadarDialogs.display_cannot_download_dialog(granule_name)
             return
 
         # can_download_radargram already checked for a non-null relative_path
@@ -790,7 +819,9 @@ class QIceRadarPlugin(QtCore.QObject):
         )
         already_downloaded = transect_filepath.is_file()
         if already_downloaded:
-            QIceRadarDialogs.display_already_downloaded_dialog(granule_name)
+            QIceRadarDialogs.display_already_downloaded_dialog(
+                granule_name, transect_filepath
+            )
             return
 
         # TODO: refactor to not reach in and directly use db_granule
@@ -833,9 +864,9 @@ class QIceRadarPlugin(QtCore.QObject):
         )
         already_downloaded = transect_filepath.is_file()
         if not already_downloaded:
-            QIceRadarDialogs.display_must_download_dialog(
-                transect_filepath, granule_name
-            )
+            mdw = QIceRadarMustDownloadWidget(granule_name, transect_filepath)
+            mdw.configure.connect(self.handle_configure_signal)
+            mdw.run()
             return
 
         # These were checked by the above function calls, but mypy does not know that
@@ -862,11 +893,32 @@ class QIceRadarPlugin(QtCore.QObject):
             #   download step, maybe pop up the config dialog here?
             QgsMessageLog.logMessage(f"Exception encountered in mkdir: {ex}")
 
-        # I really don't like creating headers here, because it exposes
-        # the DownloadWorker's implementation details of using requests.
-        # Consider refactoring if we wind up with more methods that
-        # don't just need additional headers passed to requests.get
-        headers = {}
+        # NASA migrated their cloud data access; I want to be able to test download
+        # without updating the database (will do that next.)
+        url = db_granule.url
+        if "n5eil01u" in url:
+            old_url = url
+            url = url.replace(
+                "n5eil01u.ecs.nsidc.org",
+                "data.nsidc.earthdatacloud.nasa.gov/nsidc-cumulus-prod-protected",
+            )
+            # In addition to the URL, they changed the organization.
+            import re
+
+            # 2009.01.02 -> 2009/01/02
+            date_pattern = r"(\d{4})\.(\d{2})\.(\d{2})"
+            url = re.sub(date_pattern, r"\1/\2/\3", url)
+            # ICEBRIDGE/IR1HI1B.001 -> ICEBRIDGE/IR1HI1B/1
+            set_pattern = r"(ICEBRIDGE/[A-Za-z0-9]+)\.(\d+)"
+            url = re.sub(set_pattern, lambda m: f"{m.group(1)}/{int(m.group(2))}", url)
+
+            print(
+                f"Programmatically updating out-of-date download URL: {old_url} -> {url}"
+            )
+            db_granule.url = url
+            msg = "Database has out-of-date URL; please re-download from Zenodo! https://doi.org/10.5281/zenodo.12123013"
+            self.message_bar.pushMessage(msg, level=Qgis.Warning, duration=10)
+
         if db_granule.download_method == "nsidc":
             if not nsidc_token_is_valid(self.config):
                 # TODO: I'm experimenting with using the MessageBar
@@ -884,8 +936,6 @@ class QIceRadarPlugin(QtCore.QObject):
                 widget.layout().addWidget(button)
                 self.message_bar.pushWidget(widget, Qgis.Warning)
                 return
-            else:
-                headers = {"Authorization": f"Bearer {self.config.nsidc_token}"}
 
         dcd = DownloadConfirmationDialog(
             dest_filepath,
@@ -903,7 +953,7 @@ class QIceRadarPlugin(QtCore.QObject):
             url=db_granule.url,
             fp=dest_filepath,
             fs=db_granule.filesize,
-            hh=headers: self.start_download(gg, url, fp, fs, hh)
+            dm=db_granule.download_method: self.start_download(gg, url, fp, fs, dm)
         )
         dcd.run()
 
@@ -1240,6 +1290,7 @@ class QIceRadarPlugin(QtCore.QObject):
                     self.selected_transect_view_callback
                 )
 
+            selection_widget.configure.connect(self.handle_configure_signal)
             # Chosen transect is set via callback, rather than direct return value
             selection_widget.run()
 
@@ -1421,7 +1472,7 @@ class QIceRadarPlugin(QtCore.QObject):
         url: str,
         destination_filepath: pathlib.Path,
         filesize: int,
-        headers: Dict[str, str],
+        download_method: str,
     ) -> None:
         """
         After the confirmation dialog has finished, this section
@@ -1443,7 +1494,7 @@ class QIceRadarPlugin(QtCore.QObject):
             )
         # TODO: add downloadTransectWidget to the download window!
         self.download_window.download(
-            granule, url, destination_filepath, filesize, headers
+            granule, url, destination_filepath, filesize, download_method, self.config
         )
         # Bring to front again, in case user closed it
         self.download_dock_widget.setUserVisible(True)

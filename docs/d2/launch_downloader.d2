@@ -1,0 +1,155 @@
+direction: right
+
+# This doesn't seem to work? Instead, I could get it to change using the terminal:
+#  d2 -t 4  -w docs/d2/launch_downloader.d2 launch_downloader.svg
+vars: {
+  # On the terminal, run `d2 themes` to see options
+  # - Cool Classics: 4
+  theme-id: 4
+}
+
+classes: {
+  signal: {
+    label: signal
+    style.stroke-dash: 2
+  }
+
+  config: {
+    style.fill: "#CFD2DD"
+  }
+
+  download_window: {
+    style.fill: "#E4DBFF"
+  }
+
+  download_dialog: {
+    style.fill: "#C3F0FF"
+  }
+}
+
+# Trying to group input signals together
+# (Without this, the config symbol wound up at the very top.)
+configure_requested_signal: DownloadConfirmationDialog.configure: {class: download_dialog}
+signal_group: {
+  selected_radargram_signal: QIceRadarSelectionWidget.selected_radargram
+  config_saved_signal: QIceRadarConfigWidget.config_saved: {class: config}
+  download_confirmed_signal: DownloadConfirmationDialog.download_confirmed: {class: download_dialog}
+  download_finished_signal: DownloadWindow.download_finished: {class: download_window}
+}
+signal_group.style.opacity: 0
+
+configure_requested_signal -> qiceradar_plugin.handle_configure_signal: {class: signal}
+signal_group.selected_radargram_signal -> qiceradar_plugin.selected_transect_callback: {class: signal}
+signal_group.config_saved_signal -> qiceradar_plugin.set_config: {class: signal}
+signal_group.download_confirmed_signal -> qiceradar_plugin.start_download: {class: signal}
+signal_group.download_finished_signal -> qiceradar_plugin.update_index_layer_renderers: {class: signal}
+
+qiceradar_plugin: {
+  label: QIceRadarPlugin
+
+  set_config: {
+    shape: rectangle
+    label: |md
+      ### set_config(...)
+      * NSIDC token
+      * root data directory
+    |
+  }
+
+  start_download: {
+    shape: rectangle
+    label: |md
+      ### start_download(...)
+    |
+  }
+
+  update_index_layer_renderers: update_index_layer_renderers()
+
+  selected_transect_callback: {
+    shape: rectangle
+    label: |md
+      ### selected_transect_download_callback(granule)
+      Pulls granule information from the database
+    |
+  }
+
+  display_unavailable_dialogue: display_unavailable_dialogue()
+  selected_transect_callback -> display_unavailable_dialogue: {
+    label: "granule[\"availability\"]=='u'"
+  }
+
+  request_user_update_config: {
+    shape: rectangle
+    label: |md
+      ### request_user_update_config()
+      creates QGIS message bar with push button
+    |
+  }
+
+  selected_transect_callback -> request_user_update_config: {
+    label: "invalid root directory"
+  }
+
+  display_cannot_download_dialog: display_cannot_download_dialog()
+  selected_transect_callback -> display_cannot_download_dialog: {
+    label: "cannot download"
+  }
+
+  display_already_downloaded_dialog: display_already_downloaded_dialog()
+  selected_transect_callback -> display_already_downloaded_dialog: {
+    label: "data already downloaded"
+  }
+
+  launch_radar_downloader: launch_radar_downloader()
+  selected_transect_callback -> launch_radar_downloader: {
+    label: "ELSE"
+  }
+
+  launch_radar_downloader -> request_user_update_config: {
+    label: "data at nsidc and token invalid"
+  }
+
+  handle_configure_signal: handle_configure_signal()
+  request_user_update_config -> handle_configure_signal: {
+    label: "(via QPushButton.pressed signal)"
+  }
+}
+
+window_group: {
+  qiceradar_config_widget: {
+    class: config
+    label: QIceRadarConfigWidget()
+  }
+
+  download_confirmation_dialog: {
+    class: download_dialog
+    shape: rectangle
+    label: |md
+      ### DownloadConfirmationDialog(...)
+      display requested download size and destination directory
+    |
+  }
+
+  download_window: {
+    label: DownloadWindow
+    class: download_window
+
+    download_window: DownloadWindow()
+
+    download: download(...)
+  }
+}
+window_group.style.opacity: 0
+
+qiceradar_plugin.handle_configure_signal -> window_group.qiceradar_config_widget
+qiceradar_plugin.launch_radar_downloader -> window_group.download_confirmation_dialog: {
+  label: "ELSE"
+}
+
+qiceradar_plugin.start_download -> window_group.download_window.download_window: {
+  label: "once"
+}
+
+qiceradar_plugin.start_download -> window_group.download_window.download: {
+  label: "always"
+}

@@ -63,6 +63,58 @@ class QIceRadarDialogs:
         message_box.setTextFormat(QtCore.Qt.RichText)
         message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
         message_box.setText(msg)
+
+        message_box.exec()
+
+    @classmethod
+    def display_agasea_download_instructions(
+        cls, granule_name: str, granule_path: pathlib.Path
+    ) -> None:
+        msg = (
+            "The UTIG AGASEA survey of the Thwaites catchment <br>"
+            "is hosted at the USAP-DC here: <br>"
+            '<a href="https://www.usap-dc.org/view/dataset/601436">https://www.usap-dc.org/view/dataset/601436</a> <br>'
+            "Unfortunately, is not available for automated download.<br>"
+            "<br>"
+            f"You selected granule: {granule_name} <br>"
+            "<br>"
+            "If you wish to use this data, send an email to: <br>"
+            "info@usap-dc.org <br>"
+            "in order to arrange a download. <br>"
+            "<br>"
+            "Once you have the data, copy the .nc for this segment to: <br>"
+            f"{granule_path} <br>"
+            "<br>"
+            "(We preserve the segment/granule structure of the full dataset as provided by USAP-DC)<br>"
+        )
+
+        message_box = QtWidgets.QMessageBox()
+        message_box.setTextFormat(QtCore.Qt.RichText)
+        message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+        message_box.setText(msg)
+        message_box.exec()
+
+    @classmethod
+    def display_krt1_download_instructions(
+        cls, granule_name: str, krt1_path: pathlib.Path
+    ) -> None:
+        msg = (
+            "The KOPRI KRT1 survey of the David active lakes <br>"
+            "is published as a 9.4G tarball, so QIceRadar cannot <br>"
+            "assist with downloading individual lines. <br>"
+            "<br>"
+            "If you wish to view this data, manually download <br>"
+            "DAVID_GLACIER_LAKES_2016.KHERA1B.tgz from: <br>"
+            '<a href="https://zenodo.org/records/3874655">https://zenodo.org/records/3874655</a> <br>'
+            "<br>"
+            "Unzip the tarball, and copy all .nc files to the directory: <br>"
+            f"{krt1_path} <br>"
+        )
+
+        message_box = QtWidgets.QMessageBox()
+        message_box.setTextFormat(QtCore.Qt.RichText)
+        message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+        message_box.setText(msg)
         message_box.exec()
 
     @classmethod
@@ -111,22 +163,43 @@ class QIceRadarDialogs:
         message_box.exec()
 
     @classmethod
-    def display_already_downloaded_dialog(cls, granule_name: str) -> None:
+    def display_already_downloaded_dialog(
+        cls, granule_name: str, transect_filepath: pathlib.Path
+    ) -> None:
         # TODO: Should make this impossible by filtering the selection
         #   based on un-downloaded transects.
         #   I *could* make the unavailable impossible, but I want to display info
         #   about them, and a 3rd tooltip doesn't make sense.
-        msg = f"Already downloaded requested data!<br>Granule: {granule_name}<br>"
+        msg = (
+            "Already downloaded requested data!<br>"
+            f"Granule: {granule_name}<br>"
+            "<br>"
+            "If you would like to re-download, first remove the file: <br>"
+            f"{transect_filepath}"
+        )
         message_box = QtWidgets.QMessageBox()
         message_box.setTextFormat(QtCore.Qt.RichText)
         message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
         message_box.setText(msg)
         message_box.exec()
 
-    @classmethod
-    def display_must_download_dialog(
-        cls, radargram_filepath: pathlib.Path, granule_name: str
-    ) -> None:
+
+class QIceRadarMustDownloadWidget(QtWidgets.QDialog):
+    """
+    Barely more than a QMessageBox...but the @classmethods above cannot
+    emit signals, which is required for triggering a configuration update.
+
+    * Display that user needs to download the radargram before viewing
+    * Give the option to change configured data directory.
+    """
+
+    configure = QtCore.pyqtSignal()
+
+    def __init__(self, granule_name: str, granule_filepath: pathlib.Path) -> None:
+        super(QIceRadarMustDownloadWidget, self).__init__()
+        self.setup_ui(granule_name, granule_filepath)
+
+    def setup_ui(self, granule_name: str, granule_filepath: pathlib.Path):
         msg = (
             "Must download radargram before viewing it:"
             "<br>"
@@ -136,11 +209,29 @@ class QIceRadarDialogs:
             "<br><br>"
             "Expected to find radargram at:"
             "<br>"
-            f"{radargram_filepath}"
+            f"{granule_filepath}"
             "<br>"
         )
-        message_box = QtWidgets.QMessageBox()
-        message_box.setTextFormat(QtCore.Qt.RichText)
-        message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
-        message_box.setText(msg)
-        message_box.exec()
+        self.vbox = QtWidgets.QVBoxLayout()
+
+        self.message_label = QtWidgets.QLabel(msg)
+        self.vbox.addWidget(self.message_label)
+
+        self.control_hbox = QtWidgets.QHBoxLayout()
+        self.config_pushbutton = QtWidgets.QPushButton("Edit Config")
+        self.config_pushbutton.clicked.connect(self.configure_pushbutton_clicked)
+        self.control_hbox.addWidget(self.config_pushbutton)
+        self.control_hbox.addStretch(1)
+        self.ok_pushbutton = QtWidgets.QPushButton("OK")
+        self.ok_pushbutton.clicked.connect(self.close)
+        self.control_hbox.addWidget(self.ok_pushbutton)
+
+        self.vbox.addLayout(self.control_hbox)
+        self.setLayout(self.vbox)
+
+    def configure_pushbutton_clicked(self, _checked: bool) -> None:
+        self.configure.emit()
+        self.close()
+
+    def run(self) -> None:
+        self.exec()
