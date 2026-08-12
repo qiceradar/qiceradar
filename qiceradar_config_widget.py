@@ -67,8 +67,10 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
 
         datadir_row = 0
         nsidc_row = 1
-        # aad_row = 2
-        button_row = 3
+        aad_oia_row = 2
+        aad_eagle_row = 3
+        usapdc_row = 4
+        button_row = 5
 
         self.datadir_label = QtWidgets.QLabel("Root data directory")
         self.datadir_question_button = QtWidgets.QPushButton("?")
@@ -91,7 +93,6 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
         self.nsidc_label = QtWidgets.QLabel("NSIDC token")
         self.nsidc_question_button = QtWidgets.QPushButton("?")
         self.nsidc_question_button.clicked.connect(self.nsidc_question_button_clicked)
-        self.nsidc_token_label = QtWidgets.QLabel("token")
         self.nsidc_token_lineedit = QtWidgets.QLineEdit()
         if user_config.nsidc_token is not None:
             self.nsidc_token_lineedit.setText(user_config.nsidc_token)
@@ -102,29 +103,75 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
         self.grid.addWidget(self.nsidc_question_button, nsidc_row, 1)
         self.grid.addWidget(self.nsidc_token_lineedit, nsidc_row, 2, 1, 3)
 
-        self.aad_label = QtWidgets.QLabel("AAD credentials")
-        self.aad_question_button = QtWidgets.QPushButton("?")
-        self.aad_question_button.clicked.connect(self.aad_question_button_clicked)
-        self.aad_access_key_label = QtWidgets.QLabel("Access Key")
-        self.aad_access_key_lineedit = QtWidgets.QLineEdit()
-        if user_config.aad_access_key is not None:
-            self.aad_access_key_lineedit.setText(user_config.aad_access_key)
-        self.aad_access_key_lineedit.editingFinished.connect(
-            self.aad_access_key_lineedit_editingfinished
+        ############# OIA ##############
+        self.aad_oia_label = QtWidgets.QLabel("AAD OIA credentials")
+        self.aad_oia_question_button = QtWidgets.QPushButton("?")
+        self.aad_oia_question_button.clicked.connect(
+            self.aad_oia_question_button_clicked
         )
-        self.aad_secret_key_label = QtWidgets.QLabel("Secret Key")
-        self.aad_secret_key_lineedit = QtWidgets.QLineEdit()
-        if user_config.aad_secret_key is not None:
-            self.aad_secret_key_lineedit.setText(user_config.aad_secret_key)
-        self.aad_secret_key_lineedit.editingFinished.connect(
-            self.aad_secret_key_lineedit_editingfinished
+        self.aad_oia_access_key_label = QtWidgets.QLabel("OIA Access Key")
+        self.aad_oia_access_key_lineedit = QtWidgets.QLineEdit()
+        if user_config.aad_oia_access_key is not None:
+            self.aad_oia_access_key_lineedit.setText(user_config.aad_oia_access_key)
+        self.aad_oia_access_key_lineedit.editingFinished.connect(
+            self.aad_oia_access_key_lineedit_editingfinished
         )
-        # self.grid.addWidget(self.aad_label, aad_row, 0)
-        # self.grid.addWidget(self.aad_question_button, aad_row, 1)
-        # self.grid.addWidget(self.aad_access_key_label, aad_row, 2)
-        # self.grid.addWidget(self.aad_access_key_lineedit, aad_row, 3)
-        # self.grid.addWidget(self.aad_secret_key_label, aad_row, 4)
-        # self.grid.addWidget(self.aad_secret_key_lineedit, aad_row, 5)
+        self.aad_oia_secret_key_label = QtWidgets.QLabel("OIA Secret Key")
+        self.aad_oia_secret_key_lineedit = QtWidgets.QLineEdit()
+        if user_config.aad_oia_secret_key is not None:
+            self.aad_oia_secret_key_lineedit.setText(user_config.aad_oia_secret_key)
+        self.aad_oia_secret_key_lineedit.editingFinished.connect(
+            self.aad_oia_secret_key_lineedit_editingfinished
+        )
+        self.grid.addWidget(self.aad_oia_label, aad_oia_row, 0)
+        self.grid.addWidget(self.aad_oia_question_button, aad_oia_row, 1)
+        self.grid.addWidget(self.aad_oia_access_key_label, aad_oia_row, 2)
+        self.grid.addWidget(self.aad_oia_access_key_lineedit, aad_oia_row, 3)
+        self.grid.addWidget(self.aad_oia_secret_key_label, aad_oia_row, 4)
+        self.grid.addWidget(self.aad_oia_secret_key_lineedit, aad_oia_row, 5)
+
+        ############# EAGLE ##############
+        self.aad_eagle_label = QtWidgets.QLabel("AAD EAGLE credentials")
+        self.aad_eagle_question_button = QtWidgets.QPushButton("?")
+        self.aad_eagle_question_button.clicked.connect(
+            self.aad_eagle_question_button_clicked
+        )
+        self.aad_eagle_access_key_label = QtWidgets.QLabel("EAGLE Access Key")
+        self.aad_eagle_access_key_lineedit = QtWidgets.QLineEdit()
+        if user_config.aad_eagle_access_key is not None:
+            self.aad_eagle_access_key_lineedit.setText(user_config.aad_eagle_access_key)
+        self.aad_eagle_access_key_lineedit.editingFinished.connect(
+            self.aad_eagle_access_key_lineedit_editingfinished
+        )
+        self.aad_eagle_secret_key_label = QtWidgets.QLabel("EAGLE Secret Key")
+        self.aad_eagle_secret_key_lineedit = QtWidgets.QLineEdit()
+        if user_config.aad_eagle_secret_key is not None:
+            self.aad_eagle_secret_key_lineedit.setText(user_config.aad_eagle_secret_key)
+        self.aad_eagle_secret_key_lineedit.editingFinished.connect(
+            self.aad_eagle_secret_key_lineedit_editingfinished
+        )
+        self.grid.addWidget(self.aad_eagle_label, aad_eagle_row, 0)
+        self.grid.addWidget(self.aad_eagle_question_button, aad_eagle_row, 1)
+        self.grid.addWidget(self.aad_eagle_access_key_label, aad_eagle_row, 2)
+        self.grid.addWidget(self.aad_eagle_access_key_lineedit, aad_eagle_row, 3)
+        self.grid.addWidget(self.aad_eagle_secret_key_label, aad_eagle_row, 4)
+        self.grid.addWidget(self.aad_eagle_secret_key_lineedit, aad_eagle_row, 5)
+
+        ############# USAP-DC ##############
+        self.usapdc_label = QtWidgets.QLabel("USAP-DC API key")
+        self.usapdc_question_button = QtWidgets.QPushButton("?")
+        self.usapdc_question_button.clicked.connect(self.usapdc_question_button_clicked)
+        self.usapdc_api_key_lineedit = QtWidgets.QLineEdit()
+        if user_config.usapdc_api_key is not None:
+            self.usapdc_api_key_lineedit.setText(user_config.usapdc_api_key)
+        self.usapdc_api_key_lineedit.editingFinished.connect(
+            self.usapdc_api_key_lineedit_editingfinished
+        )
+
+        self.grid.addWidget(self.usapdc_label, usapdc_row, 0)
+        self.grid.addWidget(self.usapdc_question_button, usapdc_row, 1)
+        self.grid.addWidget(self.usapdc_api_key_lineedit, usapdc_row, 2)
+        ############# CONTROLS ##############
 
         # The Cancel button closes without saving.
         self.cancel_button = QtWidgets.QPushButton("Cancel")
@@ -204,17 +251,27 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
     def nsidc_token_lineedit_editingfinished(self) -> None:
         QgsMessageLog.logMessage("User finished editing NSIDC token")
 
-    def aad_question_button_clicked(self, _checked: bool) -> None:
+    def aad_oia_question_button_clicked(self, _checked: bool) -> None:
+        return self.aad_question_button_clicked(
+            "OIA", "https://data.aad.gov.au/dataset/5256/download"
+        )
+
+    def aad_eagle_question_button_clicked(self, _checked: bool) -> None:
+        return self.aad_question_button_clicked(
+            "EAGLE", "https://data.aad.gov.au/dataset/4780/download"
+        )
+
+    def aad_question_button_clicked(self, survey, address) -> None:
         QgsMessageLog.logMessage("User clicked AAD questions button")
         aad_info = (
-            "Credentials for downloading ICECAP OIA radargrams from AAD"
+            f"Credentials for downloading ICECAP {survey} radargrams from AAD"
             "<br><br>"
             "Larger datasets hosted by AAD require credentials for their S3 client. "
             "If you don't already have an account or don't want to configure this now, "
             "you will be prompted again when you attempt to download data hosted there."
             "<br><br>"
             "To obtain your credentials, follow the instructions at: "
-            '<a href="https://data.aad.gov.au/dataset/5256/download">https://data.aad.gov.au/dataset/5256/download</a>'
+            f'<a href="{address}">{address}</a>'
         )
         aad_message_box = QtWidgets.QMessageBox()
         # NB: won't display on OSX
@@ -227,11 +284,37 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
         aad_message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
         aad_message_box.exec()
 
-    def aad_access_key_lineedit_editingfinished(self) -> None:
-        QgsMessageLog.logMessage("User finished editing AAD credentials")
+    def aad_oia_access_key_lineedit_editingfinished(self) -> None:
+        QgsMessageLog.logMessage("User finished editing AAD OIA credentials")
 
-    def aad_secret_key_lineedit_editingfinished(self) -> None:
-        QgsMessageLog.logMessage("User finished editing AAD token")
+    def aad_oia_secret_key_lineedit_editingfinished(self) -> None:
+        QgsMessageLog.logMessage("User finished editing AAD OIA token")
+
+    def aad_eagle_access_key_lineedit_editingfinished(self) -> None:
+        QgsMessageLog.logMessage("User finished editing AAD EAGLE VOIDcredentials")
+
+    def aad_eagle_secret_key_lineedit_editingfinished(self) -> None:
+        QgsMessageLog.logMessage("User finished editing AAD EAGLE token")
+
+    def usapdc_question_button_clicked(self) -> None:
+        QgsMessageLog.logMessage("User clicked USAP-DC questions button")
+        usapdc_info = (
+            "USAP-DC supports API access for some of their otherwise-captcha-protected datasets."
+            "<br><br>"
+            "To obtain a key, email info@usap-dc.org with your Orcid ID"
+            "<br><br>"
+            "If you don't already have an account or don't want to configure this now, "
+            "you will be prompted again when you attempt to download data hosted there."
+        )
+        usapdc_message_box = QtWidgets.QMessageBox()
+        usapdc_message_box.setWindowTitle("Help: UDAP-DC credentials")
+        usapdc_message_box.setText(usapdc_info)
+        usapdc_message_box.setTextFormat(QtCore.Qt.RichText)
+        usapdc_message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+        usapdc_message_box.exec()
+
+    def usapdc_api_key_lineedit_editingfinished(self) -> None:
+        QgsMessageLog.logMessage("User finished editing USAP-DC API key")
 
     def ok_button_clicked(self, _checked: bool) -> None:
         QgsMessageLog.logMessage("User clicked OK")
@@ -248,19 +331,45 @@ class QIceRadarConfigWidget(QtWidgets.QDialog):
         else:
             nsidc_token = None
 
-        ll = self.aad_access_key_lineedit.text().strip()
+        ll = self.aad_oia_access_key_lineedit.text().strip()
         if len(ll) > 0:
-            aad_access_key = ll
+            aad_oia_access_key = ll
         else:
-            aad_access_key = None
+            aad_oia_access_key = None
 
-        ll = self.aad_secret_key_lineedit.text().strip()
+        ll = self.aad_oia_secret_key_lineedit.text().strip()
         if len(ll) > 0:
-            aad_secret_key = ll
+            aad_oia_secret_key = ll
         else:
-            aad_secret_key = None
+            aad_oia_secret_key = None
 
-        config = UserConfig(rootdir, nsidc_token, aad_access_key, aad_secret_key)
+        ll = self.aad_eagle_access_key_lineedit.text().strip()
+        if len(ll) > 0:
+            aad_eagle_access_key = ll
+        else:
+            aad_eagle_access_key = None
+
+        ll = self.aad_eagle_secret_key_lineedit.text().strip()
+        if len(ll) > 0:
+            aad_eagle_secret_key = ll
+        else:
+            aad_eagle_secret_key = None
+
+        ll = self.usapdc_api_key_lineedit.text().strip()
+        if len(ll) > 0:
+            usapdc_api_key = ll
+        else:
+            usapdc_api_key = None
+
+        config = UserConfig(
+            rootdir,
+            nsidc_token,
+            aad_oia_access_key,
+            aad_oia_secret_key,
+            aad_eagle_access_key,
+            aad_eagle_secret_key,
+            usapdc_api_key,
+        )
 
         # If configuration isn't valid, we can't do anything useful.
         errmsg = None
