@@ -133,7 +133,8 @@ class GranuleMetadata:
         return self.layer_attributes["institution"]
 
     def relative_path(self) -> str:
-        # Not all layers have this attribute set
+        # Not all layers have this attribute set; it's pulling from
+        # the per-campaign table, not the granule table.
         try:
             relative_path = self.layer_attributes["relative_path"]
             assert isinstance(relative_path, str)
@@ -788,7 +789,22 @@ class QIceRadarPlugin(QtCore.QObject):
             return
 
         if not granule_metadata.can_download_radargram():
-            QIceRadarDialogs.display_cannot_download_dialog(granule_name)
+            campaign = granule_metadata.campaign()
+            download_method = None
+            try:
+                download_method = granule_metadata.db_granule.download_method
+            except Exception:
+                pass
+
+            # if "KRT1" == campaign:
+            if download_method == "zenodo_krt1":
+                granule_path = self.config.rootdir / granule_metadata.relative_path()
+                krt1_path = granule_path.parent
+                QIceRadarDialogs.display_krt1_download_instructions(
+                    granule_name, krt1_path
+                )
+            else:
+                QIceRadarDialogs.display_cannot_download_dialog(granule_name)
             return
 
         # can_download_radargram already checked for a non-null relative_path
@@ -798,7 +814,9 @@ class QIceRadarPlugin(QtCore.QObject):
         )
         already_downloaded = transect_filepath.is_file()
         if already_downloaded:
-            QIceRadarDialogs.display_already_downloaded_dialog(granule_name, transect_filepath)
+            QIceRadarDialogs.display_already_downloaded_dialog(
+                granule_name, transect_filepath
+            )
             return
 
         # TODO: refactor to not reach in and directly use db_granule
