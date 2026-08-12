@@ -578,9 +578,13 @@ class DatasetID(ChunkRead):
             self._btree_end, self._btree_start = None, None
             return
 
+        try:
+            _version = version("pyfive")
+        except Exception:
+            _version = "unknown (vendored)"
         logger.info(
             "[pyfive] Building chunk index (pyfive version=%s)",
-            version("pyfive"),
+            _version,
         )
 
         # FIXME: How do we know it's a V1 B-tree?
