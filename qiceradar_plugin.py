@@ -450,8 +450,16 @@ class QIceRadarPlugin(QtCore.QObject):
         once it has been validated. (The QDialog class doesn't seem to allow
         returning more complex values, so it needs to be done indirectly.)
         """
+        # If the data directory has changed, we need to update the rendering
+        # of what data has been downloaded.
+        needs_redraw = (self.config.rootdir != config.rootdir)
         self.config = config
         self.save_config()
+        if needs_redraw:
+            msg = "Updating track colors to reflect new root data directory"
+            self.message_bar.pushMessage(msg, level=Qgis.Info, duration=10)
+            self.update_index_layer_renderers()
+
 
     def save_config(self) -> None:
         # Can't dump a NamedTuple using yaml, so convert to a dict
