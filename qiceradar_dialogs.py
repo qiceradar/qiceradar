@@ -128,10 +128,21 @@ class QIceRadarDialogs:
         message_box.setText(msg)
         message_box.exec()
 
-    @classmethod
-    def display_must_download_dialog(
-        cls, radargram_filepath: pathlib.Path, granule_name: str
-    ) -> None:
+
+class QIceRadarMustDownloadWidget(QtWidgets.QDialog):
+    """
+    Barely more than a QMessageBox...
+
+    * Display that user needs to download the radargram before viewing
+    * Give the option to change configured data directory.
+    """
+    configure = QtCore.pyqtSignal()
+
+    def __init__(self, granule_name: str, granule_filepath: pathlib.Path) -> None:
+        super(QIceRadarMustDownloadWidget, self).__init__()
+        self.setup_ui(granule_name, granule_filepath)
+
+    def setup_ui(self, granule_name: str, granule_filepath: pathlib.Path):
         msg = (
             "Must download radargram before viewing it:"
             "<br>"
@@ -141,11 +152,29 @@ class QIceRadarDialogs:
             "<br><br>"
             "Expected to find radargram at:"
             "<br>"
-            f"{radargram_filepath}"
+            f"{granule_filepath}"
             "<br>"
         )
-        message_box = QtWidgets.QMessageBox()
-        message_box.setTextFormat(QtCore.Qt.RichText)
-        message_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
-        message_box.setText(msg)
-        message_box.exec()
+        self.vbox = QtWidgets.QVBoxLayout()
+
+        self.message_label = QtWidgets.QLabel(msg)
+        self.vbox.addWidget(self.message_label)
+
+        self.control_hbox = QtWidgets.QHBoxLayout()
+        self.config_pushbutton = QtWidgets.QPushButton("Edit Config")
+        self.config_pushbutton.clicked.connect(self.configure_pushbutton_clicked)
+        self.control_hbox.addWidget(self.config_pushbutton)
+        self.control_hbox.addStretch(1)
+        self.ok_pushbutton = QtWidgets.QPushButton("OK")
+        self.ok_pushbutton.clicked.connect(self.close)
+        self.control_hbox.addWidget(self.ok_pushbutton)
+
+        self.vbox.addLayout(self.control_hbox)
+        self.setLayout(self.vbox)
+
+    def configure_pushbutton_clicked(self, _checked: bool) -> None:
+        self.configure.emit()
+        self.close()
+
+    def run(self) -> None:
+        self.exec()

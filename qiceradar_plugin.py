@@ -75,7 +75,7 @@ from .qiceradar_config import (
 )
 from .qiceradar_config_widget import QIceRadarConfigWidget
 from .qiceradar_controls_window import ControlsWindow
-from .qiceradar_dialogs import QIceRadarDialogs
+from .qiceradar_dialogs import QIceRadarDialogs, QIceRadarMustDownloadWidget
 from .qiceradar_selection_widget import (
     QIceRadarSelectionTool,
     QIceRadarSelectionWidget,
@@ -841,9 +841,9 @@ class QIceRadarPlugin(QtCore.QObject):
         )
         already_downloaded = transect_filepath.is_file()
         if not already_downloaded:
-            QIceRadarDialogs.display_must_download_dialog(
-                transect_filepath, granule_name
-            )
+            mdw = QIceRadarMustDownloadWidget(granule_name, transect_filepath)
+            mdw.configure.connect(self.handle_configure_signal)
+            mdw.run()
             return
 
         # These were checked by the above function calls, but mypy does not know that
