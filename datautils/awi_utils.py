@@ -30,6 +30,8 @@
 import pathlib
 from typing import Any, Tuple
 
+import h5netcdf.legacyapi as nc
+
 # import h5netcdf.legacyapi as nc
 import numpy as np
 
@@ -58,16 +60,19 @@ class AwiRadargram:
 # At least for now, we return the data as np.ndarray, which isn't yet
 # well supported in mypy.
 def load_netcdf(filepath: pathlib.Path) -> Tuple[Any, Any, Any, Any, Any]:
-    # dd = nc.Dataset(filepath, "r", backend="pyfive")
-    dd = netcdf_file(str(filepath), "r", mmap=False)
+    dd = nc.Dataset(filepath, "r", backend="pyfive")
 
-    data = np.flipud(dd.variables["WAVEFORM"][:]).transpose()
-    utc = dd.variables["TIME"][:]
-    lon = dd.variables["LONGITUDE"][:]
-    lat = dd.variables["LATITUDE"][:]
+    # For MCoRDS, the "data" variable looks best, by far. (data_agc seems to be derivative rather than magnitude)
+    # For EMR, the "data" variable washes out sometimes.
+    data = np.flipud(dd.variables["data"][:]).transpose()
+    # data = np.log(data)
+    # The documentation says that this is "seconds of day" not true UTC.
+    utc = dd.variables["time"][:]
+    lon = dd.variables["lon"][:]
+    lat = dd.variables["lat"][:]
 
     # In microseconds
-    fast_time = dd.variables["TWT"][:]
+    fast_time = dd.variables["twt"][:] / 1e-6
 
     print(f"Loaded AWI radargram. shape = {data.shape}")
 

@@ -133,8 +133,9 @@ class RadarData:
         # self.rpc = radutils.conversions.RadarPositionConverter(self.pst, self.rtc)
 
         self.num_traces, self.num_samples = self.data.shape
-        self.min_val = np.amin(self.data)
-        self.max_val = np.amax(self.data)
+        # Need to deal with nan's in AWI's radargram data
+        self.min_val = np.nanmin(self.data)
+        self.max_val = np.nanmax(self.data)
 
         # TODO: This needs to use the map's CRS, not hard-coded to Antarctica
         proj = pyproj.Proj("EPSG:3031")
