@@ -1259,6 +1259,7 @@ class QIceRadarPlugin(QtCore.QObject):
                     self.selected_transect_view_callback
                 )
 
+            selection_widget.configure.connect(self.handle_configure_signal)
             # Chosen transect is set via callback, rather than direct return value
             selection_widget.run()
 
