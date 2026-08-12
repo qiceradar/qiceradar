@@ -798,7 +798,7 @@ class QIceRadarPlugin(QtCore.QObject):
         )
         already_downloaded = transect_filepath.is_file()
         if already_downloaded:
-            QIceRadarDialogs.display_already_downloaded_dialog(granule_name)
+            QIceRadarDialogs.display_already_downloaded_dialog(granule_name, transect_filepath)
             return
 
         # TODO: refactor to not reach in and directly use db_granule
