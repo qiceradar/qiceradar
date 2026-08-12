@@ -307,13 +307,7 @@ class DownloadWidget(QtWidgets.QWidget):
         self.failed = False
         self.finished = False
 
-        # TODO: Possibly not valid for all? Consider fixing this
-        self.help_msg = (
-            "You can manually download this radargram (e.g. using Chrome) from: \n\n"
-            f"{self.url}\n\n"
-            "and save it to: \n\n"
-            f"{self.destination_filepath}"
-        )
+        self.help_msg = ""
 
         self.setup_ui()
 
@@ -475,6 +469,7 @@ class DownloadWidget(QtWidgets.QWidget):
         )
         if self.worker.supports_pause():
             self.pause_button.setEnabled(True)
+        self.help_msg = self.worker.get_help_msg()
         self.worker.moveToThread(self.download_worker_thread)
 
         self.download_worker_thread.started.connect(self.worker.run)
@@ -609,7 +604,6 @@ class S3DownloadWorker(BaseDownloadWorker):
 
     def _progress_callback(self, bytes_transferred: int) -> None:
         self.bytes_received += bytes_transferred
-        print(f"progress callback! {self.bytes_received} bytes_received")
         self.progress.emit(self.bytes_received)
         QtWidgets.QApplication.processEvents()
         if self.cancel_requested or self.pause_requested:
@@ -617,6 +611,17 @@ class S3DownloadWorker(BaseDownloadWorker):
 
     def supports_pause(self) -> bool:
         return False
+
+    def get_help_msg(self):
+        msg = (
+            "Downloading granule from S3 bucket.\n\n"
+            f"endpoint_url: {self.endpoint_url} \n\n"
+            f"bucket: {self.bucket} \n\n"
+            f"s3_filepath: {self.s3_filepath} \n\n"
+            "Saving to: \n\n"
+            f"{self.destination_filepath}"
+        )
+        return msg
 
     def run(self) -> None:
         if self.downloading:
@@ -726,6 +731,15 @@ class RequestsDownloadWorker(BaseDownloadWorker):
     def resume_download(self) -> None:
         self.resumed.emit()
         self.run()
+
+    def get_help_msg(self):
+        msg = (
+            "You can manually download this radargram (e.g. using Chrome) from: \n\n"
+            f"{self.url}\n\n"
+            "and save it to: \n\n"
+            f"{self.destination_filepath}"
+        )
+        return msg
 
     def run(self) -> None:
         """
@@ -898,6 +912,15 @@ class UrllibDownloadWorker(BaseDownloadWorker):
     def resume_download(self) -> None:
         self.resumed.emit()
         self.run()
+
+    def get_help_msg(self):
+        msg = (
+            "You can manually download this radargram (e.g. using Chrome) from: \n\n"
+            f"{self.url}\n\n"
+            "and save it to: \n\n"
+            f"{self.destination_filepath}"
+        )
+        return msg
 
     def _interruptible_sleep(self, seconds: float) -> bool:
         """Sleep in short intervals, processing Qt events between them.
