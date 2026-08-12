@@ -74,6 +74,7 @@ class QIceRadarSelectionWidget(QtWidgets.QDialog):
     For now, both the download and the viewer code are sharing this
     widget; the list of transects to choose between is calculated elsewhere
     """
+
     configure = QtCore.pyqtSignal()
     selected_radargram = QtCore.pyqtSignal(str)
 
