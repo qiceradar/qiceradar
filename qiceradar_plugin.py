@@ -270,9 +270,9 @@ class QIceRadarPlugin(QtCore.QObject):
         VIEW = enum.auto()
 
     # TODO: Probably better to get this from the radar_downloader,
-    # though right now, they filtering on download methods happens in
+    # though right now, the filtering on download methods happens in
     # launch_radar_downloader
-    supported_download_methods = ["nsidc", "wget", "curl"]
+    supported_download_methods = ["curl", "nsidc", "tdr", "wget"]
 
     def __init__(self, iface: QgisInterface) -> None:
         """
