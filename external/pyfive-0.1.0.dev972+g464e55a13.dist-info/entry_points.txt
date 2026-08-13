@@ -1,0 +1,2 @@
+[console_scripts]
+p5dump = pyfive.p5dump:main
