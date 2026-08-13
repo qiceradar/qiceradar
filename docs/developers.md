@@ -70,8 +70,8 @@ uv environment to run the install:
 cd external
 uv init .
 uv add pip
-pip install git+https://github.com/qiceradar/pyfive.git@main -t ./external --no-user
-
+source .venv/bin/activate
+pip install git+https://github.com/qiceradar/pyfive.git@main -t . --no-user
 ```
 
 **boto3**
