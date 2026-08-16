@@ -811,6 +811,7 @@ class QIceRadarPlugin(QtCore.QObject):
             institution = granule_metadata.institution()
             campaign = granule_metadata.campaign()
             QIceRadarDialogs.display_unavailable_dialog(institution, campaign)
+            print(f"Could not find granule metadata")
             return
 
         # Can't download or view radargrams without a valid root data directory
@@ -1257,10 +1258,12 @@ class QIceRadarPlugin(QtCore.QObject):
 
     # TODO: This works, but only for one radargram. If we want to support more, should probably keep a list of dock widgets!
     def selected_point_callback(self, operation: Operation, point: QgsPointXY) -> None:
-        QgsMessageLog.logMessage(f"selected_point_callback: {point.x()}, {point.y()}")
-        QgsMessageLog.logMessage(
-            f"op = {operation} (download = {QIceRadarPlugin.Operation.DOWNLOAD}, view = {QIceRadarPlugin.Operation.VIEW})"
-        )
+        msg1 = f"selected_point_callback: {point.x()}, {point.y()}"
+        msg2 = f"op = {operation} (download = {QIceRadarPlugin.Operation.DOWNLOAD}, view = {QIceRadarPlugin.Operation.VIEW})"
+        QgsMessageLog.logMessage(msg1)
+        QgsMessageLog.logMessage(msg2)
+        print(msg1)
+        print(msg2)
 
         if self.spatial_index is None:
             errmsg = "Spatial index not created -- bug!!"
@@ -1271,6 +1274,7 @@ class QIceRadarPlugin(QtCore.QObject):
         # (It always seems to take ~0.5 seconds)
         # Try to grab enough that we rarely have an empty list.
         neighbors = self.spatial_index.nearestNeighbor(point, 500)
+        print(f"Got neighbors: {neighbors}")
         neighbor_names: List[str] = []
         root = QgsProject.instance().layerTreeRoot()
         for neighbor in neighbors:
@@ -1310,6 +1314,7 @@ class QIceRadarPlugin(QtCore.QObject):
             if len(neighbor_names) >= 5:
                 break
 
+        print(f"Got neighbors: {neighbor_names}")
         if len(neighbor_names) == 0:
             msg = "Could not find transect near mouse click."
             self.message_bar.pushMessage(
