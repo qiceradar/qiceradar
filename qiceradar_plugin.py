@@ -527,13 +527,20 @@ class QIceRadarPlugin(QtCore.QObject):
         doc = QtXml.QDomDocument()
         doc.setContent(style_str)
 
-        for layer in self.radar_viewer_group.findLayers():
-            map_layer = layer.layer()
-            if map_layer.name() != target_layer_name:
-                continue
-            # QgsMessageLog.logMessage(f"Updating style for {layer.parent().name()}")
-            map_layer.importNamedStyle(doc)
-            map_layer.triggerRepaint()
+        canvas = self.iface.mapCanvas()
+        was_rendering = canvas.renderFlag()
+        canvas.setRenderFlag(False)
+        try:
+            for layer in self.radar_viewer_group.findLayers():
+                map_layer = layer.layer()
+                if map_layer.name() != target_layer_name:
+                    continue
+                # QgsMessageLog.logMessage(f"Updating style for {layer.parent().name()}")
+                map_layer.importNamedStyle(doc)
+                map_layer.triggerRepaint()
+        finally:
+            if was_rendering:
+                canvas.setRenderFlag(True)
 
     def on_trace_style_changed(self, style_str: str) -> None:
         QgsMessageLog.logMessage("on_trace_style_changed")
@@ -560,55 +567,63 @@ class QIceRadarPlugin(QtCore.QObject):
         index_group = self.find_index_group()
         if index_group is None:
             return
-        for layer in index_group.findLayers():
-            map_layer = layer.layer()
-            # layer will be QgsLayerTreeLayer
-            if not isinstance(map_layer, QgsVectorLayer):
-                # The user might have added other layers to the index group;
-                # ignore them.
-                continue
-            features = map_layer.getFeatures()
-            try:
-                feature = next(features)
-            except StopIteration:
-                QgsMessageLog.logMessage(f"Could not find features for {layer}")
-                continue
-            if not self.is_valid_granule_feature(feature):
-                continue
 
-            # Only layers with available data will have a rule based renderer
-            dest_renderer = map_layer.renderer()
-            if not isinstance(dest_renderer, QgsRuleBasedRenderer):
-                # QgsMessageLog.logMessage(f"...skipping {map_layer.name()}")
-                continue
+        canvas = self.iface.mapCanvas()
+        was_rendering = canvas.renderFlag()
+        canvas.setRenderFlag(False)
+        try:
+            for layer in index_group.findLayers():
+                map_layer = layer.layer()
+                # layer will be QgsLayerTreeLayer
+                if not isinstance(map_layer, QgsVectorLayer):
+                    # The user might have added other layers to the index group;
+                    # ignore them.
+                    continue
+                features = map_layer.getFeatures()
+                try:
+                    feature = next(features)
+                except StopIteration:
+                    QgsMessageLog.logMessage(f"Could not find features for {layer}")
+                    continue
+                if not self.is_valid_granule_feature(feature):
+                    continue
 
-            # Cache filter expressions for the categories.
-            # I couldn't figure out how to only grab symbol styles, so copy
-            # whole style then restore the filter rules for the renderer.
-            download_filter, supported_filter, else_filter = None, None, None
-            for rule in dest_renderer.rootRule().children():
-                if rule.label() == "Downloaded":
-                    download_filter = rule.filterExpression()
-                elif rule.label() == "Supported":
-                    supported_filter = rule.filterExpression()
-                elif rule.label() == "Available":
-                    else_filter = rule.filterExpression()
+                # Only layers with available data will have a rule based renderer
+                dest_renderer = map_layer.renderer()
+                if not isinstance(dest_renderer, QgsRuleBasedRenderer):
+                    # QgsMessageLog.logMessage(f"...skipping {map_layer.name()}")
+                    continue
 
-            map_layer.importNamedStyle(doc)
+                # Cache filter expressions for the categories.
+                # I couldn't figure out how to only grab symbol styles, so copy
+                # whole style then restore the filter rules for the renderer.
+                download_filter, supported_filter, else_filter = None, None, None
+                for rule in dest_renderer.rootRule().children():
+                    if rule.label() == "Downloaded":
+                        download_filter = rule.filterExpression()
+                    elif rule.label() == "Supported":
+                        supported_filter = rule.filterExpression()
+                    elif rule.label() == "Available":
+                        else_filter = rule.filterExpression()
 
-            # Have to grab renderer again, since importing the style changed it.
-            dest_renderer = map_layer.renderer()
-            for rule in dest_renderer.rootRule().children():
-                if rule.label() == "Downloaded":
-                    rule.setFilterExpression(download_filter)
-                elif rule.label() == "Supported":
-                    rule.setFilterExpression(supported_filter)
-                elif rule.label() == "Available":
-                    rule.setFilterExpression(else_filter)
-            map_layer.setRenderer(dest_renderer)
+                map_layer.importNamedStyle(doc)
 
-            self.iface.layerTreeView().refreshLayerSymbology(map_layer.id())
-            map_layer.triggerRepaint()
+                # Have to grab renderer again, since importing the style changed it.
+                dest_renderer = map_layer.renderer()
+                for rule in dest_renderer.rootRule().children():
+                    if rule.label() == "Downloaded":
+                        rule.setFilterExpression(download_filter)
+                    elif rule.label() == "Supported":
+                        rule.setFilterExpression(supported_filter)
+                    elif rule.label() == "Available":
+                        rule.setFilterExpression(else_filter)
+                map_layer.setRenderer(dest_renderer)
+
+                self.iface.layerTreeView().refreshLayerSymbology(map_layer.id())
+                map_layer.triggerRepaint()
+        finally:
+            if was_rendering:
+                canvas.setRenderFlag(True)
 
     def on_unavailable_point_style_changed(self, style_str: str) -> None:
         self.on_unavailable_layer_style_changed(style_str, QgsWkbTypes.PointGeometry)
@@ -637,31 +652,35 @@ class QIceRadarPlugin(QtCore.QObject):
         doc = QtXml.QDomDocument()
         doc.setContent(style_str)
 
-        for layer in index_group.findLayers():
-            map_layer = layer.layer()
-            if not isinstance(map_layer, QgsVectorLayer):
-                # The user might have added other layers to the index group;
-                # ignore them.
-                continue
-            features = map_layer.getFeatures()
-            try:
-                # All layers created by QIceRadar have a single type of features
-                feature = next(features)
-            except Exception:
-                QgsMessageLog.logMessage("could not get layer features")
-                continue
+        canvas = self.iface.mapCanvas()
+        was_rendering = canvas.renderFlag()
+        canvas.setRenderFlag(False)
+        try:
+            for layer in index_group.findLayers():
+                map_layer = layer.layer()
+                if not isinstance(map_layer, QgsVectorLayer):
+                    # The user might have added other layers to the index group;
+                    # ignore them.
+                    continue
+                features = map_layer.getFeatures()
+                try:
+                    # All layers created by QIceRadar have a single type of features
+                    feature = next(features)
+                except Exception:
+                    QgsMessageLog.logMessage("could not get layer features")
+                    continue
 
-            # Check layer is marked unavailable
-            if feature["availability"] != "u":
-                # QgsMessageLog.logMessage(f"data is available for {layer.name()}")
-                continue
+                # Check layer is marked unavailable
+                if feature["availability"] != "u":
+                    # QgsMessageLog.logMessage(f"data is available for {layer.name()}")
+                    continue
 
-            if feature.geometry().type() == geom_type:
-                map_layer.importNamedStyle(doc)
-                map_layer.triggerRepaint()
-
-        # This also seems to be optional, though the cookbook says it should be done.
-        self.iface.mapCanvas().refresh()
+                if feature.geometry().type() == geom_type:
+                    map_layer.importNamedStyle(doc)
+                    map_layer.triggerRepaint()
+        finally:
+            if was_rendering:
+                canvas.setRenderFlag(True)
 
     def find_index_group(self) -> Optional[QgsLayerTreeGroup]:
         # QgsMessageLog.logMessage("find_index_group")
@@ -1326,18 +1345,25 @@ class QIceRadarPlugin(QtCore.QObject):
         if index_group is None:
             return
 
-        for tree_layer in index_group.findLayers():
-            map_layer = tree_layer.layer()
-            if not isinstance(map_layer, QgsVectorLayer):
-                continue
-            features = map_layer.getFeatures()
-            try:
-                f0 = next(features)
-            except StopIteration:
-                continue
-            # All features in a layer share the same availability.
-            if f0["availability"] == "u":
-                tree_layer.setItemVisibilityChecked(False)
+        canvas = self.iface.mapCanvas()
+        was_rendering = canvas.renderFlag()
+        canvas.setRenderFlag(False)
+        try:
+            for tree_layer in index_group.findLayers():
+                map_layer = tree_layer.layer()
+                if not isinstance(map_layer, QgsVectorLayer):
+                    continue
+                features = map_layer.getFeatures()
+                try:
+                    f0 = next(features)
+                except StopIteration:
+                    continue
+                # All features in a layer share the same availability.
+                if f0["availability"] == "u":
+                    tree_layer.setItemVisibilityChecked(False)
+        finally:
+            if was_rendering:
+                canvas.setRenderFlag(True)
 
     def update_index_layer_renderers(self) -> None:
         """
@@ -1354,63 +1380,70 @@ class QIceRadarPlugin(QtCore.QObject):
         # while a string with only '/' does work on modern Windows.
         rootdir = str(self.config.rootdir).replace("\\", "/")
 
-        # Iterate through all layers in the group
-        for ll in index_group.findLayers():
-            # get the QgsMapLayer from the QgsLayerTreeLayer
-            layer: QgsMapLayer = ll.layer()
-            if not isinstance(layer, QgsVectorLayer):
-                continue
-            features = layer.getFeatures()
-            try:
-                f0 = next(features)
-            except StopIteration:
-                # This will happen if there are layers with missing data
-                # (I saw it when I accidentally used an incomplete database)
-                QgsMessageLog.logMessage(f"Could not find features for {layer}")
-                continue
-            # Only need to check availability of single features, since all in
-            # the layer should be the same.
-            if f0["availability"] == "u":
-                continue
+        canvas = self.iface.mapCanvas()
+        was_rendering = canvas.renderFlag()
+        canvas.setRenderFlag(False)
+        try:
+            # Iterate through all layers in the group
+            for ll in index_group.findLayers():
+                # get the QgsMapLayer from the QgsLayerTreeLayer
+                layer: QgsMapLayer = ll.layer()
+                if not isinstance(layer, QgsVectorLayer):
+                    continue
+                features = layer.getFeatures()
+                try:
+                    f0 = next(features)
+                except StopIteration:
+                    # This will happen if there are layers with missing data
+                    # (I saw it when I accidentally used an incomplete database)
+                    QgsMessageLog.logMessage(f"Could not find features for {layer}")
+                    continue
+                # Only need to check availability of single features, since all in
+                # the layer should be the same.
+                if f0["availability"] == "u":
+                    continue
 
-            symbol = QgsSymbol.defaultSymbol(layer.geometryType())
-            renderer = QgsRuleBasedRenderer(symbol)
+                symbol = QgsSymbol.defaultSymbol(layer.geometryType())
+                renderer = QgsRuleBasedRenderer(symbol)
 
-            root_rule = renderer.rootRule()
+                root_rule = renderer.rootRule()
 
-            dl_rule = root_rule.children()[0].clone()
-            dl_rule.setLabel("Downloaded")
-            dl_rule.setFilterExpression(
-                f"""length("relative_path") > 0 and file_exists('{rootdir}/' + "relative_path")"""
-            )
-            root_rule.appendChild(dl_rule)
+                dl_rule = root_rule.children()[0].clone()
+                dl_rule.setLabel("Downloaded")
+                dl_rule.setFilterExpression(
+                    f"""length("relative_path") > 0 and file_exists('{rootdir}/' + "relative_path")"""
+                )
+                root_rule.appendChild(dl_rule)
 
-            #  distinction between "a" and "s" in the geopackage database
-            supported_rule = root_rule.children()[0].clone()
-            supported_rule.setLabel("Supported")
-            supported_rule.setFilterExpression(
-                f"""length("relative_path") > 0 and not file_exists('{self.config.rootdir}/' + "relative_path")"""
-            )
-            root_rule.appendChild(supported_rule)
+                #  distinction between "a" and "s" in the geopackage database
+                supported_rule = root_rule.children()[0].clone()
+                supported_rule.setLabel("Supported")
+                supported_rule.setFilterExpression(
+                    f"""length("relative_path") > 0 and not file_exists('{self.config.rootdir}/' + "relative_path")"""
+                )
+                root_rule.appendChild(supported_rule)
 
-            else_rule = root_rule.children()[0].clone()
-            else_rule.setLabel("Available")
-            else_rule.setFilterExpression("ELSE")
-            root_rule.appendChild(else_rule)
+                else_rule = root_rule.children()[0].clone()
+                else_rule.setLabel("Available")
+                else_rule.setFilterExpression("ELSE")
+                root_rule.appendChild(else_rule)
 
-            root_rule.removeChildAt(0)
+                root_rule.removeChildAt(0)
 
-            layer.setRenderer(renderer)
-            layer.triggerRepaint()  # This causes it to apply + redraw
-            ll.setExpanded(False)
+                layer.setRenderer(renderer)
+                layer.triggerRepaint()  # This causes it to apply + redraw
+                ll.setExpanded(False)
 
-        self.index_layers_categorized = True
+            self.index_layers_categorized = True
 
-        # Hacky way to force styles to be updated from the config
-        qs = QtCore.QSettings()
-        style_str = qs.value("qiceradar_config/categorized_layer_style", None)
-        if style_str is not None:
-            self.on_categorized_style_changed(style_str)
+            # Hacky way to force styles to be updated from the config
+            qs = QtCore.QSettings()
+            style_str = qs.value("qiceradar_config/categorized_layer_style", None)
+            if style_str is not None:
+                self.on_categorized_style_changed(style_str)
+        finally:
+            if was_rendering:
+                canvas.setRenderFlag(True)
 
     def run_downloader(self) -> None:
         QgsMessageLog.logMessage("User clicked run_downloader")
