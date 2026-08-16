@@ -781,7 +781,7 @@ class QIceRadarPlugin(QtCore.QObject):
                             errmsg = (
                                 f"Malformed index layer! {feature_name} appears twice!"
                             )
-                            QgsMessageLog.logMessage(errmsg)
+                            # QgsMessageLog.logMessage(errmsg)
                         self.transect_name_lookup[feature_name] = (
                             campaign.layer().id(),
                             feature.id(),
@@ -799,7 +799,9 @@ class QIceRadarPlugin(QtCore.QObject):
         Callback for the QIceRadarSelectionWidget that launches the download
         widget for the chosen transect.
         """
-        QgsMessageLog.logMessage(f"selected_transect_download_callback: {granule_name}")
+        msg = f"selected_transect_download_callback: {granule_name}"
+        print(msg)
+        QgsMessageLog.logMessage(msg)
         QgsMessageLog.logMessage(f"rootdir = {self.config.rootdir}")
 
         layer_id, feature_id = self.transect_name_lookup[granule_name]
@@ -862,7 +864,9 @@ class QIceRadarPlugin(QtCore.QObject):
         Callback for the QIceRadarSelectionWidget that launches the viewer
         widget for the chosen transect.
         """
-        QgsMessageLog.logMessage(f"selected_transect_view_callback: {granule_name}")
+        msg = f"selected_transect_view_callback: {granule_name}"
+        QgsMessageLog.logMessage(msg)
+        print(msg)
         QgsMessageLog.logMessage(f"rootdir = {self.config.rootdir}")
 
         layer_id, feature_id = self.transect_name_lookup[granule_name]
@@ -1242,10 +1246,13 @@ class QIceRadarPlugin(QtCore.QObject):
 
     def selected_download_point_callback(self, point: QgsPoint) -> None:
         op = QIceRadarPlugin.Operation.DOWNLOAD
+        QgsMessageLog.logMessage("...reached selected_download_point_callback")
+        print("selected_download_point_callback")
         self.selected_point_callback(op, point)
 
     def selected_viewer_point_callback(self, point: QgsPoint) -> None:
         op = QIceRadarPlugin.Operation.VIEW
+        print("selected_viewer_point_callback")
         self.selected_point_callback(op, point)
 
     # TODO: This works, but only for one radargram. If we want to support more, should probably keep a list of dock widgets!
@@ -1309,19 +1316,19 @@ class QIceRadarPlugin(QtCore.QObject):
                 "QIceRadar", msg, level=Qgis.Warning, duration=5
             )
         else:
-            selection_widget = QIceRadarSelectionWidget(self.iface, neighbor_names)
+            self.selection_widget = QIceRadarSelectionWidget(self.iface, neighbor_names)
             if operation is QIceRadarPlugin.Operation.DOWNLOAD:
-                selection_widget.selected_radargram.connect(
+                self.selection_widget.selected_radargram.connect(
                     self.selected_transect_download_callback
                 )
             else:  # operation is QIceRadarPlugin.Operation.VIEW:
-                selection_widget.selected_radargram.connect(
+                self.selection_widget.selected_radargram.connect(
                     self.selected_transect_view_callback
                 )
 
-            selection_widget.configure.connect(self.handle_configure_signal)
+            self.selection_widget.configure.connect(self.handle_configure_signal)
             # Chosen transect is set via callback, rather than direct return value
-            selection_widget.run()
+            self.selection_widget.run()
 
     def request_user_update_config(self) -> None:
         msg = "Please enter valid root data directory"
@@ -1447,6 +1454,7 @@ class QIceRadarPlugin(QtCore.QObject):
 
     def run_downloader(self) -> None:
         QgsMessageLog.logMessage("User clicked run_downloader")
+        print("User clicked run_downloader")
         if not rootdir_is_valid(self.config):
             self.request_user_update_config()
             return
@@ -1455,15 +1463,17 @@ class QIceRadarPlugin(QtCore.QObject):
         if not self.index_layers_categorized:
             self.update_index_layer_renderers()
 
-        download_selection_tool = QIceRadarSelectionTool(self.iface.mapCanvas())
-        download_selection_tool.selected_point.connect(
+        self.download_selection_tool = QIceRadarSelectionTool(self.iface.mapCanvas())
+        self.download_selection_tool.selected_point.connect(
             self.selected_download_point_callback
         )
 
         # The toolbar icon isn't automatically unchecked when the
         # corresponding action is deactivated.
-        assert isinstance(download_selection_tool.deactivated, QtCore.pyqtBoundSignal)
-        download_selection_tool.deactivated.connect(
+        assert isinstance(
+            self.download_selection_tool.deactivated, QtCore.pyqtBoundSignal
+        )
+        self.download_selection_tool.deactivated.connect(
             lambda ac=self.downloader_action, ch=False: self.maybe_set_action_checked(
                 ac, ch
             )
@@ -1472,16 +1482,17 @@ class QIceRadarPlugin(QtCore.QObject):
         # state without deactivating the tooltip. For consistency with
         # the built-in QGIS tools, repeated clicking should have no effect
         # and the tool will remain active.
-        download_selection_tool.activated.connect(
+        self.download_selection_tool.activated.connect(
             lambda ac=self.downloader_action, ch=True: self.maybe_set_action_checked(
                 ac, ch
             )
         )
 
-        self.iface.mapCanvas().setMapTool(download_selection_tool)
+        self.iface.mapCanvas().setMapTool(self.download_selection_tool)
 
     def run_viewer(self) -> None:
         QgsMessageLog.logMessage("User clicked run_viewer")
+        print("User clicked run_viewer")
 
         self.create_radar_viewer_group()
 
@@ -1498,20 +1509,22 @@ class QIceRadarPlugin(QtCore.QObject):
             self.update_index_layer_renderers()
 
         # Create a MapTool to select point on map. After this point, it is callback driven.
-        viewer_selection_tool = QIceRadarSelectionTool(self.iface.mapCanvas())
-        viewer_selection_tool.selected_point.connect(
+        self.viewer_selection_tool = QIceRadarSelectionTool(self.iface.mapCanvas())
+        self.viewer_selection_tool.selected_point.connect(
             self.selected_viewer_point_callback
         )
 
-        self.iface.mapCanvas().setMapTool(viewer_selection_tool)
+        self.iface.mapCanvas().setMapTool(self.viewer_selection_tool)
 
-        assert isinstance(viewer_selection_tool.deactivated, QtCore.pyqtBoundSignal)
-        viewer_selection_tool.deactivated.connect(
+        assert isinstance(
+            self.viewer_selection_tool.deactivated, QtCore.pyqtBoundSignal
+        )
+        self.viewer_selection_tool.deactivated.connect(
             lambda ac=self.viewer_action, ch=False: self.maybe_set_action_checked(
                 ac, ch
             )
         )
-        viewer_selection_tool.activated.connect(
+        self.viewer_selection_tool.activated.connect(
             lambda ac=self.viewer_action, ch=True: self.maybe_set_action_checked(ac, ch)
         )
 
