@@ -37,11 +37,15 @@ from .qiceradar_symbology_widget import SymbologyWidget
 
 class ControlsWindow(QtWidgets.QMainWindow):
     def __init__(
-        self, symbology_widget: SymbologyWidget, config_cb: Callable[[], None]
+        self,
+        symbology_widget: SymbologyWidget,
+        config_cb: Callable[[], None],
+        uncheck_unavailable_cb: Callable[[], None],
     ) -> None:
         super().__init__()
         self.symbology_widget = symbology_widget
         self.config_cb = config_cb
+        self.uncheck_unavailable_cb = uncheck_unavailable_cb
         self.setWindowTitle("QIceRadar Controls")
         self.setup_ui()
 
@@ -52,11 +56,16 @@ class ControlsWindow(QtWidgets.QMainWindow):
         config_button.setText("Open QIceRadar Config")
         config_button.pressed.connect(self.config_cb)
 
+        uncheck_unavailable_button = QtWidgets.QPushButton()
+        uncheck_unavailable_button.setText("Uncheck Unavailable")
+        uncheck_unavailable_button.pressed.connect(self.uncheck_unavailable_cb)
+
         hline = HLine()
 
         vbox = QtWidgets.QVBoxLayout()
         vbox.addWidget(self.symbology_widget)
         vbox.addWidget(hline)
+        vbox.addWidget(uncheck_unavailable_button)
         vbox.addWidget(config_button)
         vbox.addStretch(1)
 

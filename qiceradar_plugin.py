@@ -388,7 +388,9 @@ class QIceRadarPlugin(QtCore.QObject):
         )
 
         self.controls_window = ControlsWindow(
-            self.symbology_widget, self.handle_configure_signal
+            self.symbology_widget,
+            self.handle_configure_signal,
+            self.uncheck_unavailable_layers,
         )
         self.controls_dock_widget = QgsDockWidget("QIceRadar Controls")
         self.controls_dock_widget.setWidget(self.controls_window)
@@ -1315,6 +1317,27 @@ class QIceRadarPlugin(QtCore.QObject):
         cw = QIceRadarConfigWidget(self.iface, self.config)
         cw.config_saved.connect(self.set_config)
         cw.run()
+
+    def uncheck_unavailable_layers(self) -> None:
+        """
+        Uncheck all layers in the index whose data is unavailable.
+        """
+        index_group = self.find_index_group()
+        if index_group is None:
+            return
+
+        for tree_layer in index_group.findLayers():
+            map_layer = tree_layer.layer()
+            if not isinstance(map_layer, QgsVectorLayer):
+                continue
+            features = map_layer.getFeatures()
+            try:
+                f0 = next(features)
+            except StopIteration:
+                continue
+            # All features in a layer share the same availability.
+            if f0["availability"] == "u":
+                tree_layer.setItemVisibilityChecked(False)
 
     def update_index_layer_renderers(self) -> None:
         """
